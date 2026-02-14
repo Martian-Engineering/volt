@@ -9,18 +9,16 @@ import copyBrandAssetsDark from "../asset/lander/brand-assets-dark.svg"
 
 // SVG files for copying (separate from button icons)
 // Replace these with your actual SVG files for copying
-import copyLogoSvgLight from "../asset/lander/opencode-logo-light.svg"
-import copyLogoSvgDark from "../asset/lander/opencode-logo-dark.svg"
-import copyWordmarkSvgLight from "../asset/lander/opencode-wordmark-light.svg"
-import copyWordmarkSvgDark from "../asset/lander/opencode-wordmark-dark.svg"
+import copyLogoSvgLight from "../asset/lander/voltcode-logo-light.svg"
+import copyLogoSvgDark from "../asset/lander/voltcode-logo-dark.svg"
+import copyWordmarkSvgLight from "../asset/lander/voltcode-wordmark-light.svg"
+import copyWordmarkSvgDark from "../asset/lander/voltcode-wordmark-dark.svg"
 import { A, createAsync, useNavigate } from "@solidjs/router"
 import { createMemo, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { github } from "~/lib/github"
 import { createEffect, onCleanup } from "solid-js"
 import { config } from "~/config"
-import { useI18n } from "~/context/i18n"
-import { useLanguage } from "~/context/language"
 import "./header-context-menu.css"
 
 const isDarkMode = () => window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -38,15 +36,12 @@ const fetchSvgContent = async (svgPath: string): Promise<string> => {
 
 export function Header(props: { zen?: boolean; hideGetStarted?: boolean }) {
   const navigate = useNavigate()
-  const i18n = useI18n()
-  const language = useLanguage()
   const githubData = createAsync(() => github())
   const starCount = createMemo(() =>
     githubData()?.stars
       ? new Intl.NumberFormat("en-US", {
           notation: "compact",
           compactDisplay: "short",
-          maximumFractionDigits: 0,
         }).format(githubData()?.stars!)
       : config.github.starsFormatted.compact,
   )
@@ -123,9 +118,9 @@ export function Header(props: { zen?: boolean; hideGetStarted?: boolean }) {
   return (
     <section data-component="top">
       <div onContextMenu={handleLogoContextMenu}>
-        <A href={language.route("/")}>
-          <img data-slot="logo light" src={logoLight} alt="OpenCode" width="189" height="34" />
-          <img data-slot="logo dark" src={logoDark} alt="OpenCode" width="189" height="34" />
+        <A href="/">
+          <img data-slot="logo light" src={logoLight} alt="voltcode logo light" width="189" height="34" />
+          <img data-slot="logo dark" src={logoDark} alt="voltcode logo dark" width="189" height="34" />
         </A>
       </div>
 
@@ -135,65 +130,62 @@ export function Header(props: { zen?: boolean; hideGetStarted?: boolean }) {
           style={`left: ${store.contextMenuPosition.x}px; top: ${store.contextMenuPosition.y}px;`}
         >
           <button class="context-menu-item" onClick={copyLogoToClipboard}>
-            <img data-slot="copy light" src={copyLogoLight} alt="" />
-            <img data-slot="copy dark" src={copyLogoDark} alt="" />
-            {i18n.t("nav.context.copyLogo")}
+            <img data-slot="copy light" src={copyLogoLight} alt="Logo" />
+            <img data-slot="copy dark" src={copyLogoDark} alt="Logo" />
+            Copy logo as SVG
           </button>
           <button class="context-menu-item" onClick={copyWordmarkToClipboard}>
-            <img data-slot="copy light" src={copyWordmarkLight} alt="" />
-            <img data-slot="copy dark" src={copyWordmarkDark} alt="" />
-            {i18n.t("nav.context.copyWordmark")}
+            <img data-slot="copy light" src={copyWordmarkLight} alt="Wordmark" />
+            <img data-slot="copy dark" src={copyWordmarkDark} alt="Wordmark" />
+            Copy wordmark as SVG
           </button>
-          <button class="context-menu-item" onClick={() => navigate(language.route("/brand"))}>
-            <img data-slot="copy light" src={copyBrandAssetsLight} alt="" />
-            <img data-slot="copy dark" src={copyBrandAssetsDark} alt="" />
-            {i18n.t("nav.context.brandAssets")}
+          <button class="context-menu-item" onClick={() => navigate("/brand")}>
+            <img data-slot="copy light" src={copyBrandAssetsLight} alt="Brand Assets" />
+            <img data-slot="copy dark" src={copyBrandAssetsDark} alt="Brand Assets" />
+            Brand assets
           </button>
         </div>
       </Show>
       <nav data-component="nav-desktop">
         <ul>
           <li>
-            <a href={config.github.repoUrl} target="_blank" style="white-space: nowrap;">
-              {i18n.t("nav.github")} <span>[{starCount()}]</span>
+            <a href={config.github.repoUrl} target="_blank">
+              GitHub <span>[{starCount()}]</span>
             </a>
           </li>
           <li>
-            <a href={language.route("/docs")}>{i18n.t("nav.docs")}</a>
+            <a href="/docs">Docs</a>
           </li>
           <li>
-            <A href={language.route("/enterprise")}>{i18n.t("nav.enterprise")}</A>
+            <A href="/enterprise">Enterprise</A>
           </li>
           <li>
             <Switch>
               <Match when={props.zen}>
-                <a href="/auth">{i18n.t("nav.login")}</a>
+                <a href="/auth">Login</a>
               </Match>
               <Match when={!props.zen}>
-                <A href={language.route("/zen")}>{i18n.t("nav.zen")}</A>
+                <A href="/zen">Zen</A>
               </Match>
             </Switch>
           </li>
           <Show when={!props.hideGetStarted}>
+            {" "}
             <li>
-              <A href={language.route("/download")} data-slot="cta-button">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 18 18"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  style="flex-shrink: 0;"
-                >
+              {" "}
+              <A href="/download" data-slot="cta-button">
+                {" "}
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  {" "}
                   <path
                     d="M12.1875 9.75L9.00001 12.9375L5.8125 9.75M9.00001 2.0625L9 12.375M14.4375 15.9375H3.5625"
                     stroke="currentColor"
                     stroke-width="1.5"
                     stroke-linecap="square"
-                  />
-                </svg>
-                {i18n.t("nav.free")}
-              </A>
+                  />{" "}
+                </svg>{" "}
+                Free{" "}
+              </A>{" "}
             </li>
           </Show>
         </ul>
@@ -207,7 +199,7 @@ export function Header(props: { zen?: boolean; hideGetStarted?: boolean }) {
           class="nav-toggle"
           onClick={() => setStore("mobileMenuOpen", !store.mobileMenuOpen)}
         >
-          <span class="sr-only">{i18n.t("nav.openMenu")}</span>
+          <span class="sr-only">Open menu</span>
           <Switch>
             <Match when={store.mobileMenuOpen}>
               <svg
@@ -247,33 +239,33 @@ export function Header(props: { zen?: boolean; hideGetStarted?: boolean }) {
             <nav data-component="nav-mobile-menu-list">
               <ul>
                 <li>
-                  <A href={language.route("/")}>{i18n.t("nav.home")}</A>
+                  <A href="/">Home</A>
                 </li>
                 <li>
-                  <a href={config.github.repoUrl} target="_blank" style="white-space: nowrap;">
-                    {i18n.t("nav.github")} <span>[{starCount()}]</span>
+                  <a href={config.github.repoUrl} target="_blank">
+                    GitHub <span>[{starCount()}]</span>
                   </a>
                 </li>
                 <li>
-                  <a href={language.route("/docs")}>{i18n.t("nav.docs")}</a>
+                  <a href="/docs">Docs</a>
                 </li>
                 <li>
-                  <A href={language.route("/enterprise")}>{i18n.t("nav.enterprise")}</A>
+                  <A href="/enterprise">Enterprise</A>
                 </li>
                 <li>
                   <Switch>
                     <Match when={props.zen}>
-                      <a href="/auth">{i18n.t("nav.login")}</a>
+                      <a href="/auth">Login</a>
                     </Match>
                     <Match when={!props.zen}>
-                      <A href={language.route("/zen")}>{i18n.t("nav.zen")}</A>
+                      <A href="/zen">Zen</A>
                     </Match>
                   </Switch>
                 </li>
                 <Show when={!props.hideGetStarted}>
                   <li>
-                    <A href={language.route("/download")} data-slot="cta-button">
-                      {i18n.t("nav.getStartedFree")}
+                    <A href="/download" data-slot="cta-button">
+                      Get started for free
                     </A>
                   </li>
                 </Show>

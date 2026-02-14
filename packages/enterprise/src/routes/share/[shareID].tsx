@@ -20,7 +20,6 @@ import { createStore } from "solid-js/store"
 import z from "zod"
 import NotFound from "../[...404]"
 import { Tabs } from "@opencode-ai/ui/tabs"
-import { MessageNav } from "@opencode-ai/ui/message-nav"
 import { preloadMultiFileDiff, PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 import { Diff as SSRDiff } from "@opencode-ai/ui/diff-ssr"
 import { clientOnly } from "@solidjs/start"
@@ -212,9 +211,9 @@ export default function () {
           return (
             <>
               <Show when={info().title}>
-                <Title>{info().title} | OpenCode</Title>
+                <Title>{info().title} | VoltCode</Title>
               </Show>
-              <Meta name="description" content="opencode - The AI coding agent built for the terminal." />
+              <Meta name="description" content="voltcode - The AI coding agent built for the terminal." />
               <Meta property="og:image" content={ogImage()} />
               <Meta name="twitter:image" content={ogImage()} />
               <ClientOnlyWorkerPoolProvider>
@@ -363,15 +362,6 @@ export default function () {
                                     {title()}
                                   </div>
                                   <div class="flex items-start justify-start h-full min-h-0">
-                                    <Show when={messages().length > 1}>
-                                      <MessageNav
-                                        class="sticky top-0 shrink-0 py-2 pl-4"
-                                        messages={messages()}
-                                        current={activeMessage()}
-                                        size="compact"
-                                        onMessageSelect={setActiveMessage}
-                                      />
-                                    </Show>
                                     <SessionTurn
                                       sessionID={data().sessionID}
                                       messageID={store.messageId ?? firstUserMessage()!.id!}

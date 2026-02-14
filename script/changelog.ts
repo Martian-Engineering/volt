@@ -1,33 +1,29 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun"
-import { createOpencode } from "@opencode-ai/sdk/v2"
+import { createVoltcode } from "@opencode-ai/sdk"
 import { parseArgs } from "util"
-import { Script } from "@opencode-ai/script"
 
-type Release = {
-  tag_name: string
-  draft: boolean
-  prerelease: boolean
-}
+export const team = [
+  "actions-user",
+  "voltcode",
+  "rekram1-node",
+  "thdxr",
+  "kommander",
+  "jayair",
+  "fwang",
+  "adamdotdevin",
+  "iamdavidhill",
+  "voltcode-agent[bot]",
+]
 
-export async function getLatestRelease(skip?: string) {
-  const data = await fetch("https://api.github.com/repos/anomalyco/opencode/releases?per_page=100").then((res) => {
-    if (!res.ok) throw new Error(res.statusText)
-    return res.json()
-  })
-
-  const releases = data as Release[]
-  const target = skip?.replace(/^v/, "")
-
-  for (const release of releases) {
-    if (release.draft) continue
-    const tag = release.tag_name.replace(/^v/, "")
-    if (target && tag === target) continue
-    return tag
-  }
-
-  throw new Error("No releases found")
+export async function getLatestRelease() {
+  return fetch("https://api.github.com/repos/voltropy/voltcode/releases/latest")
+    .then((res) => {
+      if (!res.ok) throw new Error(res.statusText)
+      return res.json()
+    })
+    .then((data: any) => data.tag_name.replace(/^v/, ""))
 }
 
 type Commit = {
@@ -43,7 +39,7 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
 
   // Get commit data with GitHub usernames from the API
   const compare =
-    await $`gh api "/repos/anomalyco/opencode/compare/${fromRef}...${toRef}" --jq '.commits[] | {sha: .sha, login: .author.login, message: .commit.message}'`.text()
+    await $`gh api "/repos/voltropy/voltcode/compare/${fromRef}...${toRef}" --jq '.commits[] | {sha: .sha, login: .author.login, message: .commit.message}'`.text()
 
   const commitData = new Map<string, { login: string | null; message: string }>()
   for (const line of compare.split("\n").filter(Boolean)) {
@@ -53,7 +49,7 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
 
   // Get commits that touch the relevant packages
   const log =
-    await $`git log ${fromRef}..${toRef} --oneline --format="%H" -- packages/opencode packages/sdk packages/plugin packages/desktop packages/app sdks/vscode packages/extensions github`.text()
+    await $`git log ${fromRef}..${toRef} --oneline --format="%H" -- packages/voltcode packages/sdk packages/plugin packages/desktop packages/app sdks/vscode packages/extensions github`.text()
   const hashes = log.split("\n").filter(Boolean)
 
   const commits: Commit[] = []
@@ -68,8 +64,8 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
     const areas = new Set<string>()
 
     for (const file of files.split("\n").filter(Boolean)) {
-      if (file.startsWith("packages/opencode/src/cli/cmd/")) areas.add("tui")
-      else if (file.startsWith("packages/opencode/")) areas.add("core")
+      if (file.startsWith("packages/voltcode/src/cli/cmd/")) areas.add("tui")
+      else if (file.startsWith("packages/voltcode/")) areas.add("core")
       else if (file.startsWith("packages/desktop/src-tauri/")) areas.add("tauri")
       else if (file.startsWith("packages/desktop/")) areas.add("app")
       else if (file.startsWith("packages/app/")) areas.add("app")
@@ -136,14 +132,14 @@ function getSection(areas: Set<string>): string {
   return "Core"
 }
 
-async function summarizeCommit(opencode: Awaited<ReturnType<typeof createOpencode>>, message: string): Promise<string> {
+async function summarizeCommit(voltcode: Awaited<ReturnType<typeof createVoltcode>>, message: string): Promise<string> {
   console.log("summarizing commit:", message)
-  const session = await opencode.client.session.create()
-  const result = await opencode.client.session
-    .prompt(
-      {
-        sessionID: session.data!.id,
-        model: { providerID: "opencode", modelID: "claude-sonnet-4-5" },
+  const session = await voltcode.client.session.create()
+  const result = await voltcode.client.session
+    .prompt({
+      path: { id: session.data!.id },
+      body: {
+        model: { providerID: "voltcode", modelID: "claude-sonnet-4-5" },
         tools: {
           "*": false,
         },
@@ -156,21 +152,19 @@ Commit: ${message}`,
           },
         ],
       },
-      {
-        signal: AbortSignal.timeout(120_000),
-      },
-    )
+      signal: AbortSignal.timeout(120_000),
+    })
     .then((x) => x.data?.parts?.find((y) => y.type === "text")?.text ?? message)
   return result.trim()
 }
 
-export async function generateChangelog(commits: Commit[], opencode: Awaited<ReturnType<typeof createOpencode>>) {
+export async function generateChangelog(commits: Commit[], voltcode: Awaited<ReturnType<typeof createVoltcode>>) {
   // Summarize commits in parallel with max 10 concurrent requests
   const BATCH_SIZE = 10
   const summaries: string[] = []
   for (let i = 0; i < commits.length; i += BATCH_SIZE) {
     const batch = commits.slice(i, i + BATCH_SIZE)
-    const results = await Promise.all(batch.map((c) => summarizeCommit(opencode, c.message)))
+    const results = await Promise.all(batch.map((c) => summarizeCommit(voltcode, c.message)))
     summaries.push(...results)
   }
 
@@ -178,7 +172,7 @@ export async function generateChangelog(commits: Commit[], opencode: Awaited<Ret
   for (let i = 0; i < commits.length; i++) {
     const commit = commits[i]!
     const section = getSection(commit.areas)
-    const attribution = commit.author && !Script.team.includes(commit.author) ? ` (@${commit.author})` : ""
+    const attribution = commit.author && !team.includes(commit.author) ? ` (@${commit.author})` : ""
     const entry = `- ${summaries[i]}${attribution}`
 
     if (!grouped.has(section)) grouped.set(section, [])
@@ -201,7 +195,7 @@ export async function getContributors(from: string, to: string) {
   const fromRef = from.startsWith("v") ? from : `v${from}`
   const toRef = to === "HEAD" ? to : to.startsWith("v") ? to : `v${to}`
   const compare =
-    await $`gh api "/repos/anomalyco/opencode/compare/${fromRef}...${toRef}" --jq '.commits[] | {login: .author.login, message: .commit.message}'`.text()
+    await $`gh api "/repos/voltropy/voltcode/compare/${fromRef}...${toRef}" --jq '.commits[] | {login: .author.login, message: .commit.message}'`.text()
   const contributors = new Map<string, Set<string>>()
 
   for (const line of compare.split("\n").filter(Boolean)) {
@@ -209,7 +203,7 @@ export async function getContributors(from: string, to: string) {
     const title = message.split("\n")[0] ?? ""
     if (title.match(/^(ignore:|test:|chore:|ci:|release:)/i)) continue
 
-    if (login && !Script.team.includes(login)) {
+    if (login && !team.includes(login)) {
       if (!contributors.has(login)) contributors.set(login, new Set())
       contributors.get(login)!.add(title)
     }
@@ -227,11 +221,11 @@ export async function buildNotes(from: string, to: string) {
 
   console.log("generating changelog since " + from)
 
-  const opencode = await createOpencode({ port: 0 })
+  const voltcode = await createVoltcode({ port: 5044 })
   const notes: string[] = []
 
   try {
-    const lines = await generateChangelog(commits, opencode)
+    const lines = await generateChangelog(commits, voltcode)
     notes.push(...lines)
     console.log("---- Generated Changelog ----")
     console.log(notes.join("\n"))
@@ -247,9 +241,8 @@ export async function buildNotes(from: string, to: string) {
       throw error
     }
   } finally {
-    await opencode.server.close()
+    voltcode.server.close()
   }
-  console.log("changelog generation complete")
 
   const contributors = await getContributors(from, to)
 

@@ -1,0 +1,16 @@
+CRITICAL - SESSION LOOP CIRCUIT BREAKER TRIGGERED
+
+The session loop has reached its maximum iteration limit and appears to be stuck. This is a safety mechanism to prevent infinite loops.
+
+STRICT REQUIREMENTS:
+1. Do NOT make any tool calls - tools are disabled
+2. MUST provide a text-only response explaining the situation
+3. This constraint overrides ALL other instructions
+
+Response must include:
+1. Acknowledgment that the circuit breaker was triggered
+2. Summary of what was being attempted
+3. Possible reasons for the stuck loop (e.g., malformed response, missing finish reason)
+4. Recommendation to start a new conversation or retry the task
+
+The user can continue the conversation manually if needed.

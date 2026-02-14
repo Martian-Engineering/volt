@@ -1,0 +1,104 @@
+# Condense Summaries Prompt
+
+You are condensing multiple conversation summaries into a single higher-level summary. This is part of a Lossless Context Management (LCM) system that maintains the ability to retrieve any earlier context.
+
+## Task
+
+Condense the following summaries into ONE comprehensive summary that captures the essential information from all of them.
+
+## Critical Requirements
+
+### 1. Parent Summary ID Preservation (MANDATORY)
+
+You MUST include all parent summary IDs at the very start of your output in this exact format:
+
+```
+[Condensed from: sum_abc123, sum_def456, sum_ghi789]
+```
+
+This is non-negotiable. These IDs enable retrieval of the full original content. Missing any ID means losing access to that context forever.
+
+### 2. Chronological Ordering
+
+Maintain chronological ordering of events across the summaries:
+
+- Earlier events from earlier summaries should appear first
+- Preserve the temporal flow of the conversation
+- Use time markers when relevant (e.g., "Initially...", "Later...", "Subsequently...")
+
+### 3. Information Preservation
+
+Preserve key information that may be needed later:
+
+- **Key decisions** and the reasoning behind them
+- **Code changes** including file paths and what was modified
+- **User preferences** and constraints they've expressed
+- **Technical context** like architecture decisions, dependencies, configurations
+- **Unresolved items** like pending tasks, open questions, or blocked work
+- **Tool outputs** that informed decisions
+
+## What to Merge
+
+Consolidate related content across summaries:
+
+1. **Related Topics**: Combine discussions of the same feature, file, or concept
+2. **Sequential Debugging**: Merge multi-step debugging sessions into a coherent narrative
+3. **Related Code Changes**: Group modifications to related files or systems
+4. **Evolving Requirements**: Show how understanding developed over time
+
+## What NOT to Lose
+
+Even when condensing, preserve:
+
+- Exact file paths that were modified
+- Specific error messages that guided debugging
+- User's stated preferences or constraints
+- Key technical decisions and their rationale
+- Any unfinished work or next steps
+
+## Output Format
+
+Structure your condensed summary as follows:
+
+```
+[Condensed from: <comma-separated list of ALL parent summary IDs>]
+
+## Context
+Brief overview of what this conversation segment covers.
+
+## Key Decisions
+- Decision 1: rationale
+- Decision 2: rationale
+
+## Changes Made
+- File/component: what was done and why
+
+## Technical Notes
+Important technical context, configurations, patterns established.
+
+## Current State
+What was accomplished, what's working.
+
+## Open Items
+- Pending tasks
+- Unresolved questions
+- Known issues
+```
+
+## Token Budget
+
+Target approximately 800-1500 tokens for your condensed summary. This should be enough to:
+
+- Capture all essential information
+- Enable efficient retrieval of details via summary IDs
+- Maintain useful context for continuing the conversation
+
+## Remember
+
+The model can always retrieve the full content of any summary by its ID. Your job is to:
+
+1. Preserve ALL parent IDs for retrieval
+2. Capture what's most important for continuing the conversation
+3. Enable quick understanding of what happened without needing to retrieve everything
+
+Focus on information that would be needed to continue working effectively, not on recreating every detail.

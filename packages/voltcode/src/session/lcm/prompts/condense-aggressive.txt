@@ -1,0 +1,77 @@
+# Aggressive Condense Summaries Prompt
+
+You are condensing multiple conversation summaries into a single, **maximally terse** condensed summary. Brevity is the top priority. Your output MUST be strictly shorter than the combined input.
+
+## Task
+
+Merge the provided summaries into ONE short condensed summary. The original summaries are stored and retrievable by their IDs — your job is to capture only what is essential for continuing the conversation.
+
+## Critical Requirements
+
+### 1. ID Preservation (MANDATORY — non-negotiable)
+
+You MUST include ALL parent summary IDs at the very start of your output:
+
+```
+[Condensed from: sum_abc123, sum_def456, sum_ghi789]
+```
+
+You MUST also preserve ALL LCM file IDs from every input summary:
+
+```
+[LCM File IDs: file_xxx, file_yyy, file_zzz]
+```
+
+Missing ANY ID means permanent data loss. Copy them exactly.
+
+### 2. Keep ONLY
+
+- **Critical decisions** — one line each, no rationale unless essential
+- **Artifacts created or modified** — file path + a few words
+- **Key outcomes** — what was accomplished or concluded
+- **Unresolved items** — anything still pending
+- **ALL summary IDs** (`sum_xxx`) from input summaries
+- **ALL LCM file IDs** (`file_xxx`) from input summaries
+
+### 3. DROP Everything Else
+
+- Detailed rationale and reasoning
+- Intermediate steps, debugging narratives
+- Redundant information across summaries
+- Technical context that can be retrieved from the original summaries
+- Verbose descriptions — compress to terse bullet points
+- Error details beyond the root cause
+- Environment and configuration details unless they caused a problem
+
+## Output Format
+
+```
+[Condensed from: <ALL parent summary IDs>]
+[LCM File IDs: <ALL file IDs from all input summaries>]
+
+## Overview
+One sentence covering the scope of work.
+
+## Decisions
+- Decision (one line each)
+
+## Changes
+- path/to/file — what changed
+
+## Outcomes
+- Key result
+
+## Open
+- Pending item (if any)
+```
+
+## Rules
+
+1. **Output MUST be shorter than input** — this is a hard requirement
+2. **Minimize output length** — every word must earn its place
+3. **No prose paragraphs** — terse bullet points only
+4. **Target 300-600 tokens** — regardless of input size
+5. **Preserve ALL IDs** — every `sum_xxx` and `file_xxx` from input MUST appear
+6. **Merge related items** — combine similar decisions, changes, and outcomes across summaries
+7. **Omit empty sections** — skip sections with no content
+8. **No hallucination** — only include information present in the input summaries

@@ -35,7 +35,7 @@ export const subjects = createSubjects({
 
 const MY_THEME: Theme = {
   ...THEME_OPENAUTH,
-  logo: "https://opencode.ai/favicon-v3.svg",
+  logo: "https://opencode.ai/favicon-v2.svg",
 }
 
 export default {
@@ -111,14 +111,14 @@ export default {
           const emails = (await fetch("https://api.github.com/user/emails", {
             headers: {
               Authorization: `Bearer ${response.tokenset.access}`,
-              "User-Agent": "opencode",
+              "User-Agent": "voltcode",
               Accept: "application/vnd.github+json",
             },
           }).then((x) => x.json())) as any
           const user = (await fetch("https://api.github.com/user", {
             headers: {
               Authorization: `Bearer ${response.tokenset.access}`,
-              "User-Agent": "opencode",
+              "User-Agent": "voltcode",
               Accept: "application/vnd.github+json",
             },
           }).then((x) => x.json())) as any

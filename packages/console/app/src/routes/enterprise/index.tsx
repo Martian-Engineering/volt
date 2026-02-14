@@ -1,15 +1,13 @@
 import "./index.css"
-import { Title, Meta } from "@solidjs/meta"
+import { Title, Meta, Link } from "@solidjs/meta"
 import { createSignal, Show } from "solid-js"
+import { config } from "~/config"
 import { Header } from "~/component/header"
 import { Footer } from "~/component/footer"
 import { Legal } from "~/component/legal"
 import { Faq } from "~/component/faq"
-import { useI18n } from "~/context/i18n"
-import { LocaleLinks } from "~/component/locale-links"
 
 export default function Enterprise() {
-  const i18n = useI18n()
   const [formData, setFormData] = createSignal({
     name: "",
     role: "",
@@ -56,9 +54,9 @@ export default function Enterprise() {
 
   return (
     <main data-page="enterprise">
-      <Title>{i18n.t("enterprise.title")}</Title>
-      <LocaleLinks path="/enterprise" />
-      <Meta name="description" content={i18n.t("enterprise.meta.description")} />
+      <Title>VoltCode | Enterprise solutions for your organisation</Title>
+      <Link rel="canonical" href={`${config.baseUrl}/enterprise`} />
+      <Meta name="description" content="Contact VoltCode for enterprise solutions" />
       <div data-component="container">
         <Header />
 
@@ -66,9 +64,13 @@ export default function Enterprise() {
           <section data-component="enterprise-content">
             <div data-component="enterprise-columns">
               <div data-component="enterprise-column-1">
-                <h1>{i18n.t("enterprise.hero.title")}</h1>
-                <p>{i18n.t("enterprise.hero.body1")}</p>
-                <p>{i18n.t("enterprise.hero.body2")}</p>
+                <h1>Your code is yours</h1>
+                <p>
+                  VoltCode operates securely inside your organization with no data or context stored and no licensing
+                  restrictions or ownership claims. Start a trial with your team, then deploy it across your
+                  organization by integrating it with your SSO and internal AI gateway.
+                </p>
+                <p>Let us know and how we can help.</p>
 
                 <Show when={false}>
                   <div data-component="testimonial">
@@ -80,7 +82,7 @@ export default function Enterprise() {
                         />
                       </svg>
                     </div>
-                    Thanks to OpenCode, we found a way to create software to track all our assets — even the imaginary
+                    Thanks to VoltCode, we found a way to create software to track all our assets — even the imaginary
                     ones.
                     <div data-component="testimonial-logo">
                       <svg width="80" height="79" viewBox="0 0 80 79" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -148,59 +150,59 @@ export default function Enterprise() {
                 <div data-component="enterprise-form">
                   <form onSubmit={handleSubmit}>
                     <div data-component="form-group">
-                      <label for="name">{i18n.t("enterprise.form.name.label")}</label>
+                      <label for="name">Full name</label>
                       <input
                         id="name"
                         type="text"
                         required
                         value={formData().name}
                         onInput={handleInputChange("name")}
-                        placeholder={i18n.t("enterprise.form.name.placeholder")}
+                        placeholder="Jeff Bezos"
                       />
                     </div>
 
                     <div data-component="form-group">
-                      <label for="role">{i18n.t("enterprise.form.role.label")}</label>
+                      <label for="role">Role</label>
                       <input
                         id="role"
                         type="text"
                         required
                         value={formData().role}
                         onInput={handleInputChange("role")}
-                        placeholder={i18n.t("enterprise.form.role.placeholder")}
+                        placeholder="Executive Chairman"
                       />
                     </div>
 
                     <div data-component="form-group">
-                      <label for="email">{i18n.t("enterprise.form.email.label")}</label>
+                      <label for="email">Company email</label>
                       <input
                         id="email"
                         type="email"
                         required
                         value={formData().email}
                         onInput={handleInputChange("email")}
-                        placeholder={i18n.t("enterprise.form.email.placeholder")}
+                        placeholder="jeff@amazon.com"
                       />
                     </div>
 
                     <div data-component="form-group">
-                      <label for="message">{i18n.t("enterprise.form.message.label")}</label>
+                      <label for="message">What problem are you trying to solve?</label>
                       <textarea
                         id="message"
                         required
                         rows={5}
                         value={formData().message}
                         onInput={handleInputChange("message")}
-                        placeholder={i18n.t("enterprise.form.message.placeholder")}
+                        placeholder="We need help with..."
                       />
                     </div>
 
                     <button type="submit" disabled={isSubmitting()} data-component="submit-button">
-                      {isSubmitting() ? i18n.t("enterprise.form.sending") : i18n.t("enterprise.form.send")}
+                      {isSubmitting() ? "Sending..." : "Send"}
                     </button>
                   </form>
 
-                  {showSuccess() && <div data-component="success-message">{i18n.t("enterprise.form.success")}</div>}
+                  {showSuccess() && <div data-component="success-message">Message sent, we'll be in touch soon.</div>}
                 </div>
               </div>
             </div>
@@ -208,20 +210,35 @@ export default function Enterprise() {
 
           <section data-component="faq">
             <div data-slot="section-title">
-              <h3>{i18n.t("enterprise.faq.title")}</h3>
+              <h3>FAQ</h3>
             </div>
             <ul>
               <li>
-                <Faq question={i18n.t("enterprise.faq.q1")}>{i18n.t("enterprise.faq.a1")}</Faq>
+                <Faq question="What is VoltCode Enterprise?">
+                  VoltCode Enterprise is for organizations that want to ensure that their code and data never leaves
+                  their infrastructure. It can do this by using a centralized config that integrates with your SSO and
+                  internal AI gateway.
+                </Faq>
               </li>
               <li>
-                <Faq question={i18n.t("enterprise.faq.q2")}>{i18n.t("enterprise.faq.a2")}</Faq>
+                <Faq question="How do I get started with VoltCode Enterprise?">
+                  Simply start with an internal trial with your team. VoltCode by default does not store your code or
+                  context data, making it easy to get started. Then contact us to discuss pricing and implementation
+                  options.
+                </Faq>
               </li>
               <li>
-                <Faq question={i18n.t("enterprise.faq.q3")}>{i18n.t("enterprise.faq.a3")}</Faq>
+                <Faq question="How does enterprise pricing work?">
+                  We offer per-seat enterprise pricing. If you have your own LLM gateway, we do not charge for tokens
+                  used. For further details, contact us for a custom quote based on your organization's needs.
+                </Faq>
               </li>
               <li>
-                <Faq question={i18n.t("enterprise.faq.q4")}>{i18n.t("enterprise.faq.a4")}</Faq>
+                <Faq question="Is my data secure with VoltCode Enterprise?">
+                  Yes. VoltCode does not store your code or context data. All processing happens locally or through
+                  direct API calls to your AI provider. With central config and SSO integration, your data remains
+                  secure within your organization's infrastructure.
+                </Faq>
               </li>
             </ul>
           </section>

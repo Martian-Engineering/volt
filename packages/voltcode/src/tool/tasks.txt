@@ -1,0 +1,54 @@
+Run multiple independent tasks in parallel using sub-agents.
+
+**USE THIS TOOL** instead of multiple Task calls when you have 2 or more independent tasks. Parallel execution is the default for independent work — always prefer this over sequential Task calls.
+
+For 20+ homogeneous items (same task applied to each), consider agentic_map (needs tools per item) or llm_map (no tools needed) instead — they handle JSONL I/O, retries, concurrency, and keep results out of your context.
+
+Available agent types:
+{agents}
+
+See the Task tool for recursion and duplication rules.
+
+## When to use Tasks (this tool) vs Task
+
+| Scenario                        | Tool to use           |
+| ------------------------------- | --------------------- |
+| Single task                     | Task                  |
+| 2+ independent tasks            | **Tasks** (this tool) |
+| Tasks that depend on each other | Task (sequential)     |
+
+## Parameters
+
+- `tasks`: Array of task objects, each with:
+  - `description`: Short description (3-5 words)
+  - `prompt`: The task for the agent to perform
+  - `subagent_type`: Which agent type to use
+
+## Example
+
+To search for authentication code AND find API endpoints simultaneously:
+
+```json
+{
+  "tasks": [
+    {
+      "description": "Find auth code",
+      "prompt": "Search for authentication-related code and implementations",
+      "subagent_type": "Explore"
+    },
+    {
+      "description": "Find API endpoints",
+      "prompt": "Search for API endpoint definitions and routes",
+      "subagent_type": "Explore"
+    }
+  ]
+}
+```
+
+## Important notes
+
+1. All tasks run simultaneously - don't use for tasks that depend on each other
+2. Each task creates its own sub-agent session
+3. Results are aggregated and returned together when all tasks complete
+4. The agent's outputs should generally be trusted
+5. Clearly tell each agent whether you expect it to write code or just do research

@@ -3,74 +3,33 @@ import { fn } from "./util/fn"
 import { Resource } from "@opencode-ai/console-resource"
 import { centsToMicroCents } from "./util/price"
 import { getWeekBounds } from "./util/date"
-import { SubscriptionPlan } from "./schema/billing.sql"
 
 export namespace BlackData {
   const Schema = z.object({
-    "200": z.object({
-      fixedLimit: z.number().int(),
-      rollingLimit: z.number().int(),
-      rollingWindow: z.number().int(),
-    }),
-    "100": z.object({
-      fixedLimit: z.number().int(),
-      rollingLimit: z.number().int(),
-      rollingWindow: z.number().int(),
-    }),
-    "20": z.object({
-      fixedLimit: z.number().int(),
-      rollingLimit: z.number().int(),
-      rollingWindow: z.number().int(),
-    }),
+    fixedLimit: z.number().int(),
+    rollingLimit: z.number().int(),
+    rollingWindow: z.number().int(),
   })
 
   export const validate = fn(Schema, (input) => {
     return input
   })
 
-  export const getLimits = fn(
-    z.object({
-      plan: z.enum(SubscriptionPlan),
-    }),
-    ({ plan }) => {
-      const json = JSON.parse(Resource.ZEN_BLACK_LIMITS.value)
-      return Schema.parse(json)[plan]
-    },
-  )
-
-  export const planToPriceID = fn(
-    z.object({
-      plan: z.enum(SubscriptionPlan),
-    }),
-    ({ plan }) => {
-      if (plan === "200") return Resource.ZEN_BLACK_PRICE.plan200
-      if (plan === "100") return Resource.ZEN_BLACK_PRICE.plan100
-      return Resource.ZEN_BLACK_PRICE.plan20
-    },
-  )
-
-  export const priceIDToPlan = fn(
-    z.object({
-      priceID: z.string(),
-    }),
-    ({ priceID }) => {
-      if (priceID === Resource.ZEN_BLACK_PRICE.plan200) return "200"
-      if (priceID === Resource.ZEN_BLACK_PRICE.plan100) return "100"
-      return "20"
-    },
-  )
+  export const get = fn(z.void(), () => {
+    const json = JSON.parse(Resource.ZEN_BLACK.value)
+    return Schema.parse(json)
+  })
 }
 
 export namespace Black {
   export const analyzeRollingUsage = fn(
     z.object({
-      plan: z.enum(SubscriptionPlan),
       usage: z.number().int(),
       timeUpdated: z.date(),
     }),
-    ({ plan, usage, timeUpdated }) => {
+    ({ usage, timeUpdated }) => {
       const now = new Date()
-      const black = BlackData.getLimits({ plan })
+      const black = BlackData.get()
       const rollingWindowMs = black.rollingWindow * 3600 * 1000
       const rollingLimitInMicroCents = centsToMicroCents(black.rollingLimit * 100)
       const windowStart = new Date(now.getTime() - rollingWindowMs)
@@ -100,12 +59,11 @@ export namespace Black {
 
   export const analyzeWeeklyUsage = fn(
     z.object({
-      plan: z.enum(SubscriptionPlan),
       usage: z.number().int(),
       timeUpdated: z.date(),
     }),
-    ({ plan, usage, timeUpdated }) => {
-      const black = BlackData.getLimits({ plan })
+    ({ usage, timeUpdated }) => {
+      const black = BlackData.get()
       const now = new Date()
       const week = getWeekBounds(now)
       const fixedLimitInMicroCents = centsToMicroCents(black.fixedLimit * 100)

@@ -4,7 +4,7 @@ import { Icon, IconProps } from "./icon"
 
 export interface IconButtonProps extends ComponentProps<typeof Kobalte> {
   icon: IconProps["name"]
-  size?: "small" | "normal" | "large"
+  size?: "normal" | "large"
   iconSize?: IconProps["size"]
   variant?: "primary" | "secondary" | "ghost"
 }

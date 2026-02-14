@@ -28,12 +28,6 @@ export type Project = {
     override?: string
     color?: string
   }
-  commands?: {
-    /**
-     * Startup script to run when creating a new workspace (worktree)
-     */
-    start?: string
-  }
   time: {
     created: number
     updated: number
@@ -51,20 +45,6 @@ export type EventServerInstanceDisposed = {
   type: "server.instance.disposed"
   properties: {
     directory: string
-  }
-}
-
-export type EventServerConnected = {
-  type: "server.connected"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventGlobalDisposed = {
-  type: "global.disposed"
-  properties: {
-    [key: string]: unknown
   }
 }
 
@@ -90,29 +70,12 @@ export type EventFileEdited = {
   }
 }
 
-export type OutputFormatText = {
-  type: "text"
-}
-
-export type JsonSchema = {
-  [key: string]: unknown
-}
-
-export type OutputFormatJsonSchema = {
-  type: "json_schema"
-  schema: JsonSchema
-  retryCount?: number
-}
-
-export type OutputFormat = OutputFormatText | OutputFormatJsonSchema
-
 export type FileDiff = {
   file: string
   before: string
   after: string
   additions: number
   deletions: number
-  status?: "added" | "deleted" | "modified"
 }
 
 export type UserMessage = {
@@ -122,7 +85,6 @@ export type UserMessage = {
   time: {
     created: number
   }
-  format?: OutputFormat
   summary?: {
     title?: string
     body?: string
@@ -169,22 +131,6 @@ export type MessageAbortedError = {
   }
 }
 
-export type StructuredOutputError = {
-  name: "StructuredOutputError"
-  data: {
-    message: string
-    retries: number
-  }
-}
-
-export type ContextOverflowError = {
-  name: "ContextOverflowError"
-  data: {
-    message: string
-    responseBody?: string
-  }
-}
-
 export type ApiError = {
   name: "APIError"
   data: {
@@ -209,14 +155,7 @@ export type AssistantMessage = {
     created: number
     completed?: number
   }
-  error?:
-    | ProviderAuthError
-    | UnknownError
-    | MessageOutputLengthError
-    | MessageAbortedError
-    | StructuredOutputError
-    | ContextOverflowError
-    | ApiError
+  error?: ProviderAuthError | UnknownError | MessageOutputLengthError | MessageAbortedError | ApiError
   parentID: string
   modelID: string
   providerID: string
@@ -229,7 +168,6 @@ export type AssistantMessage = {
   summary?: boolean
   cost: number
   tokens: {
-    total?: number
     input: number
     output: number
     reasoning: number
@@ -238,8 +176,6 @@ export type AssistantMessage = {
       write: number
     }
   }
-  structured?: unknown
-  variant?: string
   finish?: string
 }
 
@@ -275,21 +211,6 @@ export type TextPart = {
   metadata?: {
     [key: string]: unknown
   }
-}
-
-export type SubtaskPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "subtask"
-  prompt: string
-  description: string
-  agent: string
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  command?: string
 }
 
 export type ReasoningPart = {
@@ -446,7 +367,6 @@ export type StepFinishPart = {
   snapshot?: string
   cost: number
   tokens: {
-    total?: number
     input: number
     output: number
     reasoning: number
@@ -509,7 +429,20 @@ export type CompactionPart = {
 
 export type Part =
   | TextPart
-  | SubtaskPart
+  | {
+      id: string
+      sessionID: string
+      messageID: string
+      type: "subtask"
+      prompt: string
+      description: string
+      agent: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      command?: string
+    }
   | ReasoningPart
   | FilePart
   | ToolPart
@@ -564,35 +497,6 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "always" | "reject"
-  }
-}
-
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      type: "busy"
-    }
-
-export type EventSessionStatus = {
-  type: "session.status"
-  properties: {
-    sessionID: string
-    status: SessionStatus
-  }
-}
-
-export type EventSessionIdle = {
-  type: "session.idle"
-  properties: {
-    sessionID: string
   }
 }
 
@@ -667,18 +571,43 @@ export type EventQuestionRejected = {
   }
 }
 
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
+export type BackgroundTask = {
+  id: string
+  sessionID: string
+  taskSessionID: string
+  toolPartID: string
+  assistantMessageID: string
+  description: string
+  status: "running" | "backgrounded" | "completed" | "error" | "cancelled"
+  startedAt: number
+  completedAt?: number
+  result?: {
+    output?: string
+    error?: string
+    metadata?: {
+      [key: string]: unknown
+    }
   }
 }
 
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
+export type EventBackgroundTaskCreated = {
+  type: "background_task.created"
   properties: {
-    file: string
-    event: "add" | "change" | "unlink"
+    task: BackgroundTask
+  }
+}
+
+export type EventBackgroundTaskUpdated = {
+  type: "background_task.updated"
+  properties: {
+    task: BackgroundTask
+  }
+}
+
+export type EventBackgroundTaskCompleted = {
+  type: "background_task.completed"
+  properties: {
+    task: BackgroundTask
   }
 }
 
@@ -706,6 +635,14 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
   }
 }
 
@@ -788,6 +725,52 @@ export type EventCommandExecuted = {
   }
 }
 
+export type SessionStatus =
+  | {
+      type: "idle"
+    }
+  | {
+      type: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      type: "busy"
+    }
+
+export type EventSessionStatus = {
+  type: "session.status"
+  properties: {
+    sessionID: string
+    status: SessionStatus
+  }
+}
+
+export type EventSessionIdle = {
+  type: "session.idle"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventLcmCompactionStarted = {
+  type: "lcm.compaction.started"
+  properties: {
+    sessionID: string
+    conversationId: number
+    blocking: boolean
+  }
+}
+
+export type EventLcmCompactionEnded = {
+  type: "lcm.compaction.ended"
+  properties: {
+    sessionID: string
+    conversationId: number
+  }
+}
+
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -819,7 +802,12 @@ export type Session = {
     created: number
     updated: number
     compacting?: number
+    compactingBlocking?: boolean
     archived?: number
+  }
+  lcm?: {
+    inputTokens: number
+    threshold: number
   }
   permission?: PermissionRuleset
   revert?: {
@@ -863,14 +851,19 @@ export type EventSessionError = {
   type: "session.error"
   properties: {
     sessionID?: string
-    error?:
-      | ProviderAuthError
-      | UnknownError
-      | MessageOutputLengthError
-      | MessageAbortedError
-      | StructuredOutputError
-      | ContextOverflowError
-      | ApiError
+    error?: ProviderAuthError | UnknownError | MessageOutputLengthError | MessageAbortedError | ApiError
+  }
+}
+
+export type EventSessionLcmFileLoaded = {
+  type: "session.lcm_file_loaded"
+  properties: {
+    sessionID: string
+    filePath: string
+    fileId: string
+    sizeBytes: number
+    tokenCount: number
+    durationMs: number
   }
 }
 
@@ -920,18 +913,17 @@ export type EventPtyDeleted = {
   }
 }
 
-export type EventWorktreeReady = {
-  type: "worktree.ready"
+export type EventGlobalDisposed = {
+  type: "global.disposed"
   properties: {
-    name: string
-    branch: string
+    [key: string]: unknown
   }
 }
 
-export type EventWorktreeFailed = {
-  type: "worktree.failed"
+export type EventServerConnected = {
+  type: "server.connected"
   properties: {
-    message: string
+    [key: string]: unknown
   }
 }
 
@@ -940,8 +932,6 @@ export type Event =
   | EventInstallationUpdateAvailable
   | EventProjectUpdated
   | EventServerInstanceDisposed
-  | EventServerConnected
-  | EventGlobalDisposed
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventFileEdited
@@ -951,14 +941,14 @@ export type Event =
   | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
-  | EventSessionStatus
-  | EventSessionIdle
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
-  | EventSessionCompacted
-  | EventFileWatcherUpdated
+  | EventBackgroundTaskCreated
+  | EventBackgroundTaskUpdated
+  | EventBackgroundTaskCompleted
   | EventTodoUpdated
+  | EventFileWatcherUpdated
   | EventTuiPromptAppend
   | EventTuiCommandExecute
   | EventTuiToastShow
@@ -966,22 +956,42 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
+  | EventSessionStatus
+  | EventSessionIdle
+  | EventLcmCompactionStarted
+  | EventLcmCompactionEnded
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
+  | EventSessionLcmFileLoaded
   | EventVcsBranchUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
   | EventPtyDeleted
-  | EventWorktreeReady
-  | EventWorktreeFailed
+  | EventGlobalDisposed
+  | EventServerConnected
 
 export type GlobalEvent = {
   directory: string
   payload: Event
+}
+
+export type BadRequestError = {
+  data: unknown
+  errors: Array<{
+    [key: string]: unknown
+  }>
+  success: false
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
 }
 
 /**
@@ -1008,6 +1018,10 @@ export type KeybindsConfig = {
    * Toggle sidebar
    */
   sidebar_toggle?: string
+  /**
+   * Open task tree view
+   */
+  tasktree_open?: string
   /**
    * Toggle session scrollbar
    */
@@ -1360,19 +1374,15 @@ export type KeybindsConfig = {
    * Toggle tips on home screen
    */
   tips_toggle?: string
-  /**
-   * Toggle thinking blocks visibility
-   */
-  display_thinking?: string
 }
 
 /**
  * Log level
  */
-export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
+export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR"
 
 /**
- * Server configuration for opencode serve and web commands
+ * Server configuration for voltcode serve and web commands
  */
 export type ServerConfig = {
   /**
@@ -1387,10 +1397,6 @@ export type ServerConfig = {
    * Enable mDNS service discovery
    */
   mdns?: boolean
-  /**
-   * Custom domain name for mDNS service (default: opencode.local)
-   */
-  mdnsDomain?: string
   /**
    * Additional domains to allow for CORS
    */
@@ -1424,7 +1430,6 @@ export type PermissionConfig =
       codesearch?: PermissionActionConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig
-      skill?: PermissionRuleConfig
       [key: string]: PermissionRuleConfig | Array<string> | PermissionActionConfig | undefined
     }
   | PermissionActionConfig
@@ -1458,9 +1463,9 @@ export type AgentConfig = {
     [key: string]: unknown
   }
   /**
-   * Hex color code (e.g., #FF5733) or theme color (e.g., primary)
+   * Hex color code for the agent (e.g., #FF5733)
    */
-  color?: string | "primary" | "secondary" | "accent" | "success" | "warning" | "error" | "info"
+  color?: string
   /**
    * Maximum number of agentic iterations before forcing text-only response
    */
@@ -1485,13 +1490,6 @@ export type AgentConfig = {
         [key: string]: unknown
       }
     | string
-    | "primary"
-    | "secondary"
-    | "accent"
-    | "success"
-    | "warning"
-    | "error"
-    | "info"
     | number
     | PermissionConfig
     | undefined
@@ -1534,6 +1532,7 @@ export type ProviderConfig = {
         context: number
         input?: number
         output: number
+        output_reserve?: number
       }
       modalities?: {
         input: Array<"text" | "audio" | "image" | "video" | "pdf">
@@ -1548,8 +1547,7 @@ export type ProviderConfig = {
         [key: string]: string
       }
       provider?: {
-        npm?: string
-        api?: string
+        npm: string
       }
       /**
        * Variant-specific configuration
@@ -1692,6 +1690,10 @@ export type Config = {
      * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
      */
     diff_style?: "auto" | "stacked"
+    /**
+     * Show model indicator in the UI (default: false)
+     */
+    show_model_indicator?: boolean
   }
   server?: ServerConfig
   /**
@@ -1705,19 +1707,6 @@ export type Config = {
       model?: string
       subtask?: boolean
     }
-  }
-  /**
-   * Additional skill folder paths
-   */
-  skills?: {
-    /**
-     * Additional paths to skill folders
-     */
-    paths?: Array<string>
-    /**
-     * URLs to fetch skills from (e.g., https://example.com/.well-known/skills/)
-     */
-    urls?: Array<string>
   }
   watcher?: {
     ignore?: Array<string>
@@ -1853,12 +1842,28 @@ export type Config = {
      * Enable pruning of old tool outputs (default: true)
      */
     prune?: boolean
-    /**
-     * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
-     */
-    reserved?: number
   }
   experimental?: {
+    hook?: {
+      file_edited?: {
+        [key: string]: Array<{
+          command: Array<string>
+          environment?: {
+            [key: string]: string
+          }
+        }>
+      }
+      session_completed?: Array<{
+        command: Array<string>
+        environment?: {
+          [key: string]: string
+        }
+      }>
+    }
+    /**
+     * Number of retries for chat completions on failure
+     */
+    chatMaxRetries?: number
     disable_paste_summary?: boolean
     /**
      * Enable the batch tool
@@ -1880,43 +1885,6 @@ export type Config = {
      * Timeout in milliseconds for model context protocol (MCP) requests
      */
     mcp_timeout?: number
-  }
-}
-
-export type BadRequestError = {
-  data: unknown
-  errors: Array<{
-    [key: string]: unknown
-  }>
-  success: false
-}
-
-export type OAuth = {
-  type: "oauth"
-  refresh: string
-  access: string
-  expires: number
-  accountId?: string
-  enterpriseUrl?: string
-}
-
-export type ApiAuth = {
-  type: "api"
-  key: string
-}
-
-export type WellKnownAuth = {
-  type: "wellknown"
-  key: string
-  token: string
-}
-
-export type Auth = OAuth | ApiAuth | WellKnownAuth
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
   }
 }
 
@@ -1975,6 +1943,7 @@ export type Model = {
     context: number
     input?: number
     output: number
+    output_reserve?: number
   }
   status: "alpha" | "beta" | "deprecated" | "active"
   options: {
@@ -2023,9 +1992,6 @@ export type Worktree = {
 
 export type WorktreeCreateInput = {
   name?: string
-  /**
-   * Additional startup script to run after the project's start command
-   */
   startCommand?: string
 }
 
@@ -2122,7 +2088,7 @@ export type FileNode = {
 }
 
 export type FileContent = {
-  type: "text" | "binary"
+  type: "text"
   content: string
   diff?: string
   patch?: {
@@ -2237,6 +2203,28 @@ export type FormatterStatus = {
   enabled: boolean
 }
 
+export type OAuth = {
+  type: "oauth"
+  refresh: string
+  access: string
+  expires: number
+  accountId?: string
+  enterpriseUrl?: string
+}
+
+export type ApiAuth = {
+  type: "api"
+  key: string
+}
+
+export type WellKnownAuth = {
+  type: "wellknown"
+  key: string
+  token: string
+}
+
+export type Auth = OAuth | ApiAuth | WellKnownAuth
+
 export type GlobalHealthData = {
   body?: never
   path?: never
@@ -2272,47 +2260,6 @@ export type GlobalEventResponses = {
 
 export type GlobalEventResponse = GlobalEventResponses[keyof GlobalEventResponses]
 
-export type GlobalConfigGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/global/config"
-}
-
-export type GlobalConfigGetResponses = {
-  /**
-   * Get global config info
-   */
-  200: Config
-}
-
-export type GlobalConfigGetResponse = GlobalConfigGetResponses[keyof GlobalConfigGetResponses]
-
-export type GlobalConfigUpdateData = {
-  body?: Config
-  path?: never
-  query?: never
-  url: "/global/config"
-}
-
-export type GlobalConfigUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type GlobalConfigUpdateError = GlobalConfigUpdateErrors[keyof GlobalConfigUpdateErrors]
-
-export type GlobalConfigUpdateResponses = {
-  /**
-   * Successfully updated global config
-   */
-  200: Config
-}
-
-export type GlobalConfigUpdateResponse = GlobalConfigUpdateResponses[keyof GlobalConfigUpdateResponses]
-
 export type GlobalDisposeData = {
   body?: never
   path?: never
@@ -2328,60 +2275,6 @@ export type GlobalDisposeResponses = {
 }
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
-
-export type AuthRemoveData = {
-  body?: never
-  path: {
-    providerID: string
-  }
-  query?: never
-  url: "/auth/{providerID}"
-}
-
-export type AuthRemoveErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type AuthRemoveError = AuthRemoveErrors[keyof AuthRemoveErrors]
-
-export type AuthRemoveResponses = {
-  /**
-   * Successfully removed authentication credentials
-   */
-  200: boolean
-}
-
-export type AuthRemoveResponse = AuthRemoveResponses[keyof AuthRemoveResponses]
-
-export type AuthSetData = {
-  body?: Auth
-  path: {
-    providerID: string
-  }
-  query?: never
-  url: "/auth/{providerID}"
-}
-
-export type AuthSetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type AuthSetError = AuthSetErrors[keyof AuthSetErrors]
-
-export type AuthSetResponses = {
-  /**
-   * Successfully set authentication credentials
-   */
-  200: boolean
-}
-
-export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
 
 export type ProjectListData = {
   body?: never
@@ -2426,12 +2319,6 @@ export type ProjectUpdateData = {
       url?: string
       override?: string
       color?: string
-    }
-    commands?: {
-      /**
-       * Startup script to run when creating a new workspace (worktree)
-       */
-      start?: string
     }
   }
   path: {
@@ -3431,7 +3318,6 @@ export type SessionPromptData = {
     tools?: {
       [key: string]: boolean
     }
-    format?: OutputFormat
     system?: string
     variant?: string
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
@@ -3619,7 +3505,6 @@ export type SessionPromptAsyncData = {
     tools?: {
       [key: string]: boolean
     }
-    format?: OutputFormat
     system?: string
     variant?: string
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
@@ -3860,6 +3745,76 @@ export type PermissionRespondResponses = {
 
 export type PermissionRespondResponse = PermissionRespondResponses[keyof PermissionRespondResponses]
 
+export type SessionUploadData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/upload"
+}
+
+export type SessionUploadErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionUploadError = SessionUploadErrors[keyof SessionUploadErrors]
+
+export type SessionUploadResponses = {
+  /**
+   * File uploaded successfully
+   */
+  200: {
+    filename: string
+    path: string
+    size: number
+  }
+}
+
+export type SessionUploadResponse = SessionUploadResponses[keyof SessionUploadResponses]
+
+export type GetSessionSessionIdLcmCheckIntegrityData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/lcm/check-integrity"
+}
+
+export type GetSessionSessionIdLcmCheckIntegrityResponses = {
+  200: unknown
+}
+
+export type PostSessionSessionIdLcmCompactData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/lcm/compact"
+}
+
+export type PostSessionSessionIdLcmCompactResponses = {
+  200: unknown
+}
+
 export type PermissionReplyData = {
   body?: {
     reply: "once" | "always" | "reject"
@@ -4054,6 +4009,7 @@ export type ProviderListResponses = {
             context: number
             input?: number
             output: number
+            output_reserve?: number
           }
           modalities?: {
             input: Array<"text" | "audio" | "image" | "video" | "pdf">
@@ -4068,8 +4024,7 @@ export type ProviderListResponses = {
             [key: string]: string
           }
           provider?: {
-            npm?: string
-            api?: string
+            npm: string
           }
           variants?: {
             [key: string]: {
@@ -4925,7 +4880,7 @@ export type AppLogData = {
     /**
      * Log level
      */
-    level: "debug" | "info" | "error" | "warn"
+    level: "trace" | "debug" | "info" | "error" | "warn"
     /**
      * Log message
      */
@@ -5038,6 +4993,35 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type AuthSetData = {
+  body?: Auth
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/auth/{providerID}"
+}
+
+export type AuthSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AuthSetError = AuthSetErrors[keyof AuthSetErrors]
+
+export type AuthSetResponses = {
+  /**
+   * Successfully set authentication credentials
+   */
+  200: boolean
+}
+
+export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
 
 export type EventSubscribeData = {
   body?: never

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenCode Dev",
-  "identifier": "ai.opencode.desktop.dev",
-  "mainBinaryName": "OpenCode",
+  "productName": "VoltCode Dev",
+  "identifier": "ai.voltcode.desktop.dev",
+  "mainBinaryName": "VoltCode",
   "version": "../package.json",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -14,7 +14,15 @@
     "windows": [
       {
         "label": "main",
-        "create": false
+        "create": false,
+        "title": "VoltCode",
+        "url": "/",
+        "decorations": true,
+        "dragDropEnabled": false,
+        "zoomHotkeysEnabled": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 12.0, "y": 18.0 }
       }
     ],
     "withGlobalTauri": true,
@@ -33,14 +41,7 @@
     ],
     "active": true,
     "targets": ["deb", "rpm", "dmg", "nsis", "app"],
-    "externalBin": ["sidecars/opencode-cli"],
-    "linux": {
-      "rpm": {
-        "compression": {
-          "type": "none"
-        }
-      }
-    },
+    "externalBin": ["sidecars/voltcode-cli"],
     "macOS": {
       "entitlements": "./entitlements.plist"
     },
@@ -49,13 +50,6 @@
         "installerIcon": "icons/dev/icon.ico",
         "headerImage": "assets/nsis-header.bmp",
         "sidebarImage": "assets/nsis-sidebar.bmp"
-      }
-    }
-  },
-  "plugins": {
-    "deep-link": {
-      "desktop": {
-        "schemes": ["opencode"]
       }
     }
   }

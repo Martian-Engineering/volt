@@ -1,0 +1,116 @@
+import z from "zod"
+import { Tool } from "./tool"
+import { LcmDb } from "../session/lcm/db"
+import DESCRIPTION from "./lcm-grep.txt"
+import { Log } from "../util/log"
+
+const log = Log.create({ service: "tool.lcm_grep" })
+
+// ~10k tokens at ~4 chars/token
+const MAX_BYTES_PER_PAGE = 40_000
+
+const parameters = z.object({
+  pattern: z.string().describe("The regular expression pattern to search for"),
+  conversation_id: z.number().describe("The conversation ID to search within"),
+  summary_id: z.string().optional().describe("Optional: limit search to messages within this summary's scope"),
+  page: z.number().optional().describe("Page number for paginated results (1-indexed, default: 1)"),
+})
+
+interface LcmGrepMetadata {
+  pattern: string
+  conversationId: number
+  summaryId?: string
+  page: number
+  matchCount: number
+  hasMore: boolean
+}
+
+export const LcmGrepTool = Tool.define<typeof parameters, LcmGrepMetadata>("lcm_grep", {
+  description: DESCRIPTION,
+  parameters,
+  async execute(params, ctx) {
+    const page = params.page ?? 1
+    const offset = (page - 1) * 50 // 50 results per query
+
+    log.info("searching conversation with regex", {
+      conversationId: params.conversation_id,
+      pattern: params.pattern,
+      summaryId: params.summary_id,
+      page,
+    })
+
+    // Fetch results
+    const results = await LcmDb.regexSearchMessages(
+      params.conversation_id,
+      params.pattern,
+      params.summary_id,
+      51, // Get one extra to check if there are more
+      offset,
+    )
+
+    const hasMore = results.length > 50
+    const matches = results.slice(0, 50)
+
+    // Group results by covering summary
+    const grouped = new Map<string, typeof matches>()
+    for (const match of matches) {
+      const key = match.coveringSummaryId ?? "(no summary)"
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key)!.push(match)
+    }
+
+    // Build output, respecting MAX_BYTES_PER_PAGE
+    const outputLines: string[] = []
+    outputLines.push(`## Regex Search Results`)
+    outputLines.push(`Pattern: \`${params.pattern}\``)
+    outputLines.push(`Conversation ID: ${params.conversation_id}`)
+    if (params.summary_id) outputLines.push(`Scoped to summary: ${params.summary_id}`)
+    outputLines.push(`Page: ${page}`)
+    outputLines.push("")
+
+    let currentBytes = outputLines.join("\n").length
+    let displayedCount = 0
+
+    for (const [summaryId, groupMatches] of grouped) {
+      const groupHeader = `### Covered by: ${summaryId}\n\n`
+      if (currentBytes + groupHeader.length > MAX_BYTES_PER_PAGE) break
+      outputLines.push(groupHeader)
+      currentBytes += groupHeader.length
+
+      for (const match of groupMatches) {
+        const snippet = truncateContent(match.content, 200)
+        const line = `- [seq=${match.seq}] (${match.role}): ${snippet}\n`
+        if (currentBytes + line.length > MAX_BYTES_PER_PAGE) break
+        outputLines.push(line)
+        currentBytes += line.length
+        displayedCount++
+      }
+      outputLines.push("")
+    }
+
+    if (matches.length === 0) {
+      outputLines.push("No matches found for the given pattern.")
+    } else if (hasMore || displayedCount < matches.length) {
+      outputLines.push(`\n---\nMore results available. Use page=${page + 1} to see more.`)
+    }
+
+    return {
+      title: `LCM grep: ${params.pattern}`,
+      metadata: {
+        pattern: params.pattern,
+        conversationId: params.conversation_id,
+        summaryId: params.summary_id,
+        page,
+        matchCount: displayedCount,
+        hasMore: hasMore || displayedCount < matches.length,
+      },
+      output: outputLines.join("\n"),
+    }
+  },
+})
+
+function truncateContent(content: string, maxLength: number): string {
+  const singleLine = content.replace(/\n/g, " ").trim()
+  if (singleLine.length <= maxLength) return singleLine
+  return singleLine.substring(0, maxLength - 3) + "..."
+}

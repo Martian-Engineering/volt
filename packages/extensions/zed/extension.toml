@@ -1,36 +1,36 @@
-id = "opencode"
-name = "OpenCode"
+id = "voltcode"
+name = "VoltCode"
 description = "The open source coding agent."
-version = "1.1.65"
+version = "1.1.26"
 schema_version = 1
 authors = ["Anomaly"]
 repository = "https://github.com/anomalyco/opencode"
 
-[agent_servers.opencode]
-name = "OpenCode"
-icon = "./icons/opencode.svg"
+[agent_servers.voltcode]
+name = "VoltCode"
+icon = "./icons/voltcode.svg"
 
-[agent_servers.opencode.targets.darwin-aarch64]
-archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.65/opencode-darwin-arm64.zip"
-cmd = "./opencode"
+[agent_servers.voltcode.targets.darwin-aarch64]
+archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.26/opencode-darwin-arm64.zip"
+cmd = "./voltcode"
 args = ["acp"]
 
-[agent_servers.opencode.targets.darwin-x86_64]
-archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.65/opencode-darwin-x64.zip"
-cmd = "./opencode"
+[agent_servers.voltcode.targets.darwin-x86_64]
+archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.26/opencode-darwin-x64.zip"
+cmd = "./voltcode"
 args = ["acp"]
 
-[agent_servers.opencode.targets.linux-aarch64]
-archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.65/opencode-linux-arm64.tar.gz"
-cmd = "./opencode"
+[agent_servers.voltcode.targets.linux-aarch64]
+archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.26/opencode-linux-arm64.tar.gz"
+cmd = "./voltcode"
 args = ["acp"]
 
-[agent_servers.opencode.targets.linux-x86_64]
-archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.65/opencode-linux-x64.tar.gz"
-cmd = "./opencode"
+[agent_servers.voltcode.targets.linux-x86_64]
+archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.26/opencode-linux-x64.tar.gz"
+cmd = "./voltcode"
 args = ["acp"]
 
-[agent_servers.opencode.targets.windows-x86_64]
-archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.65/opencode-windows-x64.zip"
-cmd = "./opencode.exe"
+[agent_servers.voltcode.targets.windows-x86_64]
+archive = "https://github.com/anomalyco/opencode/releases/download/v1.1.26/opencode-windows-x64.zip"
+cmd = "./voltcode.exe"
 args = ["acp"]

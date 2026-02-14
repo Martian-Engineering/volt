@@ -1,0 +1,17 @@
+Run a parallel map over an input JSONL file. For each item (line), spawn a sub-agent that receives your prompt plus a standardized metadata block containing the item. The sub-agent must output a JSON value that validates against the provided output schema.
+
+Each input line becomes one work item processed by an independent sub-agent. Results are collected into an output JSONL file registered in LCM. Neither the input nor output file contents are injected into the main conversation context.
+
+Parameters:
+- input_path: File path to an existing JSONL file (one JSON value per line)
+- output_path: File path where the output JSONL will be written
+- prompt: Natural-language instruction for each sub-agent describing what to do with its item
+- output_schema: A JSON Schema object that each sub-agent's JSON output must validate against
+- read_only: If true, sub-agents cannot write files or run commands
+- concurrency (optional): Max parallel sub-agents (default: 8)
+- timeout_seconds (optional): Max seconds per item including retries (default: 900)
+- max_attempts (optional): Max attempts per item including initial (default: 3)
+
+Returns metadata only: map_id, run timestamps, LCM IDs, and success/failure counts.
+
+Use this tool instead of Tasks when you have 20+ items that need the same agentic task applied to each. Use llm_map instead if items don't need tool access (classification, extraction, scoring) — it's faster and cheaper.

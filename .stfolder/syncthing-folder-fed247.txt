@@ -1,0 +1,5 @@
+# This directory is a Syncthing folder marker.
+# Do not delete.
+
+folderID: voltcode
+created: 2026-01-25T20:18:46-08:00

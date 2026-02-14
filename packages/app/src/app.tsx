@@ -1,12 +1,11 @@
 import "@/index.css"
-import { ErrorBoundary, Show, Suspense, lazy, type JSX, type ParentProps } from "solid-js"
+import { ErrorBoundary, Show, Switch, Match, lazy, type ParentProps } from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@opencode-ai/ui/font"
 import { MarkedProvider } from "@opencode-ai/ui/context/marked"
 import { DiffComponentProvider } from "@opencode-ai/ui/context/diff"
 import { CodeComponentProvider } from "@opencode-ai/ui/context/code"
-import { I18nProvider } from "@opencode-ai/ui/context"
 import { Diff } from "@opencode-ai/ui/diff"
 import { Code } from "@opencode-ai/ui/code"
 import { ThemeProvider } from "@opencode-ai/ui/theme"
@@ -14,121 +13,31 @@ import { GlobalSyncProvider } from "@/context/global-sync"
 import { PermissionProvider } from "@/context/permission"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
-import { normalizeServerUrl, ServerProvider, useServer } from "@/context/server"
-import { SettingsProvider } from "@/context/settings"
+import { ServerProvider, useServer } from "@/context/server"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { FileProvider } from "@/context/file"
-import { CommentsProvider } from "@/context/comments"
 import { NotificationProvider } from "@/context/notification"
-import { ModelsProvider } from "@/context/models"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
-import { LanguageProvider, useLanguage } from "@/context/language"
-import { usePlatform } from "@/context/platform"
-import { HighlightsProvider } from "@/context/highlights"
+import { Logo } from "@opencode-ai/ui/logo"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
+import { isLocalhostMode, AuthProvider, useAuth, type MachineStatus } from "@/context/auth"
+import { LoginPage, ProvisioningScreen } from "@/pages/login"
+import { iife } from "@opencode-ai/util/iife"
+import { Suspense } from "solid-js"
+
 const Home = lazy(() => import("@/pages/home"))
 const Session = lazy(() => import("@/pages/session"))
+const ChatLayout = lazy(() => import("@/pages/chat-layout").then((m) => ({ default: m.ChatLayout })))
 const Loading = () => <div class="size-full" />
-
-const HomeRoute = () => (
-  <Suspense fallback={<Loading />}>
-    <Home />
-  </Suspense>
-)
-
-const SessionRoute = () => (
-  <SessionProviders>
-    <Suspense fallback={<Loading />}>
-      <Session />
-    </Suspense>
-  </SessionProviders>
-)
-
-const SessionIndexRoute = () => <Navigate href="session" />
-
-function UiI18nBridge(props: ParentProps) {
-  const language = useLanguage()
-  return <I18nProvider value={{ locale: language.locale, t: language.t }}>{props.children}</I18nProvider>
-}
 
 declare global {
   interface Window {
-    __OPENCODE__?: { updaterEnabled?: boolean; serverPassword?: string; deepLinks?: string[]; wsl?: boolean }
+    __VOLTCODE__?: { updaterEnabled?: boolean; serverPassword?: string }
   }
-}
-
-function MarkedProviderWithNativeParser(props: ParentProps) {
-  const platform = usePlatform()
-  return <MarkedProvider nativeParser={platform.parseMarkdown}>{props.children}</MarkedProvider>
-}
-
-function AppShellProviders(props: ParentProps) {
-  return (
-    <SettingsProvider>
-      <PermissionProvider>
-        <LayoutProvider>
-          <NotificationProvider>
-            <ModelsProvider>
-              <CommandProvider>
-                <HighlightsProvider>
-                  <Layout>{props.children}</Layout>
-                </HighlightsProvider>
-              </CommandProvider>
-            </ModelsProvider>
-          </NotificationProvider>
-        </LayoutProvider>
-      </PermissionProvider>
-    </SettingsProvider>
-  )
-}
-
-function SessionProviders(props: ParentProps) {
-  return (
-    <TerminalProvider>
-      <FileProvider>
-        <PromptProvider>
-          <CommentsProvider>{props.children}</CommentsProvider>
-        </PromptProvider>
-      </FileProvider>
-    </TerminalProvider>
-  )
-}
-
-function RouterRoot(props: ParentProps<{ appChildren?: JSX.Element }>) {
-  return (
-    <AppShellProviders>
-      {props.appChildren}
-      {props.children}
-    </AppShellProviders>
-  )
-}
-
-const getStoredDefaultServerUrl = (platform: ReturnType<typeof usePlatform>) => {
-  if (platform.platform !== "web") return
-  const result = platform.getDefaultServerUrl?.()
-  if (result instanceof Promise) return
-  if (!result) return
-  return normalizeServerUrl(result)
-}
-
-const resolveDefaultServerUrl = (props: {
-  defaultUrl?: string
-  storedDefaultServerUrl?: string
-  hostname: string
-  origin: string
-  isDev: boolean
-  devHost?: string
-  devPort?: string
-}) => {
-  if (props.defaultUrl) return props.defaultUrl
-  if (props.storedDefaultServerUrl) return props.storedDefaultServerUrl
-  if (props.hostname.includes("opencode.ai")) return "http://localhost:4096"
-  if (props.isDev) return `http://${props.devHost ?? "localhost"}:${props.devPort ?? "4096"}`
-  return props.origin
 }
 
 export function AppBaseProviders(props: ParentProps) {
@@ -136,19 +45,15 @@ export function AppBaseProviders(props: ParentProps) {
     <MetaProvider>
       <Font />
       <ThemeProvider>
-        <LanguageProvider>
-          <UiI18nBridge>
-            <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
-              <DialogProvider>
-                <MarkedProviderWithNativeParser>
-                  <DiffComponentProvider component={Diff}>
-                    <CodeComponentProvider component={Code}>{props.children}</CodeComponentProvider>
-                  </DiffComponentProvider>
-                </MarkedProviderWithNativeParser>
-              </DialogProvider>
-            </ErrorBoundary>
-          </UiI18nBridge>
-        </LanguageProvider>
+        <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
+          <DialogProvider>
+            <MarkedProvider>
+              <DiffComponentProvider component={Diff}>
+                <CodeComponentProvider component={Code}>{props.children}</CodeComponentProvider>
+              </DiffComponentProvider>
+            </MarkedProvider>
+          </DialogProvider>
+        </ErrorBoundary>
       </ThemeProvider>
     </MetaProvider>
   )
@@ -163,36 +68,119 @@ function ServerKey(props: ParentProps) {
   )
 }
 
-export function AppInterface(props: { defaultUrl?: string; children?: JSX.Element; isSidecar?: boolean }) {
-  const platform = usePlatform()
-  const storedDefaultServerUrl = getStoredDefaultServerUrl(platform)
-  const defaultServerUrl = resolveDefaultServerUrl({
-    defaultUrl: props.defaultUrl,
-    storedDefaultServerUrl,
-    hostname: location.hostname,
-    origin: window.location.origin,
-    isDev: import.meta.env.DEV,
-    devHost: import.meta.env.VITE_OPENCODE_SERVER_HOST,
-    devPort: import.meta.env.VITE_OPENCODE_SERVER_PORT,
-  })
+export function AppInterface(props: { defaultUrl?: string }) {
+  const defaultServerUrl = () => {
+    if (props.defaultUrl) return props.defaultUrl
+    if (isLocalhostMode()) {
+      const host = import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"
+      const port = import.meta.env.VITE_VOLTCODE_SERVER_PORT ?? "4096"
+      return `http://${host}:${port}`
+    }
+    return window.location.origin
+  }
 
   return (
-    <ServerProvider defaultUrl={defaultServerUrl} isSidecar={props.isSidecar}>
-      <ServerKey>
-        <GlobalSDKProvider>
-          <GlobalSyncProvider>
-            <Router
-              root={(routerProps) => <RouterRoot appChildren={props.children}>{routerProps.children}</RouterRoot>}
-            >
-              <Route path="/" component={HomeRoute} />
-              <Route path="/:dir" component={DirectoryLayout}>
-                <Route path="/" component={SessionIndexRoute} />
-                <Route path="/session/:id?" component={SessionRoute} />
-              </Route>
-            </Router>
-          </GlobalSyncProvider>
-        </GlobalSDKProvider>
-      </ServerKey>
-    </ServerProvider>
+    <AuthGate>
+      <ServerProvider defaultUrl={defaultServerUrl()}>
+        <ServerKey>
+          <GlobalSDKProvider>
+            <GlobalSyncProvider>
+              <Router
+                root={(props) => (
+                  <PermissionProvider>
+                    <LayoutProvider>
+                      <NotificationProvider>
+                        <CommandProvider>
+                          <Layout>{props.children}</Layout>
+                        </CommandProvider>
+                      </NotificationProvider>
+                    </LayoutProvider>
+                  </PermissionProvider>
+                )}
+              >
+                <Route
+                  path="/"
+                  component={() => (
+                    <Suspense fallback={<Loading />}>
+                      <Home />
+                    </Suspense>
+                  )}
+                />
+                <Route path="/:dir" component={DirectoryLayout}>
+                  <Route
+                    path="/"
+                    component={() => (
+                      <Suspense fallback={<Loading />}>
+                        <ChatLayout />
+                      </Suspense>
+                    )}
+                  />
+                  <Route
+                    path="/session/or/:dir/:id?"
+                    component={() => (
+                      <TerminalProvider>
+                        <FileProvider>
+                          <PromptProvider>
+                            <Suspense fallback={<Loading />}>
+                              <Session />
+                            </Suspense>
+                          </PromptProvider>
+                        </FileProvider>
+                      </TerminalProvider>
+                    )}
+                  />
+                  <Route
+                    path="/session/:id?"
+                    component={() => (
+                      <Suspense fallback={<Loading />}>
+                        <ChatLayout />
+                      </Suspense>
+                    )}
+                  />
+                </Route>
+              </Router>
+            </GlobalSyncProvider>
+          </GlobalSDKProvider>
+        </ServerKey>
+      </ServerProvider>
+    </AuthGate>
   )
+}
+
+function AuthGate(props: ParentProps) {
+  if (isLocalhostMode()) return <>{props.children}</>
+
+  return (
+    <AuthProvider>
+      <AuthGateInner>{props.children}</AuthGateInner>
+    </AuthProvider>
+  )
+}
+
+function AuthGateInner(props: ParentProps) {
+  const auth = useAuth()
+
+  return (
+    <Switch fallback={props.children}>
+      <Match when={auth.state().loading}>
+        <ProvisioningScreen message="Loading..." />
+      </Match>
+      <Match when={!auth.state().user}>
+        <LoginPage />
+      </Match>
+      <Match when={auth.state().machineStatus !== "ready"}>
+        <ProvisioningScreen
+          message={machineStatusMessage(auth.state().machineStatus, auth.state().error)}
+          onSignOut={() => auth.signOut()}
+        />
+      </Match>
+    </Switch>
+  )
+}
+
+function machineStatusMessage(status: MachineStatus, error: string | null): string {
+  if (error) return error
+  if (status === "provisioning") return "Preparing your VoltCode instance..."
+  if (status === "polling") return "Connecting to your VoltCode instance..."
+  return "Starting..."
 }

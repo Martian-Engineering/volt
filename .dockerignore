@@ -1,0 +1,78 @@
+# Git
+.git
+.gitignore
+
+# Dependencies (rebuilt in container)
+node_modules
+
+# Build artifacts
+dist
+*.tgz
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+__MACOSX
+
+# Large deploy dirs not needed for voltcode-base
+deploy/aws
+deploy/chat/web
+deploy/chat/infra
+deploy/vllm-glm47
+
+# Dev / CI config
+.github
+.husky
+.claude
+.aws
+.stignore
+
+# Temp / generated files
+*.log
+*.zip
+packages/voltcode/module_*.txt
+packages/voltcode/config.c
+packages/voltcode/config.txt
+packages/voltcode/constants.c
+packages/voltcode/constants.txt
+packages/voltcode/utils.c
+packages/voltcode/utils.txt
+packages/voltcode/output.log
+packages/voltcode/eval-results
+packages/voltcode/models
+packages/voltcode/deepseek-v3.1-671b
+packages/voltcode/gpt-oss-120b
+packages/voltcode/gpt-oss-20b
+packages/voltcode/holoverse_showtime_ledger
+packages/voltcode/edugateway_main.c
+packages/voltcode/condense-models.ts
+packages/voltcode/temp_timer.ts
+packages/voltcode/analyze_providers.sh
+packages/voltcode/run-all-evals.sh
+packages/voltcode/run-evals.sh
+
+# Packages not needed for voltcode-base build
+packages/volt-gateway/releases
+packages/console/app/src/asset
+packages/desktop/src-tauri
+packages/voltcode/test
+
+# Misc unneeded at build time
+*.md
+!packages/*/README.md
+PLAN-*.md
+codex-review-*.md
+fitdiff_fix.patch
+inherit_docstrings*.py
+vllm_fromjson_wrapper.py
+clint.aws.zip
+deploy-jan-28
+turbo.json
+sst.config.ts
+sst-env.d.ts
+infra

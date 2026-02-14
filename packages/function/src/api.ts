@@ -12,20 +12,6 @@ type Env = {
   WEB_DOMAIN: string
 }
 
-async function getFeishuTenantToken(): Promise<string> {
-  const response = await fetch("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      app_id: Resource.FEISHU_APP_ID.value,
-      app_secret: Resource.FEISHU_APP_SECRET.value,
-    }),
-  })
-  const data = (await response.json()) as { tenant_access_token?: string }
-  if (!data.tenant_access_token) throw new Error("Failed to get Feishu tenant token")
-  return data.tenant_access_token
-}
-
 export class SyncServer extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -214,65 +200,11 @@ export default new Hono<{ Bindings: Env }>()
 
     return c.json({ info, messages })
   })
-  .post("/feishu", async (c) => {
-    const body = (await c.req.json()) as {
-      challenge?: string
-      event?: {
-        message?: {
-          message_id?: string
-          root_id?: string
-          parent_id?: string
-          chat_id?: string
-          content?: string
-        }
-      }
-    }
-    console.log(JSON.stringify(body, null, 2))
-    const challenge = body.challenge
-    if (challenge) return c.json({ challenge })
-
-    const content = body.event?.message?.content
-    const parsed =
-      typeof content === "string" && content.trim().startsWith("{")
-        ? (JSON.parse(content) as {
-            text?: string
-          })
-        : undefined
-    const text = typeof parsed?.text === "string" ? parsed.text : typeof content === "string" ? content : ""
-
-    let message = text.trim().replace(/^@_user_\d+\s*/, "")
-    message = message.replace(/^aiden,?\s*/i, "<@759257817772851260> ")
-    if (!message) return c.json({ ok: true })
-
-    const threadId = body.event?.message?.root_id || body.event?.message?.message_id
-    if (threadId) message = `${message} [${threadId}]`
-
-    const response = await fetch(
-      `https://discord.com/api/v10/channels/${Resource.DISCORD_SUPPORT_CHANNEL_ID.value}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bot ${Resource.DISCORD_SUPPORT_BOT_TOKEN.value}`,
-        },
-        body: JSON.stringify({
-          content: `${message}`,
-        }),
-      },
-    )
-
-    if (!response.ok) {
-      console.error(await response.text())
-      return c.json({ error: "Discord bot message failed" }, { status: 502 })
-    }
-
-    return c.json({ ok: true })
-  })
   /**
    * Used by the GitHub action to get GitHub installation access token given the OIDC token
    */
   .post("/exchange_github_app_token", async (c) => {
-    const EXPECTED_AUDIENCE = "opencode-github-action"
+    const EXPECTED_AUDIENCE = "voltcode-github-action"
     const GITHUB_ISSUER = "https://token.actions.githubusercontent.com"
     const JWKS_URL = `${GITHUB_ISSUER}/.well-known/jwks`
 
@@ -320,7 +252,7 @@ export default new Hono<{ Bindings: Env }>()
     return c.json({ token: installationAuth.token })
   })
   /**
-   * Used by the GitHub action to get GitHub installation access token given user PAT token (used when testing `opencode github run` locally)
+   * Used by the GitHub action to get GitHub installation access token given user PAT token (used when testing `voltcode github run` locally)
    */
   .post("/exchange_github_app_token_with_pat", async (c) => {
     const body = await c.req.json<{ owner: string; repo: string }>()
@@ -370,7 +302,7 @@ export default new Hono<{ Bindings: Env }>()
     }
   })
   /**
-   * Used by the opencode CLI to check if the GitHub app is installed
+   * Used by the voltcode CLI to check if the GitHub app is installed
    */
   .get("/get_github_app_installation", async (c) => {
     const owner = c.req.query("owner")

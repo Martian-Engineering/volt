@@ -1,0 +1,22 @@
+Run a parallel, non-agentic map over a JSONL file. For each item (line), make a single LLM API call (no tools, no file I/O, no code execution) that must return one JSON value conforming to the provided output schema. If validation fails, the system retries with the error and prior response.
+
+Parameters:
+- input_path: File path to an existing JSONL file (one JSON value per line)
+- output_path: File path where the output JSONL will be written
+- prompt: Natural-language instruction for each per-item LLM request
+- output_schema: A JSON Schema object that each LLM output must validate against
+- model (optional): "small" (default) uses a fast/cheap model, "default" uses the parent session's model,
+  or "provider/model-id" for an explicit model (e.g. "anthropic/claude-haiku-4-5")
+- concurrency (optional): Max parallel LLM requests (default: 16)
+- timeout_seconds (optional): Max seconds per item including retries (default: 120)
+- max_attempts (optional): Max LLM calls per item including initial (default: 3)
+
+Returns metadata only: map_id, run timestamps, LCM IDs, and success/failure counts.
+
+Use this tool instead of agentic_map when items don't need tool access — it's faster and cheaper. Use agentic_map if per-item processing requires file reads, web fetches, or code execution.
+
+Best for high-throughput, side-effect-free tasks (classification, scoring, extraction, summarization) where the full context can be included in the prompt and item JSON. No tools or write operations are available to per-item LLM calls.
+
+Limitations:
+- Each item is processed in complete isolation — the LLM cannot see other items for calibration. For tasks where consistent labeling across items matters (e.g., classification at 300+ items), consider a custom batch script instead (see symbolic-recursion guidance).
+- No tool access: if per-item processing requires file reads, web fetches, or code execution, use `agentic_map` instead.

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.1",
   "info": {
-    "title": "opencode",
-    "description": "opencode api",
+    "title": "voltcode",
+    "description": "voltcode api",
     "version": "1.0.0"
   },
   "paths": {
@@ -10,7 +10,7 @@
       "get": {
         "operationId": "global.health",
         "summary": "Get health",
-        "description": "Get health information about the OpenCode server.",
+        "description": "Get health information about the VoltCode server.",
         "responses": {
           "200": {
             "description": "Health information",
@@ -36,7 +36,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.health({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.global.health({\n  ...\n})"
           }
         ]
       }
@@ -45,7 +45,7 @@
       "get": {
         "operationId": "global.event",
         "summary": "Get global events",
-        "description": "Subscribe to global events from the OpenCode system using server-sent events.",
+        "description": "Subscribe to global events from the VoltCode system using server-sent events.",
         "responses": {
           "200": {
             "description": "Event stream",
@@ -61,74 +61,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.event({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/global/config": {
-      "get": {
-        "operationId": "global.config.get",
-        "summary": "Get global configuration",
-        "description": "Retrieve the current global OpenCode configuration settings and preferences.",
-        "responses": {
-          "200": {
-            "description": "Get global config info",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Config"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.config.get({\n  ...\n})"
-          }
-        ]
-      },
-      "patch": {
-        "operationId": "global.config.update",
-        "summary": "Update global configuration",
-        "description": "Update global OpenCode configuration settings and preferences.",
-        "responses": {
-          "200": {
-            "description": "Successfully updated global config",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Config"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Config"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.config.update({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.global.event({\n  ...\n})"
           }
         ]
       }
@@ -137,7 +70,7 @@
       "post": {
         "operationId": "global.dispose",
         "summary": "Dispose instance",
-        "description": "Clean up and dispose all OpenCode instances, releasing all resources.",
+        "description": "Clean up and dispose all VoltCode instances, releasing all resources.",
         "responses": {
           "200": {
             "description": "Global disposed",
@@ -153,104 +86,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.dispose({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/auth/{providerID}": {
-      "put": {
-        "operationId": "auth.set",
-        "summary": "Set auth credentials",
-        "description": "Set authentication credentials",
-        "responses": {
-          "200": {
-            "description": "Successfully set authentication credentials",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "in": "path",
-            "name": "providerID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Auth"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.auth.set({\n  ...\n})"
-          }
-        ]
-      },
-      "delete": {
-        "operationId": "auth.remove",
-        "summary": "Remove auth credentials",
-        "description": "Remove authentication credentials",
-        "responses": {
-          "200": {
-            "description": "Successfully removed authentication credentials",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "in": "path",
-            "name": "providerID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.auth.remove({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.global.dispose({\n  ...\n})"
           }
         ]
       }
@@ -268,7 +104,7 @@
           }
         ],
         "summary": "List all projects",
-        "description": "Get a list of projects that have been opened with OpenCode.",
+        "description": "Get a list of projects that have been opened with VoltCode.",
         "responses": {
           "200": {
             "description": "List of projects",
@@ -287,7 +123,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.project.list({\n  ...\n})"
           }
         ]
       }
@@ -305,7 +141,7 @@
           }
         ],
         "summary": "Get current project",
-        "description": "Retrieve the currently active project that OpenCode is working with.",
+        "description": "Retrieve the currently active project that VoltCode is working with.",
         "responses": {
           "200": {
             "description": "Current project information",
@@ -321,7 +157,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.current({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.project.current({\n  ...\n})"
           }
         ]
       }
@@ -347,7 +183,7 @@
           }
         ],
         "summary": "Update project",
-        "description": "Update project properties such as name, icon, and commands.",
+        "description": "Update project properties such as name, icon and color.",
         "responses": {
           "200": {
             "description": "Updated project information",
@@ -402,15 +238,6 @@
                         "type": "string"
                       }
                     }
-                  },
-                  "commands": {
-                    "type": "object",
-                    "properties": {
-                      "start": {
-                        "description": "Startup script to run when creating a new workspace (worktree)",
-                        "type": "string"
-                      }
-                    }
                   }
                 }
               }
@@ -420,7 +247,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.update({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.project.update({\n  ...\n})"
           }
         ]
       }
@@ -438,7 +265,7 @@
           }
         ],
         "summary": "List PTY sessions",
-        "description": "Get a list of all active pseudo-terminal (PTY) sessions managed by OpenCode.",
+        "description": "Get a list of all active pseudo-terminal (PTY) sessions managed by VoltCode.",
         "responses": {
           "200": {
             "description": "List of sessions",
@@ -457,7 +284,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.pty.list({\n  ...\n})"
           }
         ]
       },
@@ -534,7 +361,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.create({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.pty.create({\n  ...\n})"
           }
         ]
       }
@@ -586,7 +413,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.get({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.pty.get({\n  ...\n})"
           }
         ]
       },
@@ -662,7 +489,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.update({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.pty.update({\n  ...\n})"
           }
         ]
       },
@@ -712,7 +539,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.remove({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.pty.remove({\n  ...\n})"
           }
         ]
       }
@@ -764,7 +591,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.connect({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.pty.connect({\n  ...\n})"
           }
         ]
       }
@@ -782,7 +609,7 @@
           }
         ],
         "summary": "Get configuration",
-        "description": "Retrieve the current OpenCode configuration settings and preferences.",
+        "description": "Retrieve the current VoltCode configuration settings and preferences.",
         "responses": {
           "200": {
             "description": "Get config info",
@@ -798,7 +625,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.get({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.config.get({\n  ...\n})"
           }
         ]
       },
@@ -814,7 +641,7 @@
           }
         ],
         "summary": "Update configuration",
-        "description": "Update OpenCode configuration settings and preferences.",
+        "description": "Update VoltCode configuration settings and preferences.",
         "responses": {
           "200": {
             "description": "Successfully updated config",
@@ -849,7 +676,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.update({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.config.update({\n  ...\n})"
           }
         ]
       }
@@ -901,7 +728,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.providers({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.config.providers({\n  ...\n})"
           }
         ]
       }
@@ -945,7 +772,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tool.ids({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tool.ids({\n  ...\n})"
           }
         ]
       }
@@ -1005,7 +832,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tool.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tool.list({\n  ...\n})"
           }
         ]
       }
@@ -1023,7 +850,7 @@
           }
         ],
         "summary": "Create worktree",
-        "description": "Create a new git worktree for the current project and run any configured startup scripts.",
+        "description": "Create a new git worktree for the current project.",
         "responses": {
           "200": {
             "description": "Worktree created",
@@ -1058,7 +885,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.create({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.worktree.create({\n  ...\n})"
           }
         ]
       },
@@ -1093,7 +920,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.worktree.list({\n  ...\n})"
           }
         ]
       },
@@ -1144,7 +971,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.remove({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.worktree.remove({\n  ...\n})"
           }
         ]
       }
@@ -1197,7 +1024,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.reset({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.worktree.reset({\n  ...\n})"
           }
         ]
       }
@@ -1237,7 +1064,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.resource.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.experimental.resource.list({\n  ...\n})"
           }
         ]
       }
@@ -1288,7 +1115,7 @@
           }
         ],
         "summary": "List sessions",
-        "description": "Get a list of all OpenCode sessions, sorted by most recently updated.",
+        "description": "Get a list of all VoltCode sessions, sorted by most recently updated.",
         "responses": {
           "200": {
             "description": "List of sessions",
@@ -1307,7 +1134,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.list({\n  ...\n})"
           }
         ]
       },
@@ -1323,7 +1150,7 @@
           }
         ],
         "summary": "Create session",
-        "description": "Create a new OpenCode session for interacting with AI assistants and managing conversations.",
+        "description": "Create a new VoltCode session for interacting with AI assistants and managing conversations.",
         "responses": {
           "200": {
             "description": "Successfully created session",
@@ -1370,7 +1197,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.create({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.create({\n  ...\n})"
           }
         ]
       }
@@ -1420,7 +1247,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.status({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.status({\n  ...\n})"
           }
         ]
       }
@@ -1447,7 +1274,7 @@
           }
         ],
         "summary": "Get session",
-        "description": "Retrieve detailed information about a specific OpenCode session.",
+        "description": "Retrieve detailed information about a specific VoltCode session.",
         "tags": ["Session"],
         "responses": {
           "200": {
@@ -1484,7 +1311,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.get({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.get({\n  ...\n})"
           }
         ]
       },
@@ -1545,7 +1372,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.delete({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.delete({\n  ...\n})"
           }
         ]
       },
@@ -1627,7 +1454,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.update({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.update({\n  ...\n})"
           }
         ]
       }
@@ -1694,7 +1521,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.children({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.children({\n  ...\n})"
           }
         ]
       }
@@ -1760,7 +1587,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.todo({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.todo({\n  ...\n})"
           }
         ]
       }
@@ -1845,7 +1672,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.init({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.init({\n  ...\n})"
           }
         ]
       }
@@ -1903,7 +1730,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.fork({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.fork({\n  ...\n})"
           }
         ]
       }
@@ -1965,7 +1792,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.abort({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.abort({\n  ...\n})"
           }
         ]
       }
@@ -2027,7 +1854,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.share({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.share({\n  ...\n})"
           }
         ]
       },
@@ -2088,7 +1915,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.unshare({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.unshare({\n  ...\n})"
           }
         ]
       }
@@ -2142,7 +1969,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.diff({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.diff({\n  ...\n})"
           }
         ]
       }
@@ -2227,7 +2054,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.summarize({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.summarize({\n  ...\n})"
           }
         ]
       }
@@ -2312,7 +2139,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.messages({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.messages({\n  ...\n})"
           }
         ]
       },
@@ -2420,9 +2247,6 @@
                       "type": "boolean"
                     }
                   },
-                  "format": {
-                    "$ref": "#/components/schemas/OutputFormat"
-                  },
                   "system": {
                     "type": "string"
                   },
@@ -2457,7 +2281,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.prompt({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.prompt({\n  ...\n})"
           }
         ]
       }
@@ -2541,7 +2365,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.message({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.message({\n  ...\n})"
           }
         ]
       }
@@ -2621,7 +2445,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.part.delete({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.part.delete({\n  ...\n})"
           }
         ]
       },
@@ -2708,7 +2532,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.part.update({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.part.update({\n  ...\n})"
           }
         ]
       }
@@ -2799,9 +2623,6 @@
                       "type": "boolean"
                     }
                   },
-                  "format": {
-                    "$ref": "#/components/schemas/OutputFormat"
-                  },
                   "system": {
                     "type": "string"
                   },
@@ -2836,7 +2657,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.prompt_async({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.prompt_async({\n  ...\n})"
           }
         ]
       }
@@ -2974,7 +2795,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.command({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.command({\n  ...\n})"
           }
         ]
       }
@@ -3067,7 +2888,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.shell({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.shell({\n  ...\n})"
           }
         ]
       }
@@ -3149,7 +2970,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.revert({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.revert({\n  ...\n})"
           }
         ]
       }
@@ -3211,7 +3032,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.unrevert({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.unrevert({\n  ...\n})"
           }
         ]
       }
@@ -3298,7 +3119,144 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.respond({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.permission.respond({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/upload": {
+      "post": {
+        "operationId": "session.upload",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Upload file",
+        "description": "Upload a file to the session's working directory. Supports chunked uploads via Content-Range header for resume support.",
+        "responses": {
+          "200": {
+            "description": "File uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["filename", "path", "size"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.session.upload({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/lcm/check-integrity": {
+      "get": {
+        "operationId": "getSession:sessionIDLcmCheck-integrity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.getSession:sessionIDLcmCheck-integrity({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/lcm/compact": {
+      "post": {
+        "operationId": "postSession:sessionIDLcmCompact",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.postSession:sessionIDLcmCompact({\n  ...\n})"
           }
         ]
       }
@@ -3379,7 +3337,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.reply({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.permission.reply({\n  ...\n})"
           }
         ]
       }
@@ -3416,7 +3374,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.permission.list({\n  ...\n})"
           }
         ]
       }
@@ -3453,7 +3411,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.question.list({\n  ...\n})"
           }
         ]
       }
@@ -3534,7 +3492,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.reply({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.question.reply({\n  ...\n})"
           }
         ]
       }
@@ -3596,7 +3554,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.reject({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.question.reject({\n  ...\n})"
           }
         ]
       }
@@ -3744,6 +3702,9 @@
                                     },
                                     "output": {
                                       "type": "number"
+                                    },
+                                    "output_reserve": {
+                                      "type": "number"
                                     }
                                   },
                                   "required": ["context", "output"]
@@ -3796,11 +3757,9 @@
                                   "properties": {
                                     "npm": {
                                       "type": "string"
-                                    },
-                                    "api": {
-                                      "type": "string"
                                     }
-                                  }
+                                  },
+                                  "required": ["npm"]
                                 },
                                 "variants": {
                                   "type": "object",
@@ -3858,7 +3817,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.provider.list({\n  ...\n})"
           }
         ]
       }
@@ -3901,7 +3860,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.auth({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.provider.auth({\n  ...\n})"
           }
         ]
       }
@@ -3970,7 +3929,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.oauth.authorize({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.provider.oauth.authorize({\n  ...\n})"
           }
         ]
       }
@@ -4043,7 +4002,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.oauth.callback({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.provider.oauth.callback({\n  ...\n})"
           }
         ]
       }
@@ -4139,7 +4098,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.text({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.find.text({\n  ...\n})"
           }
         ]
       }
@@ -4209,7 +4168,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.files({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.find.files({\n  ...\n})"
           }
         ]
       }
@@ -4254,7 +4213,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.symbols({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.find.symbols({\n  ...\n})"
           }
         ]
       }
@@ -4299,7 +4258,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.file.list({\n  ...\n})"
           }
         ]
       }
@@ -4341,7 +4300,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.read({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.file.read({\n  ...\n})"
           }
         ]
       }
@@ -4378,7 +4337,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.status({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.file.status({\n  ...\n})"
           }
         ]
       }
@@ -4418,7 +4377,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.status({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.status({\n  ...\n})"
           }
         ]
       },
@@ -4491,7 +4450,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.add({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.add({\n  ...\n})"
           }
         ]
       }
@@ -4560,7 +4519,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.start({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.auth.start({\n  ...\n})"
           }
         ]
       },
@@ -4617,7 +4576,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.remove({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.auth.remove({\n  ...\n})"
           }
         ]
       }
@@ -4695,7 +4654,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.callback({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.auth.callback({\n  ...\n})"
           }
         ]
       }
@@ -4757,7 +4716,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
           }
         ]
       }
@@ -4798,7 +4757,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.connect({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.connect({\n  ...\n})"
           }
         ]
       }
@@ -4839,7 +4798,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.disconnect({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.mcp.disconnect({\n  ...\n})"
           }
         ]
       }
@@ -4898,7 +4857,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.appendPrompt({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.appendPrompt({\n  ...\n})"
           }
         ]
       }
@@ -4932,7 +4891,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openHelp({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.openHelp({\n  ...\n})"
           }
         ]
       }
@@ -4966,7 +4925,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openSessions({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.openSessions({\n  ...\n})"
           }
         ]
       }
@@ -5000,7 +4959,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openThemes({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.openThemes({\n  ...\n})"
           }
         ]
       }
@@ -5034,7 +4993,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openModels({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.openModels({\n  ...\n})"
           }
         ]
       }
@@ -5068,7 +5027,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.submitPrompt({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.submitPrompt({\n  ...\n})"
           }
         ]
       }
@@ -5102,7 +5061,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.clearPrompt({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.clearPrompt({\n  ...\n})"
           }
         ]
       }
@@ -5161,7 +5120,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.executeCommand({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.executeCommand({\n  ...\n})"
           }
         ]
       }
@@ -5222,7 +5181,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.showToast({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.showToast({\n  ...\n})"
           }
         ]
       }
@@ -5288,7 +5247,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.publish({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.publish({\n  ...\n})"
           }
         ]
       }
@@ -5359,7 +5318,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.selectSession({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.selectSession({\n  ...\n})"
           }
         ]
       }
@@ -5400,7 +5359,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.next({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.control.next({\n  ...\n})"
           }
         ]
       }
@@ -5441,7 +5400,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.response({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.tui.control.response({\n  ...\n})"
           }
         ]
       }
@@ -5459,7 +5418,7 @@
           }
         ],
         "summary": "Dispose instance",
-        "description": "Clean up and dispose the current OpenCode instance, releasing all resources.",
+        "description": "Clean up and dispose the current VoltCode instance, releasing all resources.",
         "responses": {
           "200": {
             "description": "Instance disposed",
@@ -5475,7 +5434,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.instance.dispose({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.instance.dispose({\n  ...\n})"
           }
         ]
       }
@@ -5493,7 +5452,7 @@
           }
         ],
         "summary": "Get paths",
-        "description": "Retrieve the current working directory and related path information for the OpenCode instance.",
+        "description": "Retrieve the current working directory and related path information for the VoltCode instance.",
         "responses": {
           "200": {
             "description": "Path",
@@ -5509,7 +5468,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.path.get({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.path.get({\n  ...\n})"
           }
         ]
       }
@@ -5543,7 +5502,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.vcs.get({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.vcs.get({\n  ...\n})"
           }
         ]
       }
@@ -5561,7 +5520,7 @@
           }
         ],
         "summary": "List commands",
-        "description": "Get a list of all available commands in the OpenCode system.",
+        "description": "Get a list of all available commands in the VoltCode system.",
         "responses": {
           "200": {
             "description": "List of commands",
@@ -5580,7 +5539,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.command.list({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.command.list({\n  ...\n})"
           }
         ]
       }
@@ -5634,7 +5593,7 @@
                   "level": {
                     "description": "Log level",
                     "type": "string",
-                    "enum": ["debug", "info", "error", "warn"]
+                    "enum": ["trace", "debug", "info", "error", "warn"]
                   },
                   "message": {
                     "description": "Log message",
@@ -5657,7 +5616,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.log({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.app.log({\n  ...\n})"
           }
         ]
       }
@@ -5675,7 +5634,7 @@
           }
         ],
         "summary": "List agents",
-        "description": "Get a list of all available AI agents in the OpenCode system.",
+        "description": "Get a list of all available AI agents in the VoltCode system.",
         "responses": {
           "200": {
             "description": "List of agents",
@@ -5694,7 +5653,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.agents({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.app.agents({\n  ...\n})"
           }
         ]
       }
@@ -5712,7 +5671,7 @@
           }
         ],
         "summary": "List skills",
-        "description": "Get a list of all available skills in the OpenCode system.",
+        "description": "Get a list of all available skills in the VoltCode system.",
         "responses": {
           "200": {
             "description": "List of skills",
@@ -5746,7 +5705,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.skills({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.app.skills({\n  ...\n})"
           }
         ]
       }
@@ -5783,7 +5742,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.lsp.status({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.lsp.status({\n  ...\n})"
           }
         ]
       }
@@ -5820,7 +5779,68 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.formatter.status({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.formatter.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/auth/{providerID}": {
+      "put": {
+        "operationId": "auth.set",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Set auth credentials",
+        "description": "Set authentication credentials",
+        "responses": {
+          "200": {
+            "description": "Successfully set authentication credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Auth"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.auth.set({\n  ...\n})"
           }
         ]
       }
@@ -5854,7 +5874,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.event.subscribe({\n  ...\n})"
+            "source": "import { createVoltcodeClient } from \"@opencode-ai/sdk\n\nconst client = createVoltcodeClient()\nawait client.event.subscribe({\n  ...\n})"
           }
         ]
       }
@@ -5930,15 +5950,6 @@
               }
             }
           },
-          "commands": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "description": "Startup script to run when creating a new workspace (worktree)",
-                "type": "string"
-              }
-            }
-          },
           "time": {
             "type": "object",
             "properties": {
@@ -5991,34 +6002,6 @@
               }
             },
             "required": ["directory"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.server.connected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "server.connected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.global.disposed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "global.disposed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
           }
         },
         "required": ["type", "properties"]
@@ -6078,52 +6061,6 @@
         },
         "required": ["type", "properties"]
       },
-      "OutputFormatText": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "text"
-          }
-        },
-        "required": ["type"]
-      },
-      "JSONSchema": {
-        "type": "object",
-        "propertyNames": {
-          "type": "string"
-        },
-        "additionalProperties": {}
-      },
-      "OutputFormatJsonSchema": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "json_schema"
-          },
-          "schema": {
-            "$ref": "#/components/schemas/JSONSchema"
-          },
-          "retryCount": {
-            "default": 2,
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["type", "schema"]
-      },
-      "OutputFormat": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/OutputFormatText"
-          },
-          {
-            "$ref": "#/components/schemas/OutputFormatJsonSchema"
-          }
-        ]
-      },
       "FileDiff": {
         "type": "object",
         "properties": {
@@ -6141,10 +6078,6 @@
           },
           "deletions": {
             "type": "number"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["added", "deleted", "modified"]
           }
         },
         "required": ["file", "before", "after", "additions", "deletions"]
@@ -6170,9 +6103,6 @@
               }
             },
             "required": ["created"]
-          },
-          "format": {
-            "$ref": "#/components/schemas/OutputFormat"
           },
           "summary": {
             "type": "object",
@@ -6299,50 +6229,6 @@
         },
         "required": ["name", "data"]
       },
-      "StructuredOutputError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "StructuredOutputError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "retries": {
-                "type": "number"
-              }
-            },
-            "required": ["message", "retries"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "ContextOverflowError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ContextOverflowError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "responseBody": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
-      },
       "APIError": {
         "type": "object",
         "properties": {
@@ -6429,12 +6315,6 @@
                 "$ref": "#/components/schemas/MessageAbortedError"
               },
               {
-                "$ref": "#/components/schemas/StructuredOutputError"
-              },
-              {
-                "$ref": "#/components/schemas/ContextOverflowError"
-              },
-              {
                 "$ref": "#/components/schemas/APIError"
               }
             ]
@@ -6475,9 +6355,6 @@
           "tokens": {
             "type": "object",
             "properties": {
-              "total": {
-                "type": "number"
-              },
               "input": {
                 "type": "number"
               },
@@ -6501,10 +6378,6 @@
               }
             },
             "required": ["input", "output", "reasoning", "cache"]
-          },
-          "structured": {},
-          "variant": {
-            "type": "string"
           },
           "finish": {
             "type": "string"
@@ -6622,49 +6495,6 @@
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "text"]
-      },
-      "SubtaskPart": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "sessionID": {
-            "type": "string"
-          },
-          "messageID": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "subtask"
-          },
-          "prompt": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "agent": {
-            "type": "string"
-          },
-          "model": {
-            "type": "object",
-            "properties": {
-              "providerID": {
-                "type": "string"
-              },
-              "modelID": {
-                "type": "string"
-              }
-            },
-            "required": ["providerID", "modelID"]
-          },
-          "command": {
-            "type": "string"
-          }
-        },
-        "required": ["id", "sessionID", "messageID", "type", "prompt", "description", "agent"]
       },
       "ReasoningPart": {
         "type": "object",
@@ -7109,9 +6939,6 @@
           "tokens": {
             "type": "object",
             "properties": {
-              "total": {
-                "type": "number"
-              },
               "input": {
                 "type": "number"
               },
@@ -7292,7 +7119,47 @@
             "$ref": "#/components/schemas/TextPart"
           },
           {
-            "$ref": "#/components/schemas/SubtaskPart"
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "const": "subtask"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["providerID", "modelID"]
+              },
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "sessionID", "messageID", "type", "prompt", "description", "agent"]
           },
           {
             "$ref": "#/components/schemas/ReasoningPart"
@@ -7460,90 +7327,6 @@
         },
         "required": ["type", "properties"]
       },
-      "SessionStatus": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "idle"
-              }
-            },
-            "required": ["type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "retry"
-              },
-              "attempt": {
-                "type": "number"
-              },
-              "message": {
-                "type": "string"
-              },
-              "next": {
-                "type": "number"
-              }
-            },
-            "required": ["type", "attempt", "message", "next"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "busy"
-              }
-            },
-            "required": ["type"]
-          }
-        ]
-      },
-      "Event.session.status": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.status"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "status": {
-                "$ref": "#/components/schemas/SessionStatus"
-              }
-            },
-            "required": ["sessionID", "status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.session.idle": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.idle"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "QuestionOption": {
         "type": "object",
         "properties": {
@@ -7689,56 +7472,120 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.session.compacted": {
+      "BackgroundTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "taskSessionID": {
+            "type": "string"
+          },
+          "toolPartID": {
+            "type": "string"
+          },
+          "assistantMessageID": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "backgrounded", "completed", "error", "cancelled"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "output": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "metadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "taskSessionID",
+          "toolPartID",
+          "assistantMessageID",
+          "description",
+          "status",
+          "startedAt"
+        ]
+      },
+      "Event.background_task.created": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "session.compacted"
+            "const": "background_task.created"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "sessionID": {
-                "type": "string"
+              "task": {
+                "$ref": "#/components/schemas/BackgroundTask"
               }
             },
-            "required": ["sessionID"]
+            "required": ["task"]
           }
         },
         "required": ["type", "properties"]
       },
-      "Event.file.watcher.updated": {
+      "Event.background_task.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "file.watcher.updated"
+            "const": "background_task.updated"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "file": {
-                "type": "string"
-              },
-              "event": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "const": "add"
-                  },
-                  {
-                    "type": "string",
-                    "const": "change"
-                  },
-                  {
-                    "type": "string",
-                    "const": "unlink"
-                  }
-                ]
+              "task": {
+                "$ref": "#/components/schemas/BackgroundTask"
               }
             },
-            "required": ["file", "event"]
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.background_task.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "background_task.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/BackgroundTask"
+              }
+            },
+            "required": ["task"]
           }
         },
         "required": ["type", "properties"]
@@ -7786,6 +7633,41 @@
               }
             },
             "required": ["sessionID", "todos"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.watcher.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.watcher.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "event": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "add"
+                  },
+                  {
+                    "type": "string",
+                    "const": "change"
+                  },
+                  {
+                    "type": "string",
+                    "const": "unlink"
+                  }
+                ]
+              }
+            },
+            "required": ["file", "event"]
           }
         },
         "required": ["type", "properties"]
@@ -7976,6 +7858,137 @@
         },
         "required": ["type", "properties"]
       },
+      "SessionStatus": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "idle"
+              }
+            },
+            "required": ["type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "retry"
+              },
+              "attempt": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "next": {
+                "type": "number"
+              }
+            },
+            "required": ["type", "attempt", "message", "next"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "busy"
+              }
+            },
+            "required": ["type"]
+          }
+        ]
+      },
+      "Event.session.status": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.status"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionStatus"
+              }
+            },
+            "required": ["sessionID", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.idle": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.idle"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lcm.compaction.started": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lcm.compaction.started"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "conversationId": {
+                "type": "number"
+              },
+              "blocking": {
+                "type": "boolean"
+              }
+            },
+            "required": ["sessionID", "conversationId", "blocking"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lcm.compaction.ended": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lcm.compaction.ended"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "conversationId": {
+                "type": "number"
+              }
+            },
+            "required": ["sessionID", "conversationId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "PermissionAction": {
         "type": "string",
         "enum": ["allow", "deny", "ask"]
@@ -8069,11 +8082,26 @@
               "compacting": {
                 "type": "number"
               },
+              "compactingBlocking": {
+                "type": "boolean"
+              },
               "archived": {
                 "type": "number"
               }
             },
             "required": ["created", "updated"]
+          },
+          "lcm": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "type": "number"
+              },
+              "threshold": {
+                "type": "number"
+              }
+            },
+            "required": ["inputTokens", "threshold"]
           },
           "permission": {
             "$ref": "#/components/schemas/PermissionRuleset"
@@ -8209,17 +8237,45 @@
                     "$ref": "#/components/schemas/MessageAbortedError"
                   },
                   {
-                    "$ref": "#/components/schemas/StructuredOutputError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ContextOverflowError"
-                  },
-                  {
                     "$ref": "#/components/schemas/APIError"
                   }
                 ]
               }
             }
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.lcm_file_loaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.lcm_file_loaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "filePath": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "type": "number"
+              },
+              "tokenCount": {
+                "type": "number"
+              },
+              "durationMs": {
+                "type": "number"
+              }
+            },
+            "required": ["sessionID", "filePath", "fileId", "sizeBytes", "tokenCount", "durationMs"]
           }
         },
         "required": ["type", "properties"]
@@ -8355,43 +8411,30 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.worktree.ready": {
+      "Event.global.disposed": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "worktree.ready"
+            "const": "global.disposed"
           },
           "properties": {
             "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "branch": {
-                "type": "string"
-              }
-            },
-            "required": ["name", "branch"]
+            "properties": {}
           }
         },
         "required": ["type", "properties"]
       },
-      "Event.worktree.failed": {
+      "Event.server.connected": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "worktree.failed"
+            "const": "server.connected"
           },
           "properties": {
             "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
+            "properties": {}
           }
         },
         "required": ["type", "properties"]
@@ -8409,12 +8452,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.server.instance.disposed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.server.connected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.global.disposed"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
@@ -8444,12 +8481,6 @@
             "$ref": "#/components/schemas/Event.permission.replied"
           },
           {
-            "$ref": "#/components/schemas/Event.session.status"
-          },
-          {
-            "$ref": "#/components/schemas/Event.session.idle"
-          },
-          {
             "$ref": "#/components/schemas/Event.question.asked"
           },
           {
@@ -8459,13 +8490,19 @@
             "$ref": "#/components/schemas/Event.question.rejected"
           },
           {
-            "$ref": "#/components/schemas/Event.session.compacted"
+            "$ref": "#/components/schemas/Event.background_task.created"
           },
           {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
+            "$ref": "#/components/schemas/Event.background_task.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.background_task.completed"
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
           },
           {
             "$ref": "#/components/schemas/Event.tui.prompt.append"
@@ -8489,6 +8526,18 @@
             "$ref": "#/components/schemas/Event.command.executed"
           },
           {
+            "$ref": "#/components/schemas/Event.session.status"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.idle"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lcm.compaction.started"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lcm.compaction.ended"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.created"
           },
           {
@@ -8502,6 +8551,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.error"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.lcm_file_loaded"
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
@@ -8519,10 +8571,10 @@
             "$ref": "#/components/schemas/Event.pty.deleted"
           },
           {
-            "$ref": "#/components/schemas/Event.worktree.ready"
+            "$ref": "#/components/schemas/Event.global.disposed"
           },
           {
-            "$ref": "#/components/schemas/Event.worktree.failed"
+            "$ref": "#/components/schemas/Event.server.connected"
           }
         ]
       },
@@ -8537,6 +8589,46 @@
           }
         },
         "required": ["directory", "payload"]
+      },
+      "BadRequestError": {
+        "type": "object",
+        "properties": {
+          "data": {},
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "success": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": ["data", "errors", "success"]
+      },
+      "NotFoundError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "NotFoundError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "KeybindsConfig": {
         "description": "Custom keybind configurations",
@@ -8565,6 +8657,11 @@
           "sidebar_toggle": {
             "description": "Toggle sidebar",
             "default": "<leader>b",
+            "type": "string"
+          },
+          "tasktree_open": {
+            "description": "Open task tree view",
+            "default": "ctrl+shift+t",
             "type": "string"
           },
           "scrollbar_toggle": {
@@ -9006,11 +9103,6 @@
             "description": "Toggle tips on home screen",
             "default": "<leader>h",
             "type": "string"
-          },
-          "display_thinking": {
-            "description": "Toggle thinking blocks visibility",
-            "default": "none",
-            "type": "string"
           }
         },
         "additionalProperties": false
@@ -9018,10 +9110,10 @@
       "LogLevel": {
         "description": "Log level",
         "type": "string",
-        "enum": ["DEBUG", "INFO", "WARN", "ERROR"]
+        "enum": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]
       },
       "ServerConfig": {
-        "description": "Server configuration for opencode serve and web commands",
+        "description": "Server configuration for voltcode serve and web commands",
         "type": "object",
         "properties": {
           "port": {
@@ -9037,10 +9129,6 @@
           "mdns": {
             "description": "Enable mDNS service discovery",
             "type": "boolean"
-          },
-          "mdnsDomain": {
-            "description": "Custom domain name for mDNS service (default: opencode.local)",
-            "type": "string"
           },
           "cors": {
             "description": "Additional domains to allow for CORS",
@@ -9133,9 +9221,6 @@
               },
               "doom_loop": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
-              },
-              "skill": {
-                "$ref": "#/components/schemas/PermissionRuleConfig"
               }
             },
             "additionalProperties": {
@@ -9199,17 +9284,9 @@
             "additionalProperties": {}
           },
           "color": {
-            "description": "Hex color code (e.g., #FF5733) or theme color (e.g., primary)",
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^#[0-9a-fA-F]{6}$"
-              },
-              {
-                "type": "string",
-                "enum": ["primary", "secondary", "accent", "success", "warning", "error", "info"]
-              }
-            ]
+            "description": "Hex color code for the agent (e.g., #FF5733)",
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
           },
           "steps": {
             "description": "Maximum number of agentic iterations before forcing text-only response",
@@ -9348,6 +9425,9 @@
                     },
                     "output": {
                       "type": "number"
+                    },
+                    "output_reserve": {
+                      "type": "number"
                     }
                   },
                   "required": ["context", "output"]
@@ -9400,11 +9480,9 @@
                   "properties": {
                     "npm": {
                       "type": "string"
-                    },
-                    "api": {
-                      "type": "string"
                     }
-                  }
+                  },
+                  "required": ["npm"]
                 },
                 "variants": {
                   "description": "Variant-specific configuration",
@@ -9628,6 +9706,11 @@
                 "description": "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
                 "type": "string",
                 "enum": ["auto", "stacked"]
+              },
+              "show_model_indicator": {
+                "description": "Show model indicator in the UI (default: false)",
+                "default": false,
+                "type": "boolean"
               }
             }
           },
@@ -9660,26 +9743,6 @@
                 }
               },
               "required": ["template"]
-            }
-          },
-          "skills": {
-            "description": "Additional skill folder paths",
-            "type": "object",
-            "properties": {
-              "paths": {
-                "description": "Additional paths to skill folders",
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "urls": {
-                "description": "URLs to fetch skills from (e.g., https://example.com/.well-known/skills/)",
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
             }
           },
           "watcher": {
@@ -9988,18 +10051,75 @@
               "prune": {
                 "description": "Enable pruning of old tool outputs (default: true)",
                 "type": "boolean"
-              },
-              "reserved": {
-                "description": "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
               }
             }
           },
           "experimental": {
             "type": "object",
             "properties": {
+              "hook": {
+                "type": "object",
+                "properties": {
+                  "file_edited": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "command": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "environment": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": ["command"]
+                      }
+                    }
+                  },
+                  "session_completed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "environment": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": ["command"]
+                    }
+                  }
+                }
+              },
+              "chatMaxRetries": {
+                "description": "Number of retries for chat completions on failure",
+                "type": "number"
+              },
               "disable_paste_summary": {
                 "type": "boolean"
               },
@@ -10032,113 +10152,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "BadRequestError": {
-        "type": "object",
-        "properties": {
-          "data": {},
-          "errors": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {}
-            }
-          },
-          "success": {
-            "type": "boolean",
-            "const": false
-          }
-        },
-        "required": ["data", "errors", "success"]
-      },
-      "OAuth": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "oauth"
-          },
-          "refresh": {
-            "type": "string"
-          },
-          "access": {
-            "type": "string"
-          },
-          "expires": {
-            "type": "number"
-          },
-          "accountId": {
-            "type": "string"
-          },
-          "enterpriseUrl": {
-            "type": "string"
-          }
-        },
-        "required": ["type", "refresh", "access", "expires"]
-      },
-      "ApiAuth": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "api"
-          },
-          "key": {
-            "type": "string"
-          }
-        },
-        "required": ["type", "key"]
-      },
-      "WellKnownAuth": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "wellknown"
-          },
-          "key": {
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
-          }
-        },
-        "required": ["type", "key", "token"]
-      },
-      "Auth": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/OAuth"
-          },
-          {
-            "$ref": "#/components/schemas/ApiAuth"
-          },
-          {
-            "$ref": "#/components/schemas/WellKnownAuth"
-          }
-        ]
-      },
-      "NotFoundError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "NotFoundError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "Model": {
         "type": "object",
@@ -10306,6 +10319,9 @@
               },
               "output": {
                 "type": "number"
+              },
+              "output_reserve": {
+                "type": "number"
               }
             },
             "required": ["context", "output"]
@@ -10449,7 +10465,6 @@
             "type": "string"
           },
           "startCommand": {
-            "description": "Additional startup script to run after the project's start command",
             "type": "string"
           }
         }
@@ -10727,7 +10742,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["text", "binary"]
+            "const": "text"
           },
           "content": {
             "type": "string"
@@ -11070,6 +11085,73 @@
           }
         },
         "required": ["name", "extensions", "enabled"]
+      },
+      "OAuth": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "oauth"
+          },
+          "refresh": {
+            "type": "string"
+          },
+          "access": {
+            "type": "string"
+          },
+          "expires": {
+            "type": "number"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "enterpriseUrl": {
+            "type": "string"
+          }
+        },
+        "required": ["type", "refresh", "access", "expires"]
+      },
+      "ApiAuth": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "api"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": ["type", "key"]
+      },
+      "WellKnownAuth": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "wellknown"
+          },
+          "key": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": ["type", "key", "token"]
+      },
+      "Auth": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/OAuth"
+          },
+          {
+            "$ref": "#/components/schemas/ApiAuth"
+          },
+          {
+            "$ref": "#/components/schemas/WellKnownAuth"
+          }
+        ]
       }
     }
   }

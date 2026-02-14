@@ -1,6 +1,6 @@
-# OpenCode Desktop
+# VoltCode Desktop
 
-Native OpenCode desktop app, built with Tauri v2.
+Native VoltCode desktop app, built with Tauri v2.
 
 ## Development
 

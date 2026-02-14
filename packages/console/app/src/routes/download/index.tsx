@@ -1,18 +1,15 @@
 import "./index.css"
-import { Title, Meta } from "@solidjs/meta"
+import { Title, Meta, Link } from "@solidjs/meta"
 import { A, createAsync, query } from "@solidjs/router"
 import { Header } from "~/component/header"
 import { Footer } from "~/component/footer"
 import { IconCopy, IconCheck } from "~/component/icon"
 import { Faq } from "~/component/faq"
-import desktopAppIcon from "../../asset/lander/opencode-desktop-icon.png"
+import desktopAppIcon from "../../asset/lander/voltcode-desktop-icon.png"
 import { Legal } from "~/component/legal"
 import { config } from "~/config"
 import { createSignal, onMount, Show, JSX } from "solid-js"
 import { DownloadPlatform } from "./types"
-import { useI18n } from "~/context/i18n"
-import { useLanguage } from "~/context/language"
-import { LocaleLinks } from "~/component/locale-links"
 
 type OS = "macOS" | "Windows" | "Linux" | null
 
@@ -67,8 +64,6 @@ function CopyStatus() {
 }
 
 export default function Download() {
-  const i18n = useI18n()
-  const language = useLanguage()
   const [detectedOS, setDetectedOS] = createSignal<OS>(null)
 
   onMount(() => {
@@ -85,27 +80,24 @@ export default function Download() {
   }
   return (
     <main data-page="download">
-      <Title>{i18n.t("download.title")}</Title>
-      <LocaleLinks path="/download" />
-      <Meta name="description" content={i18n.t("download.meta.description")} />
+      <Title>VoltCode | Download</Title>
+      <Link rel="canonical" href={`${config.baseUrl}/download`} />
+      <Meta name="description" content="Download VoltCode for macOS, Windows, and Linux" />
       <div data-component="container">
         <Header hideGetStarted />
 
         <div data-component="content">
           <section data-component="download-hero">
             <div data-component="hero-icon">
-              <img src={desktopAppIcon} alt="" />
+              <img src={desktopAppIcon} alt="VoltCode Desktop" />
             </div>
             <div data-component="hero-text">
-              <h1>{i18n.t("download.hero.title")}</h1>
-              <p>{i18n.t("download.hero.subtitle")}</p>
+              <h1>Download VoltCode</h1>
+              <p>Available in Beta for macOS, Windows, and Linux</p>
               <Show when={detectedOS()}>
-                <a
-                  href={language.route(getDownloadHref(getDownloadPlatform(detectedOS())))}
-                  data-component="download-button"
-                >
+                <a href={getDownloadHref(getDownloadPlatform(detectedOS()))} data-component="download-button">
                   <IconDownload />
-                  {i18n.t("download.hero.button", { os: detectedOS()! })}
+                  Download for {detectedOS()}
                 </a>
               </Show>
             </div>
@@ -113,7 +105,7 @@ export default function Download() {
 
           <section data-component="download-section">
             <div data-component="section-label">
-              <span>[1]</span> {i18n.t("download.section.terminal")}
+              <span>[1]</span> VoltCode Terminal
             </div>
             <div data-component="section-content">
               <button
@@ -125,27 +117,27 @@ export default function Download() {
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("npm i -g opencode-ai")}>
+              <button data-component="cli-row" onClick={handleCopyClick("npm i -g voltcode-ai")}>
                 <code>
-                  npm i -g <strong>opencode-ai</strong>
+                  npm i -g <strong>voltcode-ai</strong>
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("bun add -g opencode-ai")}>
+              <button data-component="cli-row" onClick={handleCopyClick("bun add -g voltcode-ai")}>
                 <code>
-                  bun add -g <strong>opencode-ai</strong>
+                  bun add -g <strong>voltcode-ai</strong>
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("brew install anomalyco/tap/opencode")}>
+              <button data-component="cli-row" onClick={handleCopyClick("brew install anomalyco/tap/voltcode")}>
                 <code>
-                  brew install <strong>anomalyco/tap/opencode</strong>
+                  brew install <strong>anomalyco/tap/voltcode</strong>
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("paru -S opencode")}>
+              <button data-component="cli-row" onClick={handleCopyClick("paru -S voltcode")}>
                 <code>
-                  paru -S <strong>opencode</strong>
+                  paru -S <strong>voltcode</strong>
                 </code>
                 <CopyStatus />
               </button>
@@ -154,12 +146,12 @@ export default function Download() {
 
           <section data-component="download-section">
             <div data-component="section-label">
-              <span>[2]</span> {i18n.t("download.section.desktop")}
+              <span>[2]</span> VoltCode Desktop (Beta)
             </div>
             <div data-component="section-content">
-              <button data-component="cli-row" onClick={handleCopyClick("brew install --cask opencode-desktop")}>
+              <button data-component="cli-row" onClick={handleCopyClick("brew install --cask voltcode-desktop")}>
                 <code>
-                  brew install --cask <strong>opencode-desktop</strong>
+                  brew install --cask <strong>voltcode-desktop</strong>
                 </code>
                 <CopyStatus />
               </button>
@@ -173,10 +165,12 @@ export default function Download() {
                       />
                     </svg>
                   </span>
-                  <span>{i18n.t("download.platform.macosAppleSilicon")}</span>
+                  <span>
+                    macOS (<span data-slot="hide-narrow">Apple </span>Silicon)
+                  </span>
                 </div>
-                <a href={language.route(getDownloadHref("darwin-aarch64-dmg"))} data-component="action-button">
-                  {i18n.t("download.action.download")}
+                <a href={getDownloadHref("darwin-aarch64-dmg")} data-component="action-button">
+                  Download
                 </a>
               </div>
               <div data-component="download-row">
@@ -189,10 +183,10 @@ export default function Download() {
                       />
                     </svg>
                   </span>
-                  <span>{i18n.t("download.platform.macosIntel")}</span>
+                  <span>macOS (Intel)</span>
                 </div>
-                <a href={language.route(getDownloadHref("darwin-x64-dmg"))} data-component="action-button">
-                  {i18n.t("download.action.download")}
+                <a href={getDownloadHref("darwin-x64-dmg")} data-component="action-button">
+                  Download
                 </a>
               </div>
               <div data-component="download-row">
@@ -212,10 +206,10 @@ export default function Download() {
                       </defs>
                     </svg>
                   </span>
-                  <span>{i18n.t("download.platform.windowsX64")}</span>
+                  <span>Windows (x64)</span>
                 </div>
-                <a href={language.route(getDownloadHref("windows-x64-nsis"))} data-component="action-button">
-                  {i18n.t("download.action.download")}
+                <a href={getDownloadHref("windows-x64-nsis")} data-component="action-button">
+                  Download
                 </a>
               </div>
               <div data-component="download-row">
@@ -228,10 +222,10 @@ export default function Download() {
                       />
                     </svg>
                   </span>
-                  <span>{i18n.t("download.platform.linuxDeb")}</span>
+                  <span>Linux (.deb)</span>
                 </div>
-                <a href={language.route(getDownloadHref("linux-x64-deb"))} data-component="action-button">
-                  {i18n.t("download.action.download")}
+                <a href={getDownloadHref("linux-x64-deb")} data-component="action-button">
+                  Download
                 </a>
               </div>
               <div data-component="download-row">
@@ -244,10 +238,10 @@ export default function Download() {
                       />
                     </svg>
                   </span>
-                  <span>{i18n.t("download.platform.linuxRpm")}</span>
+                  <span>Linux (.rpm)</span>
                 </div>
-                <a href={language.route(getDownloadHref("linux-x64-rpm"))} data-component="action-button">
-                  {i18n.t("download.action.download")}
+                <a href={getDownloadHref("linux-x64-rpm")} data-component="action-button">
+                  Download
                 </a>
               </div>
               {/* Disabled temporarily as it doesn't work */}
@@ -263,7 +257,7 @@ export default function Download() {
                   </span>
                   <span>Linux (.AppImage)</span>
                 </div>
-                <a href={language.route(getDownloadHref("linux-x64-appimage"))} data-component="action-button">
+                <a href={getDownloadHref("linux-x64-appimage")} data-component="action-button">
                   Download
                 </a>
               </div>*/}
@@ -272,7 +266,7 @@ export default function Download() {
 
           <section data-component="download-section">
             <div data-component="section-label">
-              <span>[3]</span> {i18n.t("download.section.extensions")}
+              <span>[3]</span> VoltCode Extensions
             </div>
             <div data-component="section-content">
               <div data-component="download-row">
@@ -294,8 +288,8 @@ export default function Download() {
                   </span>
                   <span>VS Code</span>
                 </div>
-                <a href={language.route("/docs/ide/")} data-component="action-button">
-                  {i18n.t("download.action.install")}
+                <a href="https://opencode.ai/docs/ide/" data-component="action-button">
+                  Install
                 </a>
               </div>
 
@@ -318,8 +312,8 @@ export default function Download() {
                   </span>
                   <span>Cursor</span>
                 </div>
-                <a href={language.route("/docs/ide/")} data-component="action-button">
-                  {i18n.t("download.action.install")}
+                <a href="https://opencode.ai/docs/ide/" data-component="action-button">
+                  Install
                 </a>
               </div>
 
@@ -335,8 +329,8 @@ export default function Download() {
                   </span>
                   <span>Zed</span>
                 </div>
-                <a href={language.route("/docs/ide/")} data-component="action-button">
-                  {i18n.t("download.action.install")}
+                <a href="https://opencode.ai/docs/ide/" data-component="action-button">
+                  Install
                 </a>
               </div>
 
@@ -352,8 +346,8 @@ export default function Download() {
                   </span>
                   <span>Windsurf</span>
                 </div>
-                <a href={language.route("/docs/ide/")} data-component="action-button">
-                  {i18n.t("download.action.install")}
+                <a href="https://opencode.ai/docs/ide/" data-component="action-button">
+                  Install
                 </a>
               </div>
 
@@ -369,8 +363,8 @@ export default function Download() {
                   </span>
                   <span>VSCodium</span>
                 </div>
-                <a href={language.route("/docs/ide/")} data-component="action-button">
-                  {i18n.t("download.action.install")}
+                <a href="https://opencode.ai/docs/ide/" data-component="action-button">
+                  Install
                 </a>
               </div>
             </div>
@@ -378,7 +372,7 @@ export default function Download() {
 
           <section data-component="download-section">
             <div data-component="section-label">
-              <span>[4]</span> {i18n.t("download.section.integrations")}
+              <span>[4]</span> VoltCode Integrations
             </div>
             <div data-component="section-content">
               <div data-component="download-row">
@@ -393,8 +387,8 @@ export default function Download() {
                   </span>
                   <span>GitHub</span>
                 </div>
-                <a href={language.route("/docs/github/")} data-component="action-button">
-                  {i18n.t("download.action.install")}
+                <a href="https://opencode.ai/docs/github/" data-component="action-button">
+                  Install
                 </a>
               </div>
 
@@ -410,8 +404,8 @@ export default function Download() {
                   </span>
                   <span>GitLab</span>
                 </div>
-                <a href={language.route("/docs/gitlab/")} data-component="action-button">
-                  {i18n.t("download.action.install")}
+                <a href="https://opencode.ai/docs/gitlab/" data-component="action-button">
+                  Install
                 </a>
               </div>
             </div>
@@ -420,59 +414,61 @@ export default function Download() {
 
         <section data-component="faq">
           <div data-slot="section-title">
-            <h3>{i18n.t("common.faq")}</h3>
+            <h3>FAQ</h3>
           </div>
           <ul>
             <li>
-              <Faq question={i18n.t("home.faq.q1")}>{i18n.t("home.faq.a1")}</Faq>
-            </li>
-            <li>
-              <Faq question={i18n.t("home.faq.q2")}>
-                {i18n.t("home.faq.a2.before")} <a href={language.route("/docs")}>{i18n.t("home.faq.a2.link")}</a>.
+              <Faq question="What is VoltCode?">
+                VoltCode is an open source agent that helps you write and run code with any AI model. It's available as
+                a terminal-based interface, desktop app, or IDE extension.
               </Faq>
             </li>
             <li>
-              <Faq question={i18n.t("home.faq.q3")}>
-                {i18n.t("download.faq.a3.beforeLocal")}{" "}
-                <a href={language.route("/docs/providers/#lm-studio")} target="_blank">
-                  {i18n.t("download.faq.a3.localLink")}
+              <Faq question="How do I use VoltCode?">
+                The easiest way to get started is to read the <a href="/docs">intro</a>.
+              </Faq>
+            </li>
+            <li>
+              <Faq question="Do I need extra AI subscriptions to use VoltCode?">
+                Not necessarily, but probably. You'll need an AI subscription if you want to connect VoltCode to a paid
+                provider, although you can work with{" "}
+                <a href="/docs/providers/#lm-studio" target="_blank">
+                  local models
                 </a>{" "}
-                {i18n.t("download.faq.a3.afterLocal.beforeZen")}{" "}
-                <A href={language.route("/zen")}>{i18n.t("nav.zen")}</A>
-                {i18n.t("download.faq.a3.afterZen")}
+                for free. While we encourage users to use <A href="/zen">Zen</A>, VoltCode works with all popular
+                providers such as OpenAI, Anthropic, xAI etc.
               </Faq>
             </li>
             <li>
-              <Faq question={i18n.t("home.faq.q5")}>
-                {i18n.t("home.faq.a5.beforeDesktop")}{" "}
-                <a href={language.route("/download")}>{i18n.t("home.faq.a5.desktop")}</a> {i18n.t("home.faq.a5.and")}{" "}
-                <a href={language.route("/docs/cli/#web")}>{i18n.t("home.faq.a5.web")}</a>!
+              <Faq question="Can I only use VoltCode in the terminal?">
+                Not anymore! VoltCode is now available as an app for your <a href="/download">desktop</a> and{" "}
+                <a href="/docs/cli/#web">web</a>!
               </Faq>
             </li>
             <li>
-              <Faq question={i18n.t("home.faq.q6")}>
-                {i18n.t("download.faq.a5.p1")} {i18n.t("download.faq.a5.p2.beforeZen")}{" "}
-                <A href={language.route("/zen")}>{i18n.t("nav.zen")}</A>
-                {i18n.t("download.faq.a5.p2.afterZen")}
+              <Faq question="How much does VoltCode cost?">
+                VoltCode is 100% free to use. Any additional costs will come from your subscription to a model provider.
+                While VoltCode works with any model provider, we recommend using <A href="/zen">Zen</A>.
               </Faq>
             </li>
             <li>
-              <Faq question={i18n.t("home.faq.q7")}>
-                {i18n.t("download.faq.a6.p1")} {i18n.t("download.faq.a6.p2.beforeShare")}{" "}
-                <a href={language.route("/docs/share/#privacy")}>{i18n.t("download.faq.a6.shareLink")}</a>.
+              <Faq question="What about data and privacy?">
+                Your data and information is only stored when you create sharable links in VoltCode. Learn more about{" "}
+                <a href="/docs/share/#privacy">share pages</a>.
               </Faq>
             </li>
             <li>
-              <Faq question={i18n.t("home.faq.q8")}>
-                {i18n.t("home.faq.a8.p1")}{" "}
+              <Faq question="Is VoltCode open source?">
+                Yes, VoltCode is fully open source. The source code is public on{" "}
                 <a href={config.github.repoUrl} target="_blank">
-                  {i18n.t("nav.github")}
+                  GitHub
                 </a>{" "}
-                {i18n.t("home.faq.a8.p2")}{" "}
+                under the{" "}
                 <a href={`${config.github.repoUrl}?tab=MIT-1-ov-file#readme`} target="_blank">
-                  {i18n.t("home.faq.a8.mitLicense")}
+                  MIT License
                 </a>
-                {i18n.t("home.faq.a8.p3")}
+                , meaning anyone can use, modify, or contribute to its development. Anyone from the community can file
+                issues, submit pull requests, and extend functionality.
               </Faq>
             </li>
           </ul>

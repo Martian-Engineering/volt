@@ -79,11 +79,6 @@ a {
   color: inherit;
   -webkit-text-decoration: inherit;
   text-decoration: inherit;
-  cursor: default;
-}
-
-*[data-tauri-drag-region] {
-  app-region: drag;
 }
 
 /*

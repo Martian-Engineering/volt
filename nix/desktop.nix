@@ -21,11 +21,11 @@
   openssl,
   webkitgtk_4_1,
   gst_all_1,
-  opencode,
+  voltcode,
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
-  pname = "opencode-desktop";
-  inherit (opencode)
+  pname = "voltcode-desktop";
+  inherit (voltcode)
     version
     src
     node_modules
@@ -45,7 +45,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     rustc
     jq
     makeWrapper
-  ] ++ lib.optionals stdenv.hostPlatform.isLinux [ wrapGAppsHook4 ];
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isLinux [ wrapGAppsHook4 ];
 
   buildInputs = lib.optionals stdenv.isLinux [
     dbus
@@ -60,7 +61,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
     gst_all_1.gstreamer
     gst_all_1.gst-plugins-base
     gst_all_1.gst-plugins-good
-    gst_all_1.gst-plugins-bad
   ];
 
   strictDeps = true;
@@ -72,7 +72,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     patchShebangs packages/desktop/node_modules
 
     mkdir -p packages/desktop/src-tauri/sidecars
-    cp ${opencode}/bin/opencode packages/desktop/src-tauri/sidecars/opencode-cli-${stdenv.hostPlatform.rust.rustcTarget}
+    cp ${voltcode}/bin/voltcode packages/desktop/src-tauri/sidecars/voltcode-cli-${stdenv.hostPlatform.rust.rustcTarget}
   '';
 
   # see publish-tauri job in .github/workflows/publish.yml
@@ -86,15 +86,15 @@ rustPlatform.buildRustPackage (finalAttrs: {
   # should be removed once binary is renamed or decided otherwise
   # darwin output is a .app bundle so no conflict
   postFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
-    mv $out/bin/OpenCode $out/bin/opencode-desktop
-    sed -i 's|^Exec=OpenCode$|Exec=opencode-desktop|' $out/share/applications/OpenCode.desktop
+    mv $out/bin/VoltCode $out/bin/voltcode-desktop
+    sed -i 's|^Exec=VoltCode$|Exec=voltcode-desktop|' $out/share/applications/VoltCode.desktop
   '';
 
   meta = {
-    description = "OpenCode Desktop App";
+    description = "VoltCode Desktop App";
     homepage = "https://opencode.ai";
     license = lib.licenses.mit;
-    mainProgram = "opencode-desktop";
-    inherit (opencode.meta) platforms;
+    mainProgram = "voltcode-desktop";
+    inherit (voltcode.meta) platforms;
   };
 })

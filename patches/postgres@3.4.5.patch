@@ -1,0 +1,13 @@
+diff --git a/src/connection.js b/src/connection.js
+index 1234567..abcdefg 100644
+--- a/src/connection.js
++++ b/src/connection.js
+@@ -350,7 +350,7 @@
+   }
+
+   function reconnect() {
+-    setTimeout(connect, closedDate ? closedDate + delay - performance.now() : 0)
++    setTimeout(connect, closedDate ? Math.max(0, closedDate + delay - performance.now()) : 0)
+   }
+
+   function connected() {

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>ai.opencode.opencode</id>
+  <id>ai.voltcode.voltcode</id>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
 
-  <name>OpenCode</name>
+  <name>VoltCode</name>
   <summary>Open source AI coding agent</summary>
 
   <developer id="ly.anoma">
@@ -14,11 +14,11 @@
 
   <description>
     <p>
-      OpenCode is an open source agent that helps you write and run code with any AI model.
+      VoltCode is an open source agent that helps you write and run code with any AI model.
     </p>
   </description>
 
-  <launchable type="desktop-id">ai.opencode.opencode.desktop</launchable>
+  <launchable type="desktop-id">ai.voltcode.voltcode.desktop</launchable>
 
   <content_rating type="oars-1.1" />
 

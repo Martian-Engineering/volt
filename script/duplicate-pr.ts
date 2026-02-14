@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 
 import path from "path"
-import { pathToFileURL } from "bun"
-import { createOpencode } from "@opencode-ai/sdk"
+import { createVoltcode } from "@opencode-ai/sdk"
 import { parseArgs } from "util"
 
 async function main() {
@@ -35,7 +34,7 @@ Examples:
     process.exit(1)
   }
 
-  const opencode = await createOpencode({ port: 0 })
+  const voltcode = await createVoltcode({ port: 0 })
 
   try {
     const parts: Array<{ type: "text"; text: string } | { type: "file"; url: string; filename: string; mime: string }> =
@@ -50,7 +49,7 @@ Examples:
       }
       parts.push({
         type: "file",
-        url: pathToFileURL(resolved).href,
+        url: `file://${resolved}`,
         filename: path.basename(resolved),
         mime: "text/plain",
       })
@@ -58,8 +57,8 @@ Examples:
 
     parts.push({ type: "text", text: message })
 
-    const session = await opencode.client.session.create()
-    const result = await opencode.client.session
+    const session = await voltcode.client.session.create()
+    const result = await voltcode.client.session
       .prompt({
         path: { id: session.data!.id },
         body: {
@@ -72,7 +71,7 @@ Examples:
 
     console.log(result.trim())
   } finally {
-    opencode.server.close()
+    voltcode.server.close()
   }
 }
 

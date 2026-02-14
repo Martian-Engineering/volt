@@ -1,8 +1,7 @@
-import { createOpencodeClient, createOpencodeServer } from "@opencode-ai/sdk"
-import { pathToFileURL } from "bun"
+import { createVoltcodeClient, createVoltcodeServer } from "@opencode-ai/sdk"
 
-const server = await createOpencodeServer()
-const client = createOpencodeClient({ baseUrl: server.url })
+const server = await createVoltcodeServer()
+const client = createVoltcodeClient({ baseUrl: server.url })
 
 const input = await Array.fromAsync(new Bun.Glob("packages/core/*.ts").scan())
 
@@ -18,7 +17,7 @@ for await (const file of input) {
           {
             type: "file",
             mime: "text/plain",
-            url: pathToFileURL(file).href,
+            url: `file://${file}`,
           },
           {
             type: "text",
@@ -42,7 +41,7 @@ await Promise.all(
           {
             type: "file",
             mime: "text/plain",
-            url: pathToFileURL(file).href,
+            url: `file://${file}`,
           },
           {
             type: "text",

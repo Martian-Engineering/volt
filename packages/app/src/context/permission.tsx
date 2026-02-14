@@ -6,8 +6,7 @@ import { Persist, persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "./global-sync"
 import { useParams } from "@solidjs/router"
-import { base64Encode } from "@opencode-ai/util/encode"
-import { decode64 } from "@/utils/base64"
+import { base64Decode, base64Encode } from "@opencode-ai/util/encode"
 
 type PermissionRespondFn = (input: {
   sessionID: string
@@ -33,7 +32,7 @@ function isNonAllowRule(rule: unknown) {
   return false
 }
 
-function hasPermissionPromptRules(permission: unknown) {
+function hasAutoAcceptPermissionConfig(permission: unknown) {
   if (!permission) return false
   if (typeof permission === "string") return permission !== "allow"
   if (typeof permission !== "object") return false
@@ -54,10 +53,10 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
     const globalSync = useGlobalSync()
 
     const permissionsEnabled = createMemo(() => {
-      const directory = decode64(params.dir)
+      const directory = params.dir ? base64Decode(params.dir) : undefined
       if (!directory) return false
       const [store] = globalSync.child(directory)
-      return hasPermissionPromptRules(store.config.permission)
+      return hasAutoAcceptPermissionConfig(store.config.permission)
     })
 
     const [store, setStore, _, ready] = persisted(
@@ -67,22 +66,7 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       }),
     )
 
-    const MAX_RESPONDED = 1000
-    const RESPONDED_TTL_MS = 60 * 60 * 1000
-    const responded = new Map<string, number>()
-    const enableVersion = new Map<string, number>()
-
-    function pruneResponded(now: number) {
-      for (const [id, ts] of responded) {
-        if (now - ts < RESPONDED_TTL_MS) break
-        responded.delete(id)
-      }
-
-      for (const id of responded.keys()) {
-        if (responded.size <= MAX_RESPONDED) break
-        responded.delete(id)
-      }
-    }
+    const responded = new Set<string>()
 
     const respond: PermissionRespondFn = (input) => {
       globalSDK.client.permission.respond(input).catch(() => {
@@ -91,12 +75,8 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
     }
 
     function respondOnce(permission: PermissionRequest, directory?: string) {
-      const now = Date.now()
-      const hit = responded.has(permission.id)
-      responded.delete(permission.id)
-      responded.set(permission.id, now)
-      pruneResponded(now)
-      if (hit) return
+      if (responded.has(permission.id)) return
+      responded.add(permission.id)
       respond({
         sessionID: permission.sessionID,
         permissionID: permission.id,
@@ -115,13 +95,6 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       return store.autoAcceptEdits[key] ?? store.autoAcceptEdits[sessionID] ?? false
     }
 
-    function bumpEnableVersion(sessionID: string, directory?: string) {
-      const key = acceptKey(sessionID, directory)
-      const next = (enableVersion.get(key) ?? 0) + 1
-      enableVersion.set(key, next)
-      return next
-    }
-
     const unsubscribe = globalSDK.event.listen((e) => {
       const event = e.details
       if (event?.type !== "permission.asked") return
@@ -136,7 +109,6 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
 
     function enable(sessionID: string, directory: string) {
       const key = acceptKey(sessionID, directory)
-      const version = bumpEnableVersion(sessionID, directory)
       setStore(
         produce((draft) => {
           draft.autoAcceptEdits[key] = true
@@ -147,8 +119,6 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       globalSDK.client.permission
         .list({ directory })
         .then((x) => {
-          if (enableVersion.get(key) !== version) return
-          if (!isAutoAccepting(sessionID, directory)) return
           for (const perm of x.data ?? []) {
             if (!perm?.id) continue
             if (perm.sessionID !== sessionID) continue
@@ -160,7 +130,6 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
     }
 
     function disable(sessionID: string, directory?: string) {
-      bumpEnableVersion(sessionID, directory)
       const key = directory ? acceptKey(sessionID, directory) : undefined
       setStore(
         produce((draft) => {

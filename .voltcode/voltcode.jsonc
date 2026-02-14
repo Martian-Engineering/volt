@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // "plugin": ["voltcode-openai-codex-auth"],
+  // "enterprise": {
+  //   "url": "https://enterprise.dev.opencode.ai",
+  // },
+  "instructions": ["STYLE_GUIDE.md"],
+  "model": "voltropy/glm-4.7",
+  // "small_model": "glm-4.5-flash",
+  "provider": {
+    "voltcode": {
+      "options": {},
+    },
+  },
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+    },
+  },
+  "tools": {
+    "github-triage": false,
+    "github-pr-search": false,
+  },
+}

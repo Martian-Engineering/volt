@@ -29,7 +29,7 @@ export async function GET(input: APIEvent) {
           id,
           object: "model",
           created: Math.floor(Date.now() / 1000),
-          owned_by: "opencode",
+          owned_by: "voltcode",
         })),
     }),
     {

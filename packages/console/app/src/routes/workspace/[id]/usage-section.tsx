@@ -6,7 +6,6 @@ import { withActor } from "~/context/auth.withActor"
 import { IconChevronLeft, IconChevronRight, IconBreakdown } from "~/component/icon"
 import styles from "./usage-section.module.css"
 import { createStore } from "solid-js/store"
-import { useI18n } from "~/context/i18n"
 
 const PAGE_SIZE = 50
 
@@ -21,7 +20,6 @@ const queryUsageInfo = query(getUsageInfo, "usage.list")
 
 export function UsageSection() {
   const params = useParams()
-  const i18n = useI18n()
   const usage = createAsync(() => queryUsageInfo(params.id!, 0))
   const [store, setStore] = createStore({ page: 0, usage: [] as Awaited<ReturnType<typeof getUsageInfo>> })
   const [openBreakdownId, setOpenBreakdownId] = createSignal<string | null>(null)
@@ -74,26 +72,26 @@ export function UsageSection() {
   return (
     <section class={styles.root}>
       <div data-slot="section-title">
-        <h2>{i18n.t("workspace.usage.title")}</h2>
-        <p>{i18n.t("workspace.usage.subtitle")}</p>
+        <h2>Usage History</h2>
+        <p>Recent API usage and costs.</p>
       </div>
       <div data-slot="usage-table">
         <Show
           when={hasResults()}
           fallback={
             <div data-component="empty-state">
-              <p>{i18n.t("workspace.usage.empty")}</p>
+              <p>Make your first API call to get started.</p>
             </div>
           }
         >
           <table data-slot="usage-table-element">
             <thead>
               <tr>
-                <th>{i18n.t("workspace.usage.table.date")}</th>
-                <th>{i18n.t("workspace.usage.table.model")}</th>
-                <th>{i18n.t("workspace.usage.table.input")}</th>
-                <th>{i18n.t("workspace.usage.table.output")}</th>
-                <th>{i18n.t("workspace.usage.table.cost")}</th>
+                <th>Date</th>
+                <th>Model</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -128,18 +126,16 @@ export function UsageSection() {
                           <Show when={isInputOpen()}>
                             <div data-slot="breakdown-popup" onClick={(e) => e.stopPropagation()}>
                               <div data-slot="breakdown-row">
-                                <span data-slot="breakdown-label">{i18n.t("workspace.usage.breakdown.input")}</span>
+                                <span data-slot="breakdown-label">Input</span>
                                 <span data-slot="breakdown-value">{usage.inputTokens}</span>
                               </div>
                               <div data-slot="breakdown-row">
-                                <span data-slot="breakdown-label">{i18n.t("workspace.usage.breakdown.cacheRead")}</span>
+                                <span data-slot="breakdown-label">Cache Read</span>
                                 <span data-slot="breakdown-value">{usage.cacheReadTokens ?? 0}</span>
                               </div>
                               <Show when={isClaude}>
                                 <div data-slot="breakdown-row">
-                                  <span data-slot="breakdown-label">
-                                    {i18n.t("workspace.usage.breakdown.cacheWrite")}
-                                  </span>
+                                  <span data-slot="breakdown-label">Cache Write</span>
                                   <span data-slot="breakdown-value">{usage.cacheWrite5mTokens ?? 0}</span>
                                 </div>
                               </Show>
@@ -162,11 +158,11 @@ export function UsageSection() {
                           <Show when={isOutputOpen()}>
                             <div data-slot="breakdown-popup" onClick={(e) => e.stopPropagation()}>
                               <div data-slot="breakdown-row">
-                                <span data-slot="breakdown-label">{i18n.t("workspace.usage.breakdown.output")}</span>
+                                <span data-slot="breakdown-label">Output</span>
                                 <span data-slot="breakdown-value">{usage.outputTokens}</span>
                               </div>
                               <div data-slot="breakdown-row">
-                                <span data-slot="breakdown-label">{i18n.t("workspace.usage.breakdown.reasoning")}</span>
+                                <span data-slot="breakdown-label">Reasoning</span>
                                 <span data-slot="breakdown-value">{usage.reasoningTokens ?? 0}</span>
                               </div>
                             </div>
@@ -174,14 +170,7 @@ export function UsageSection() {
                         </div>
                       </td>
                       <td data-slot="usage-cost">
-                        <Show
-                          when={usage.enrichment?.plan === "sub"}
-                          fallback={<>${((usage.cost ?? 0) / 100000000).toFixed(4)}</>}
-                        >
-                          {i18n.t("workspace.usage.subscription", {
-                            amount: ((usage.cost ?? 0) / 100000000).toFixed(4),
-                          })}
-                        </Show>
+                        ${usage.enrichment?.plan === "sub" ? "0.0000" : ((usage.cost ?? 0) / 100000000).toFixed(4)}
                       </td>
                     </tr>
                   )

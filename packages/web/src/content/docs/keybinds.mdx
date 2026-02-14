@@ -3,9 +3,9 @@ title: Keybinds
 description: Customize your keybinds.
 ---
 
-OpenCode has a list of keybinds that you can customize through the OpenCode config.
+VoltCode has a list of keybinds that you can customize through the VoltCode config.
 
-```json title="opencode.json"
+```json title="voltcode.json"
 {
   "$schema": "https://opencode.ai/config.json",
   "keybinds": {
@@ -97,8 +97,7 @@ OpenCode has a list of keybinds that you can customize through the OpenCode conf
     "history_next": "down",
     "terminal_suspend": "ctrl+z",
     "terminal_title_toggle": "none",
-    "tips_toggle": "<leader>h",
-    "display_thinking": "none"
+    "tips_toggle": "<leader>h"
   }
 }
 ```
@@ -107,7 +106,7 @@ OpenCode has a list of keybinds that you can customize through the OpenCode conf
 
 ## Leader key
 
-OpenCode uses a `leader` key for most keybinds. This avoids conflicts in your terminal.
+VoltCode uses a `leader` key for most keybinds. This avoids conflicts in your terminal.
 
 By default, `ctrl+x` is the leader key and most actions require you to first press the leader key and then the shortcut. For example, to start a new session you first press `ctrl+x` and then press `n`.
 
@@ -119,7 +118,7 @@ You don't need to use a leader key for your keybinds but we recommend doing so.
 
 You can disable a keybind by adding the key to your config with a value of "none".
 
-```json title="opencode.json"
+```json title="voltcode.json"
 {
   "$schema": "https://opencode.ai/config.json",
   "keybinds": {
@@ -132,7 +131,7 @@ You can disable a keybind by adding the key to your config with a value of "none
 
 ## Desktop prompt shortcuts
 
-The OpenCode desktop app prompt input supports common Readline/Emacs-style shortcuts for editing text. These are built-in and currently not configurable via `opencode.json`.
+The VoltCode desktop app prompt input supports common Readline/Emacs-style shortcuts for editing text. These are built-in and currently not configurable via `voltcode.json`.
 
 | Shortcut | Action                                   |
 | -------- | ---------------------------------------- |

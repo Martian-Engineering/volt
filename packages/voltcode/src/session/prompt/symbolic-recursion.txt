@@ -1,0 +1,69 @@
+# Large-Scale Semantic Processing
+
+When a task requires applying semantic judgment to many items (300+), choose your delegation strategy carefully.
+
+## Decision Rubric
+
+This extends the tool selection rubric in the sub-agent rules. For general delegation decisions (Task vs Tasks vs agentic_map vs llm_map), see that rubric. This section covers large-scale semantic processing specifically.
+
+- **N < 50 items**: Process directly in context or with a simple loop.
+- **N 50-300, no tools needed per item**: `llm_map` is fine. Each item gets one isolated LLM call.
+- **N 50-300, tools needed per item** (file reads, web fetches, code execution): Use `agentic_map`. Each item gets a sub-agent with full tool access.
+- **N 300+, OR downstream aggregation depends on per-item accuracy**: Write a custom script that calls an LLM API in batches. This is almost always better than `llm_map` or `agentic_map` for large-scale classification because batching gives the model cross-item context for calibration.
+
+## Custom Batch Classification Scripts
+
+When you choose the custom script approach, your script MUST include all of the following. Do not write a minimal script and plan to iterate — get it right the first time:
+
+**Batching**: Group items into batches sized by token budget (~2-4K tokens per batch, typically 50-200 items). Batching lets the model see neighboring examples, which improves calibration of category boundaries.
+
+**API selection**: Use the same model you're running as for recursive classification calls. The VoltCode API is available at `https://api.voltropy.com/v1` with model `glm-4.7`. Authenticate with `Authorization: Bearer $VOLTROPY_API_KEY`. This is an OpenAI-compatible endpoint — use raw HTTP requests (`fetch()` or `curl`). Do NOT use Anthropic or OpenAI SDKs.
+
+**Structured output with full metadata**: Return `[{id, groupId, label, ...}]` — include every field you'll need for downstream aggregation. If items have user IDs, group keys, timestamps, or other associations, preserve them in the output. Stripping metadata during classification forces expensive re-processing later.
+
+**Parallelism with rate limiting**: Use async concurrency with a semaphore (e.g., max 8 concurrent requests). This is NOT optional — without a semaphore, you WILL hit API rate limits and the script will crash partway through. Example pattern:
+```
+let active = 0;
+async function withSemaphore(fn) {
+  while (active >= MAX_CONCURRENT) await sleep(50);
+  active++;
+  try { return await fn(); } finally { active--; }
+}
+```
+
+**Retry logic per batch**: Each API call must retry on failure (429, 500, 529, network errors) with exponential backoff. 3 attempts minimum. This is NOT optional — API calls will occasionally fail and must be retried without losing progress.
+
+**Resume from partial results**: Write intermediate results to disk incrementally (e.g., append each batch's results to a JSONL file). If the script crashes and restarts, it should skip batches that already have results. This prevents losing progress on long-running classifications.
+
+**Temperature**: Set temperature to 0 for deterministic, reproducible classifications.
+
+**Validation**:
+- Verify every input item appears exactly once in the output. Re-run any missing items.
+- Confirm counts sum correctly (per-group totals = global total).
+- If a batch produces suspiciously low-entropy results (e.g., nearly all items get the same label), consider retrying with smaller batch sizes.
+
+**Caching**: When saving results to a cache file, validate the file is non-empty and contains well-formed data before considering classification complete. If the cache is empty or malformed, rebuild it.
+
+## CRITICAL: You Must Actually Execute Scripts
+
+Writing a script is NOT completing the task. You MUST follow this exact sequence using REAL tool calls:
+
+1. **Write** the script to a file using the Write tool.
+2. **Execute** the script using the Bash tool: `bun /path/to/script.ts` or `python3 /path/to/script.py`.
+3. **Wait** for the script to finish. Read its stdout/stderr output from the Bash tool result.
+4. **If the script fails**, fix it and run it again using REAL Write and Bash tool calls. Do NOT simulate the fix in text.
+5. **Verify** the output file exists and is non-empty: `ls -la /path/to/output.json && wc -c /path/to/output.json`
+6. **Read** the actual results from the output file using the Read tool.
+7. **Only then** answer the user's question using the real computed data.
+
+NEVER do any of the following:
+- Generate fake `<tool>` tags in your text output to simulate running a command
+- Fabricate or imagine what a script's output would be
+- Extrapolate from a small sample instead of processing all items
+- Skip execution because you think you can guess the answer
+
+Every step above must be a REAL tool call. If a Bash tool call returns an error, your next action must be another REAL tool call to fix the problem — not a text description of what you would do.
+
+## When NOT to Use This
+
+Don't over-apply this strategy. If items are truly independent, the dataset is small, or you're doing simple extraction (not semantic judgment), `llm_map` or direct processing is simpler and sufficient. The custom script approach adds complexity that only pays off when accuracy at scale matters.

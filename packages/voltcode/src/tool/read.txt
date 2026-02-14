@@ -1,0 +1,23 @@
+Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The filePath parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
+- You can read image files using this tool.
+
+Large File Handling:
+- Files larger than ~25k tokens (~75KB) are handled seamlessly
+- When LCM is available, large files are automatically stored and you receive:
+  - A file_id for later interaction
+  - An exploration summary of the file content
+  - Spawn a Task sub-agent with the file path to ask SPECIFIC questions (e.g., "How many entries?", "What keys exist?", "Find items matching X")
+  - Do NOT ask for "the full content" - that defeats the purpose. Ask targeted questions instead.
+- When LCM is not available (or storage fails), the file is read using streaming with pagination
+- This tool always succeeds for readable files - it never returns error messages suggesting alternatives like grep or tail
+- Large files work transparently; you do not need to do anything special

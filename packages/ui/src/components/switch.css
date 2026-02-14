@@ -1,5 +1,4 @@
 [data-component="switch"] {
-  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -86,9 +85,9 @@
     background-color: var(--surface-hover);
   }
 
-  &:not([data-readonly]) [data-slot="switch-input"]:focus-visible ~ [data-slot="switch-control"] {
+  &:focus-within:not([data-readonly]) [data-slot="switch-control"] {
     border-color: var(--border-focus);
-    box-shadow: var(--shadow-xs-border-focus);
+    box-shadow: 0 0 0 2px var(--surface-focus);
   }
 
   &[data-checked] [data-slot="switch-control"] {

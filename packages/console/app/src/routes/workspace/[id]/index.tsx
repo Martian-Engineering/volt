@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createMemo } from "solid-js"
+import { Show, createMemo } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createAsync, useParams, useAction, useSubmission } from "@solidjs/router"
 import { NewUserSection } from "./new-user-section"
@@ -8,13 +8,9 @@ import { ProviderSection } from "./provider-section"
 import { GraphSection } from "./graph-section"
 import { IconLogo } from "~/component/icon"
 import { querySessionInfo, queryBillingInfo, createCheckoutUrl, formatBalance } from "../common"
-import { useI18n } from "~/context/i18n"
-import { useLanguage } from "~/context/language"
 
 export default function () {
   const params = useParams()
-  const i18n = useI18n()
-  const language = useLanguage()
   const userInfo = createAsync(() => querySessionInfo(params.id!))
   const billingInfo = createAsync(() => queryBillingInfo(params.id!))
   const checkoutAction = useAction(createCheckoutUrl)
@@ -39,16 +35,16 @@ export default function () {
         <IconLogo />
         <p>
           <span>
-            {i18n.t("workspace.home.banner.beforeLink")}{" "}
-            <a target="_blank" href={language.route("/docs/zen")}>
-              {i18n.t("common.learnMore")}
+            Reliable optimized models for coding agents.{" "}
+            <a target="_blank" href="/docs/zen">
+              Learn more
             </a>
             .
           </span>
           <Show when={userInfo()?.isAdmin}>
             <span data-slot="billing-info">
               <Show
-                when={billingInfo()?.customerID}
+                when={billingInfo()?.reload}
                 fallback={
                   <button
                     data-color="primary"
@@ -56,14 +52,12 @@ export default function () {
                     disabled={checkoutSubmission.pending || store.checkoutRedirecting}
                     onClick={onClickCheckout}
                   >
-                    {checkoutSubmission.pending || store.checkoutRedirecting
-                      ? i18n.t("workspace.home.billing.loading")
-                      : i18n.t("workspace.home.billing.enable")}
+                    {checkoutSubmission.pending || store.checkoutRedirecting ? "Loading..." : "Enable billing"}
                   </button>
                 }
               >
                 <span data-slot="balance">
-                  {i18n.t("workspace.home.billing.currentBalance")} <b>${balance()}</b>
+                  Current balance <b>${balance()}</b>
                 </span>
               </Show>
             </span>

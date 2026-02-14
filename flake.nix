@@ -1,5 +1,5 @@
 {
-  description = "OpenCode development flake";
+  description = "VoltCode development flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -30,47 +30,40 @@
         };
       });
 
-      overlays = {
-        default =
-          final: _prev:
-          let
-            node_modules = final.callPackage ./nix/node_modules.nix {
-              inherit rev;
-            };
-            opencode = final.callPackage ./nix/opencode.nix {
-              inherit node_modules;
-            };
-            desktop = final.callPackage ./nix/desktop.nix {
-              inherit opencode;
-            };
-          in
-          {
-            inherit opencode;
-            opencode-desktop = desktop;
-          };
-      };
-
       packages = forEachSystem (
         pkgs:
         let
           node_modules = pkgs.callPackage ./nix/node_modules.nix {
             inherit rev;
           };
-          opencode = pkgs.callPackage ./nix/opencode.nix {
+          voltcode = pkgs.callPackage ./nix/voltcode.nix {
             inherit node_modules;
           };
           desktop = pkgs.callPackage ./nix/desktop.nix {
-            inherit opencode;
+            inherit voltcode;
           };
+          # nixpkgs cpu naming to bun cpu naming
+          cpuMap = { x86_64 = "x64"; aarch64 = "arm64"; };
+          # matrix of node_modules builds - these will always fail due to fakeHash usage
+          # but allow computation of the correct hash from any build machine for any cpu/os
+          # see the update-nix-hashes workflow for usage
+          moduleUpdaters = pkgs.lib.listToAttrs (
+            pkgs.lib.concatMap (cpu:
+              map (os: {
+                name = "${cpu}-${os}_node_modules";
+                value = node_modules.override {
+                  bunCpu = cpuMap.${cpu};
+                  bunOs = os;
+                  hash = pkgs.lib.fakeHash;
+                };
+              }) [ "linux" "darwin" ]
+            ) [ "x86_64" "aarch64" ]
+          );
         in
         {
-          default = opencode;
-          inherit opencode desktop;
-          # Updater derivation with fakeHash - build fails and reveals correct hash
-          node_modules_updater = node_modules.override {
-            hash = pkgs.lib.fakeHash;
-          };
-        }
+          default = voltcode;
+          inherit voltcode desktop;
+        } // moduleUpdaters
       );
     };
 }

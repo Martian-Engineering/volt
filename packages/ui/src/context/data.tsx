@@ -48,21 +48,16 @@ export type QuestionRejectFn = (input: { requestID: string }) => void
 
 export type NavigateToSessionFn = (sessionID: string) => void
 
-export type SessionHrefFn = (sessionID: string) => string
-
-export type SyncSessionFn = (sessionID: string) => void | Promise<void>
-
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
     data: Data
     directory: string
+    devMode?: boolean
     onPermissionRespond?: PermissionRespondFn
     onQuestionReply?: QuestionReplyFn
     onQuestionReject?: QuestionRejectFn
     onNavigateToSession?: NavigateToSessionFn
-    onSessionHref?: SessionHrefFn
-    onSyncSession?: SyncSessionFn
   }) => {
     return {
       get store() {
@@ -71,12 +66,13 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       get directory() {
         return props.directory
       },
+      get devMode() {
+        return props.devMode ?? false
+      },
       respondToPermission: props.onPermissionRespond,
       replyToQuestion: props.onQuestionReply,
       rejectQuestion: props.onQuestionReject,
       navigateToSession: props.onNavigateToSession,
-      sessionHref: props.onSessionHref,
-      syncSession: props.onSyncSession,
     }
   },
 })
