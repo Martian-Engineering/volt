@@ -2,8 +2,9 @@
 
 **A terminal-based AI coding agent with Lossless Context Management. Research preview.**
 
----
+For full details, read the [LCM technical paper](papers.voltropy.com/LCM).
 
+---
 ## What is Volt?
 
 Volt is an open-source AI coding agent that introduces **Lossless Context Management (LCM)**, a deterministic architecture for LLM memory that outperforms frontier coding agents on long-context tasks. In practice, this means:
@@ -42,9 +43,9 @@ In agentic coding sessions, tool results frequently include file contents that i
 
 ### Results
 
-Volt with LCM achieves higher scores than Claude Code across the OOLONG long-context benchmark at every context length between 8K and 1M tokens, using Opus 4.6. The architecture-centric approach yields reliability and cost advantages for production aggregation workloads while adding zero overhead for short tasks.
+Volt with LCM achieves higher scores than Claude Code on the OOLONG long-context benchmark, including at every context length between 32K and 1M tokens, using Opus 4.6. The architecture-centric approach yields reliability and cost advantages for production aggregation workloads while adding zero overhead for short tasks.
 
-For the full technical details, see the [LCM paper](https://arxiv.org/abs/2502.XXXXX).
+For the full technical details, see the [LCM paper](papers.voltropy.com/LCM).
 
 ---
 
