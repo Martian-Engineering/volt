@@ -120,16 +120,3 @@ When Volt spawns sub-agents or parallel operators, the TUI displays a live **tas
 > **Note:** The links below point to OpenCode's documentation. Volt is a fork of OpenCode and we have tried to maintain compatibility, but we make no guarantees of full compatibility. Some features or configuration options may differ.
 
 - [Full documentation](https://opencode.ai/docs) (OpenCode)
-
-### FAQ
-
-#### How is this different from Claude Code?
-
-It's very similar to Claude Code in terms of capability. Here are the key differences:
-
-- 100% open source
-- Not coupled to any provider. Volt can be used with Claude, OpenAI, Google, or even local models. As models evolve the gaps between them will close and pricing will drop, so being provider-agnostic is important.
-- Lossless Context Management (LCM) for deterministic, infinite-horizon context handling
-- Out of the box LSP support
-- A focus on TUI, pushing the limits of what's possible in the terminal
-- A client/server architecture that allows Volt to run on your computer while you drive it remotely from a mobile app — the TUI frontend is just one of the possible clients
