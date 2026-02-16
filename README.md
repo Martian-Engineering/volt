@@ -1,8 +1,8 @@
-# Volt
+# Volt 
 
-**A terminal-based AI coding agent with Lossless Context Management. Research preview.**
+**A terminal-based AI coding agent with Lossless Context Management.** 
 
-For full details, read the [LCM technical paper](papers.voltropy.com/LCM).
+This is a research preview from Voltropy. For full details, read the [LCM technical paper](papers.voltropy.com/LCM).
 
 ---
 ## What is Volt?
