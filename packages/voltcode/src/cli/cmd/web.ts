@@ -31,7 +31,7 @@ function getNetworkIPs() {
 export const WebCommand = cmd({
   command: "web",
   builder: (yargs) => withNetworkOptions(yargs),
-  describe: "start voltcode server and open web interface",
+  describe: "start volt server and open web interface",
   handler: async (args) => {
     if (!Flag.VOLTCODE_SERVER_PASSWORD) {
       UI.println(UI.Style.TEXT_WARNING_BOLD + "!  " + "VOLTCODE_SERVER_PASSWORD is not set; server is unsecured.")

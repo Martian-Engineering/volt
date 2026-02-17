@@ -5,7 +5,7 @@ import { Installation } from "../../installation"
 
 export const UpgradeCommand = {
   command: "upgrade [target]",
-  describe: "upgrade voltcode to the latest or a specific version",
+  describe: "upgrade volt to the latest or a specific version",
   builder: (yargs: Argv) => {
     return yargs
       .positional("target", {
@@ -27,7 +27,7 @@ export const UpgradeCommand = {
     const detectedMethod = await Installation.method()
     const method = (args.method as Installation.Method) ?? detectedMethod
     if (method === "unknown") {
-      prompts.log.error(`voltcode is installed to ${process.execPath} and may be managed by a package manager`)
+      prompts.log.error(`volt is installed to ${process.execPath} and may be managed by a package manager`)
       const install = await prompts.select({
         message: "Install anyways?",
         options: [
@@ -45,7 +45,7 @@ export const UpgradeCommand = {
     const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest()
 
     if (Installation.VERSION === target) {
-      prompts.log.warn(`voltcode upgrade skipped: ${target} is already installed`)
+      prompts.log.warn(`volt upgrade skipped: ${target} is already installed`)
       prompts.outro("Done")
       return
     }

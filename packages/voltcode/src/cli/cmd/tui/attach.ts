@@ -6,7 +6,7 @@ import { getTerminalColorWarning } from "@/util/terminal-color"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
-  describe: "attach to a running voltcode server",
+  describe: "attach to a running volt server",
   builder: (yargs) =>
     yargs
       .positional("url", {

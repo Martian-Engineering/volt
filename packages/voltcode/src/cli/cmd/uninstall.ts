@@ -23,7 +23,7 @@ interface RemovalTargets {
 
 export const UninstallCommand = {
   command: "uninstall",
-  describe: "uninstall voltcode and remove all related files",
+  describe: "uninstall volt and remove all related files",
   builder: (yargs: Argv) =>
     yargs
       .option("keep-config", {

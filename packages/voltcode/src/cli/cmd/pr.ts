@@ -5,7 +5,7 @@ import { $ } from "bun"
 
 export const PrCommand = cmd({
   command: "pr <number>",
-  describe: "fetch and checkout a GitHub PR branch, then run voltcode",
+  describe: "fetch and checkout a GitHub PR branch, then run volt",
   builder: (yargs) =>
     yargs.positional("number", {
       type: "number",
@@ -68,10 +68,10 @@ export const PrCommand = cmd({
               const sessionMatch = prInfo.body.match(/https:\/\/opncd\.ai\/s\/([a-zA-Z0-9_-]+)/)
               if (sessionMatch) {
                 const sessionUrl = sessionMatch[0]
-                UI.println(`Found voltcode session: ${sessionUrl}`)
+                UI.println(`Found volt session: ${sessionUrl}`)
                 UI.println(`Importing session...`)
 
-                const importResult = await $`voltcode import ${sessionUrl}`.nothrow()
+                const importResult = await $`volt import ${sessionUrl}`.nothrow()
                 if (importResult.exitCode === 0) {
                   const importOutput = importResult.text().trim()
                   // Extract session ID from the output (format: "Imported session: <session-id>")
@@ -88,23 +88,23 @@ export const PrCommand = cmd({
 
         UI.println(`Successfully checked out PR #${prNumber} as branch '${localBranchName}'`)
         UI.println()
-        UI.println("Starting voltcode...")
+        UI.println("Starting volt...")
         UI.println()
 
-        // Launch voltcode TUI with session ID if available
+        // Launch volt TUI with session ID if available
         const { spawn } = await import("child_process")
-        const voltcodeArgs = sessionId ? ["-s", sessionId] : []
-        const voltcodeProcess = spawn("voltcode", voltcodeArgs, {
+        const voltArgs = sessionId ? ["-s", sessionId] : []
+        const voltProcess = spawn("volt", voltArgs, {
           stdio: "inherit",
           cwd: process.cwd(),
         })
 
         await new Promise<void>((resolve, reject) => {
-          voltcodeProcess.on("exit", (code) => {
+          voltProcess.on("exit", (code) => {
             if (code === 0) resolve()
-            else reject(new Error(`voltcode exited with code ${code}`))
+            else reject(new Error(`volt exited with code ${code}`))
           })
-          voltcodeProcess.on("error", reject)
+          voltProcess.on("error", reject)
         })
       },
     })

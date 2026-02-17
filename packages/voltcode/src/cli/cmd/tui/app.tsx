@@ -681,7 +681,7 @@ function App() {
     toast.show({
       variant: "info",
       title: "Update Available",
-      message: `VoltCode v${evt.properties.version} is available. Run 'voltcode upgrade' to update manually.`,
+      message: `VoltCode v${evt.properties.version} is available. Run 'volt upgrade' to update manually.`,
       duration: 10000,
     })
   })
