@@ -15,8 +15,16 @@ const parameters = z.object({
 interface LcmExpandMetadata {
   summaryId: string
   summaryKind?: LcmDb.SummaryKind
+  summaryLevel?: LcmDb.SummaryLevel
+  summaryType?: LcmDb.SummaryType
+  isOffContext?: boolean
   messageCount: number
   conversationId?: number
+  parentSummaryIds?: string[]
+  pointerSummaryIds?: string[]
+  lineageSummaryIds?: string[]
+  archivePointerSummaryIds?: string[]
+  archivedPointer?: boolean
 }
 
 export const LcmExpandTool = Tool.define<typeof parameters, LcmExpandMetadata>("lcm_expand", {
@@ -74,6 +82,50 @@ The sub-agent will be able to call lcm_expand to see the full content.`,
       sessionId: ctx.sessionID,
     })
 
+    const [parentSummaryIds, lineagePointers, lineageSummaryIds] = await Promise.all([
+      LcmDb.getSummaryParentIds(summary.summary_id),
+      LcmDb.getSummaryLineagePointers(summary.summary_id),
+      LcmDb.getSummaryLineageIds(summary.summary_id),
+    ])
+    const pointerSummaryIds = Array.from(new Set(lineagePointers.map((pointer) => pointer.points_to_summary_id))).sort()
+    const archivePointerSummaryIds = Array.from(
+      new Set(
+        lineagePointers
+          .filter((pointer) => pointer.pointer_kind === "archive_stub")
+          .map((pointer) => pointer.points_to_summary_id),
+      ),
+    ).sort()
+    const lineageIds = Array.from(new Set(lineageSummaryIds)).sort()
+    const isArchiveStub = summary.summary_type === "archive_stub"
+
+    const metadataLines = [
+      "Summary metadata:",
+      `- kind: ${summary.kind}`,
+      `- level: ${summary.summary_level}`,
+      `- type: ${summary.summary_type}`,
+      `- off_context: ${summary.is_off_context}`,
+      `- archived_pointer: ${isArchiveStub}`,
+      `- parent_summary_ids: ${parentSummaryIds.length > 0 ? parentSummaryIds.join(", ") : "-"}`,
+      `- pointer_summary_ids: ${pointerSummaryIds.length > 0 ? pointerSummaryIds.join(", ") : "-"}`,
+      `- lineage_summary_ids: ${lineageIds.length > 0 ? lineageIds.join(", ") : "-"}`,
+    ]
+    if (archivePointerSummaryIds.length > 0) {
+      metadataLines.push(`- archive_pointer_targets: ${archivePointerSummaryIds.join(", ")}`)
+    }
+    if (summary.qmd_doc_id) {
+      metadataLines.push(`- qmd_doc_id: ${summary.qmd_doc_id}`)
+    }
+    if (summary.qmd_doc_version != null) {
+      metadataLines.push(`- qmd_doc_version: ${summary.qmd_doc_version}`)
+    }
+    if (isArchiveStub) {
+      metadataLines.push(
+        "- archived_note: this summary is an archive stub; follow archive_pointer_targets with lcm_describe/lcm_expand for full lineage.",
+      )
+    }
+
+    const metadataBlock = metadataLines.join("\n")
+
     // Expand the summary to its original messages
     const messages = await LcmDb.expandSummaryToMessages(params.summary_id)
 
@@ -83,10 +135,18 @@ The sub-agent will be able to call lcm_expand to see the full content.`,
         metadata: {
           summaryId: params.summary_id,
           summaryKind: summary.kind,
+          summaryLevel: summary.summary_level,
+          summaryType: summary.summary_type,
+          isOffContext: summary.is_off_context,
           messageCount: 0,
           conversationId: summary.conversation_id,
+          parentSummaryIds,
+          pointerSummaryIds,
+          lineageSummaryIds: lineageIds,
+          archivePointerSummaryIds,
+          archivedPointer: isArchiveStub,
         },
-        output: `Summary found but no underlying messages were linked.\n\nSummary content:\n${summary.content}`,
+        output: `${metadataBlock}\n\nSummary found but no underlying messages were linked.\n\nSummary content:\n${summary.content}`,
       }
     }
 
@@ -103,10 +163,18 @@ The sub-agent will be able to call lcm_expand to see the full content.`,
       metadata: {
         summaryId: params.summary_id,
         summaryKind: summary.kind,
+        summaryLevel: summary.summary_level,
+        summaryType: summary.summary_type,
+        isOffContext: summary.is_off_context,
         messageCount: messages.length,
         conversationId: messages[0].conversationId,
+        parentSummaryIds,
+        pointerSummaryIds,
+        lineageSummaryIds: lineageIds,
+        archivePointerSummaryIds,
+        archivedPointer: isArchiveStub,
       },
-      output: `Expanded summary "${params.summary_id}" (${summary.kind}) to ${messages.length} original messages:\n\n${output}`,
+      output: `${metadataBlock}\n\nExpanded summary "${params.summary_id}" (${summary.kind}) to ${messages.length} original messages:\n\n${output}`,
     }
   },
 })

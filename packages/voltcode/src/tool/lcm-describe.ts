@@ -15,6 +15,14 @@ interface LcmDescribeMetadata {
   id: string
   type: "file" | "summary" | "unknown"
   found: boolean
+  summaryKind?: LcmDb.SummaryKind
+  summaryLevel?: LcmDb.SummaryLevel
+  summaryType?: LcmDb.SummaryType
+  isOffContext?: boolean
+  archivedPointer?: boolean
+  parentSummaryCount?: number
+  pointerSummaryCount?: number
+  lineageSummaryCount?: number
 }
 
 export const LcmDescribeTool = Tool.define<typeof parameters, LcmDescribeMetadata>("lcm_describe", {
@@ -126,19 +134,66 @@ async function describeSummary(summaryId: string, sessionID: string) {
 
   log.info("describing LCM summary", { summaryId, kind: summary.kind })
 
+  const [parentIds, lineagePointers, lineageSummaryIds] = await Promise.all([
+    LcmDb.getSummaryParentIds(summaryId),
+    LcmDb.getSummaryLineagePointers(summaryId),
+    LcmDb.getSummaryLineageIds(summaryId),
+  ])
+  const pointerSummaryIds = Array.from(new Set(lineagePointers.map((pointer) => pointer.points_to_summary_id))).sort()
+  const lineageIds = Array.from(new Set(lineageSummaryIds)).sort()
+  const archivePointerIds = Array.from(
+    new Set(
+      lineagePointers
+        .filter((pointer) => pointer.pointer_kind === "archive_stub")
+        .map((pointer) => pointer.points_to_summary_id),
+    ),
+  ).sort()
+  const archiveFullIds = Array.from(
+    new Set(
+      lineagePointers
+        .filter((pointer) => pointer.pointer_kind === "archive_full")
+        .map((pointer) => pointer.points_to_summary_id),
+    ),
+  ).sort()
+  const lineageParentIds = Array.from(
+    new Set(
+      lineagePointers
+        .filter((pointer) => pointer.pointer_kind === "lineage_parent")
+        .map((pointer) => pointer.points_to_summary_id),
+    ),
+  ).sort()
+  const isArchiveStub = summary.summary_type === "archive_stub"
+
   const lines: string[] = []
   lines.push(`## LCM Summary: ${summaryId}`)
   lines.push("")
   lines.push(`**Kind:** ${summary.kind}`)
+  lines.push(`**Level:** ${summary.summary_level}`)
+  lines.push(`**Type:** ${summary.summary_type}`)
+  lines.push(`**Off-context:** ${summary.is_off_context}`)
+  lines.push(`**Archived Pointer:** ${isArchiveStub}`)
   lines.push(`**Tokens:** ~${summary.token_count.toLocaleString()}`)
   lines.push(`**Created:** ${summary.created_at.toISOString()}`)
+  if (summary.qmd_doc_id) {
+    lines.push(`**QMD Doc ID:** ${summary.qmd_doc_id}`)
+  }
+  if (summary.qmd_doc_version != null) {
+    lines.push(`**QMD Doc Version:** ${summary.qmd_doc_version}`)
+  }
 
-  // Get parent summaries if this is a condensed summary
-  if (summary.kind === "condensed") {
-    const parentIds = await LcmDb.getSummaryParentIds(summaryId)
-    if (parentIds.length > 0) {
-      lines.push(`**Parents:** ${parentIds.join(", ")}`)
-    }
+  lines.push("")
+  lines.push("## Dolt Lineage Metadata")
+  lines.push("")
+  lines.push(`**Parent Summaries:** ${parentIds.length > 0 ? parentIds.join(", ") : "-"}`)
+  lines.push(`**Lineage Pointer Targets:** ${pointerSummaryIds.length > 0 ? pointerSummaryIds.join(", ") : "-"}`)
+  lines.push(`**Lineage Closure IDs:** ${lineageIds.length > 0 ? lineageIds.join(", ") : "-"}`)
+  lines.push(`**Archive Stub Targets:** ${archivePointerIds.length > 0 ? archivePointerIds.join(", ") : "-"}`)
+  lines.push(`**Archive Full Targets:** ${archiveFullIds.length > 0 ? archiveFullIds.join(", ") : "-"}`)
+  lines.push(`**Lineage Parent Targets:** ${lineageParentIds.length > 0 ? lineageParentIds.join(", ") : "-"}`)
+  if (isArchiveStub) {
+    lines.push(
+      "**Archived Note:** This summary is an archive stub pointer. Expand this summary to traverse into archived bindle content.",
+    )
   }
 
   lines.push("")
@@ -152,6 +207,14 @@ async function describeSummary(summaryId: string, sessionID: string) {
       id: summaryId,
       type: "summary" as const,
       found: true,
+      summaryKind: summary.kind,
+      summaryLevel: summary.summary_level,
+      summaryType: summary.summary_type,
+      isOffContext: summary.is_off_context,
+      archivedPointer: isArchiveStub,
+      parentSummaryCount: parentIds.length,
+      pointerSummaryCount: pointerSummaryIds.length,
+      lineageSummaryCount: lineageIds.length,
     },
     output: lines.join("\n"),
   }

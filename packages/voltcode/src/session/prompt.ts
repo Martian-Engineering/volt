@@ -807,8 +807,9 @@ export namespace SessionPrompt {
     for (const [index, cue] of cues.entries()) {
       const pointerIds = cue.pointerSummaryIds.length > 0 ? cue.pointerSummaryIds.join(",") : "-"
       const lineageIds = cue.lineageSummaryIds.length > 0 ? cue.lineageSummaryIds.join(",") : "-"
+      const archived = cue.summaryType === "archive_stub" ? "yes" : "no"
       lines.push(
-        `[cue ${index + 1}] summaryId=${cue.summaryId} score=${cue.score.toFixed(3)} distance=${cue.distance.toFixed(3)} pointerIds=${pointerIds} lineageIds=${lineageIds} cue=${JSON.stringify(cue.cueText)}`,
+        `[cue ${index + 1}] summaryId=${cue.summaryId} summaryType=${cue.summaryType} archived=${archived} score=${cue.score.toFixed(3)} distance=${cue.distance.toFixed(3)} pointerIds=${pointerIds} lineageIds=${lineageIds} cue=${JSON.stringify(cue.cueText)}`,
       )
     }
     lines.push("</memory-cues>")

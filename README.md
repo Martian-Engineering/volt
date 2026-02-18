@@ -30,6 +30,17 @@ The core data structure is a Directed Acyclic Graph (DAG) maintained in a persis
 
 To ensure reliability, LCM does not rely on the model to decide when to summarize. Instead, it employs a deterministic control loop driven by soft and hard token thresholds. Below the soft threshold, no summarization occurs and the user experiences the raw latency of the base model. When the soft threshold is exceeded, LCM performs compaction asynchronously and atomically swaps the resulting summary into the context between LLM turns. If a summarization level fails to reduce token count, the system automatically escalates to a more aggressive strategy via a **Three-Level Escalation** protocol, culminating in a deterministic fallback that requires no LLM inference. This guarantees convergence.
 
+### Dolt Retrieval Traversal (Hook Pointer -> Bindle/Stub -> Expansion)
+
+Dolt retrieval uses explicit lineage pointers so archived memory is traversable without guesswork:
+
+- **Pre-response hooks** inject top memory cues with summary IDs, summary type metadata, and lineage pointer IDs.
+- Cues may reference an active **bindle** or an archived **archive_stub** pointer.
+- **lcm_describe** surfaces lineage metadata (type/level, off-context status, pointer targets, lineage closure IDs) so an agent can pick the correct node to traverse.
+- **lcm_expand** then follows the lineage (including archive pointers) and expands to the underlying original messages.
+
+This preserves the actual retrieval path end to end: hook pointer -> bindle/stub -> expanded content.
+
 ### Operator-Level Recursion
 
 As an alternative to model-generated loops, LCM introduces **Operator-Level Recursion** via tools like `LLM-Map` and `Agentic-Map`. Instead of the model writing a loop, it invokes a single tool call. The engine — not the probabilistic model — handles the iteration, concurrency, and retries. This moves the "control flow" logic from the stochastic layer to the deterministic layer, allowing a single tool call to process an unbounded number of inputs without the model ever needing to manage a loop or context window.

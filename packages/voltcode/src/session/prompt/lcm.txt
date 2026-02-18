@@ -23,7 +23,19 @@ When conversations grow long, older messages are summarized into compact represe
 
 Summaries are organized in a hierarchical structure:
 - **Leaf summaries**: Directly reference original messages
-- **Condensed summaries**: Reference other summaries, enabling efficient hierarchical retrieval
+- **Bindle summaries**: L2 condensed summaries built from leaf summaries
+- **Archive stubs**: Compact off-context pointer summaries that reference archived bindles via lineage pointers
+
+### Retrieval Traversal Workflow (Dolt Lineage)
+
+When pre-response hooks inject memory cues, treat them as pointer breadcrumbs:
+
+1. Hook cue includes `summaryId`, `summaryType`, `archived`, and lineage pointer IDs.
+2. Call `lcm_describe` on the cue `summaryId` to inspect lineage and archive pointer targets.
+3. If the summary is a bindle or archive stub, follow pointer targets (if needed) with `lcm_describe`.
+4. Spawn a Task sub-agent to `lcm_expand` the most relevant summary ID and extract only task-relevant facts.
+
+This is the expected traversal path: hook pointer -> bindle/stub -> expanded underlying messages.
 
 ## Available LCM Tools
 
@@ -33,13 +45,14 @@ Fast regex search through earlier conversation history. Use this to find relevan
 - You need to recall specific details from past messages
 - Working on a task that relates to earlier discussion
 
-Results are grouped by their covering summary ID and paginated for large result sets. This tool injects results directly into context without spawning a sub-agent.
+Results are grouped by their covering summary ID and include Dolt lineage metadata (level/type/off-context, archive pointer targets). Archive-stub groups are explicitly flagged. The tool is paginated for large result sets and injects results directly into context without spawning a sub-agent.
 
 ### lcm_describe
-Look up metadata for a summary or file ID without expanding the full content. Returns path, size, token count, and a short summary of what the ID contains. Use this as a triage step: when you see a `[Summary ID: sum_xxx]` or `[Large file: file_xxx]` marker and aren't sure whether it's relevant, call lcm_describe first to decide whether a full expand is worthwhile.
+Look up metadata for a summary or file ID without expanding the full content. For summary IDs, it reports Dolt lineage metadata (summary level/type, off-context status, pointer targets, lineage closure IDs) and clearly marks archive stubs. Use this as a triage step: when you see a cue with `sum_xxx`, call lcm_describe first to choose the right expansion target.
 
 ### lcm_expand
 Expand a summary to see its full underlying content. Retrieves the original messages that were compressed into the summary.
+The output includes lineage metadata so you can confirm whether the expanded summary came from active bindle content or an archive stub path.
 
 **IMPORTANT**: This tool can only be called by sub-agents spawned via the Task tool. The main agent cannot call this directly - spawn a Task sub-agent and ask it to use lcm_expand to analyze the content.
 

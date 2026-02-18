@@ -3,7 +3,9 @@ Look up metadata and summary information for an LCM ID (file or summary).
 This tool retrieves information about items stored in LCM (Lossless Context Management):
 
 - For file IDs (file_xxx): Returns file path, type, size, token count, and the exploration summary that was generated when the file was first loaded.
-- For summary IDs (sum_xxx): Returns the summary content, kind (leaf/condensed), token count, and parent summaries if condensed.
+- For summary IDs (sum_xxx): Returns Dolt summary metadata including level/type (leaf, bindle, archive_stub), off-context status, lineage pointers, and lineage closure IDs.
+- Archive stubs are explicitly labeled so you can see when a cue points to archived bindle content.
+- Use the reported lineage pointer targets to traverse hook pointer -> bindle/stub -> expanded source content.
 
 Use this tool when you have an LCM ID and need to understand what it refers to before deciding how to work with it.
 

@@ -7,6 +7,7 @@ import { Token } from "../../../src/util/token"
 import { Session } from "../../../src/session"
 import { LcmGrepTool } from "../../../src/tool/lcm-grep"
 import { LcmExpandTool } from "../../../src/tool/lcm-expand"
+import { LcmDescribeTool } from "../../../src/tool/lcm-describe"
 
 const isLcmAvailable = isEmbeddedPostgresSupported() && (await ensureLcmReady().catch(() => false))
 
@@ -222,6 +223,10 @@ describe("session.lcm.tools", () => {
       expect(result.metadata.matchCount).toBeGreaterThan(0)
       // Results should show grouping by summary
       expect(result.output).toContain("Covered by:")
+      expect(result.output).toContain("type=leaf")
+      expect(result.output).toContain("level=leaf")
+      expect(result.output).toContain("archived_pointer=false")
+      expect(result.metadata.archivedCoveringSummaryIds).toEqual([])
     })
 
     test("handles pagination for large result sets", async () => {
@@ -353,6 +358,9 @@ describe("session.lcm.tools", () => {
 
         // Should successfully expand
         expect(result.metadata.messageCount).toBe(3)
+        expect(result.metadata.summaryLevel).toBe("leaf")
+        expect(result.metadata.summaryType).toBe("leaf")
+        expect(result.metadata.archivedPointer).toBe(false)
         expect(result.output).toContain("Original message 0")
         expect(result.output).toContain("Original message 1")
         expect(result.output).toContain("Original message 2")
@@ -384,6 +392,62 @@ describe("session.lcm.tools", () => {
         // @ts-ignore - restore for testing
         Session.get = originalGet
       }
+    })
+  })
+
+  describe("lcm_describe tool", () => {
+    test("shows archive stub lineage metadata for summary IDs", async () => {
+      const messageId = await LcmDb.appendMessage({
+        conversationId: testConversationId,
+        role: "user",
+        content: "Message for archive lineage traversal test",
+        tokenCount: 12,
+      })
+
+      const leafSummaryId = `sum_${Date.now().toString(16).padStart(16, "0")}`
+      await LcmDb.insertLeafSummary({
+        summaryId: leafSummaryId,
+        conversationId: testConversationId,
+        content: "Leaf summary for archive lineage test",
+        tokenCount: 12,
+        messageIds: [messageId],
+      })
+
+      const bindleSummaryId = `sum_${(Date.now() + 1).toString(16).padStart(16, "0")}`
+      await LcmDb.insertCondensedSummary({
+        summaryId: bindleSummaryId,
+        conversationId: testConversationId,
+        content: "Bindle summary for archive lineage test",
+        tokenCount: 10,
+        parentSummaryIds: [leafSummaryId],
+      })
+
+      const archiveStubId = `sum_${(Date.now() + 2).toString(16).padStart(16, "0")}`
+      await LcmDb.insertCondensedSummary({
+        summaryId: archiveStubId,
+        conversationId: testConversationId,
+        content: "[Archive Stub for test]",
+        tokenCount: 8,
+        parentSummaryIds: [],
+      })
+      await LcmDb.markSummaryAsArchiveStub(archiveStubId)
+      await LcmDb.upsertSummaryLineagePointers({
+        summaryId: archiveStubId,
+        pointers: [{ pointsToSummaryId: bindleSummaryId, pointerKind: "archive_stub" }],
+      })
+
+      const tool = await LcmDescribeTool.init()
+      const ctx = createMockContext("session_test_123")
+      const result = await tool.execute({ id: archiveStubId }, ctx)
+
+      expect(result.metadata.type).toBe("summary")
+      expect(result.metadata.summaryType).toBe("archive_stub")
+      expect(result.metadata.archivedPointer).toBe(true)
+      expect(result.output).toContain("## Dolt Lineage Metadata")
+      expect(result.output).toContain("**Type:** archive_stub")
+      expect(result.output).toContain("**Archived Pointer:** true")
+      expect(result.output).toContain("**Archive Stub Targets:**")
+      expect(result.output).toContain(bindleSummaryId)
     })
   })
 
@@ -511,6 +575,8 @@ describe("session.lcm.tools", () => {
 
         // Condensed summary should expand to all 30 original messages
         expect(expandCondensedResult.metadata.messageCount).toBe(30)
+        expect(expandCondensedResult.metadata.summaryLevel).toBe("bindle")
+        expect(expandCondensedResult.metadata.summaryType).toBe("bindle")
         expect(expandCondensedResult.output).toContain("UNIQUE_ID_000")
         expect(expandCondensedResult.output).toContain("UNIQUE_ID_015")
         expect(expandCondensedResult.output).toContain("UNIQUE_ID_029")

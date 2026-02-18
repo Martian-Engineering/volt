@@ -11,12 +11,13 @@ function makeHit(input: {
   cueText: string
   score: number
   distance: number
+  summaryType?: "bindle" | "archive_stub" | "leaf"
   pointerSummaryIds?: string[]
   lineageSummaryIds?: string[]
 }): LcmRetrieval.QueryHit {
   return {
     summaryId: input.summaryId,
-    summaryType: "bindle",
+    summaryType: input.summaryType ?? "bindle",
     cueText: input.cueText,
     score: input.score,
     distance: input.distance,
@@ -50,6 +51,7 @@ describe("pre-response memory hooks", () => {
         makeHit({
           summaryId: "sum_cccccccccccccccc",
           cueText: "memory cue c",
+          summaryType: "archive_stub",
           score: 0.91,
           distance: 0.09,
           pointerSummaryIds: ["sum_pc1"],
@@ -63,6 +65,10 @@ describe("pre-response memory hooks", () => {
     expect(block).toBeTruthy()
     expect(block).not.toContain(activeId)
     expect(block).toContain("summaryId=sum_bbbbbbbbbbbbbbbb")
+    expect(block).toContain("summaryType=bindle")
+    expect(block).toContain("archived=no")
+    expect(block).toContain("summaryType=archive_stub")
+    expect(block).toContain("archived=yes")
     expect(block).toContain("score=0.940")
     expect(block).toContain("distance=0.060")
     expect(block).toContain("pointerIds=sum_pb1,sum_pb2")
