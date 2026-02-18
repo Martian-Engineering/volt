@@ -38,10 +38,10 @@ describe("TokenBudget.computeDoltLanePolicy", () => {
 
     expect(policy.bindles).toEqual({ soft: 10000, delta: 1000, target: 9000 })
     expect(policy.leaves).toEqual({ soft: 20000, delta: 2000, target: 18000 })
-    expect(policy.turns.cap).toBe(60000)
-    expect(policy.turns.soft).toBe(60000)
+    expect(policy.turns.cap).toBe(30000)
+    expect(policy.turns.soft).toBe(30000)
     expect(policy.turns.delta).toBe(0)
-    expect(policy.turns.target).toBe(60000)
+    expect(policy.turns.target).toBe(30000)
     expect(policy.turns.freshTailFloor).toBe(4)
   })
 
