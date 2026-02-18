@@ -199,7 +199,7 @@ export namespace LcmContext {
     const hardLimit = input.contextWindow - input.overhead - input.reserve
     const softRaw = (input.softThresholdOverride ?? Math.floor(input.contextWindow * 0.6)) - input.overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
-    const lanePolicy = TokenBudget.computeDoltLanePolicy({ hardLimit, softThreshold })
+    const lanePolicy = TokenBudget.computeDoltLanePolicy({ hardLimit })
     const laneTokens: TokenBudget.LaneTokenCounts = {
       turns: Math.max(0, Math.floor(input.laneTokens?.turns ?? currentTokens)),
       leaves: Math.max(0, Math.floor(input.laneTokens?.leaves ?? 0)),

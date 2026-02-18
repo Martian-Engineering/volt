@@ -14,7 +14,10 @@ const DEFAULT_DOLT_BINDLES_TARGET = 9_000
 const DEFAULT_DOLT_LEAVES_SOFT = 20_000
 const DEFAULT_DOLT_LEAVES_DELTA = 2_000
 const DEFAULT_DOLT_LEAVES_TARGET = 18_000
+const DEFAULT_DOLT_TURNS_CAP = 60_000
+const DEFAULT_DOLT_TURNS_SOFT = 60_000
 const DEFAULT_DOLT_TURNS_DELTA = 0
+const DEFAULT_DOLT_TURNS_TARGET = 60_000
 const DEFAULT_DOLT_TURNS_FRESH_TAIL_FLOOR = 4
 const DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER = 0
 
@@ -64,6 +67,8 @@ export namespace TokenBudget {
     turns: LaneDecision
     leaves: LaneDecision
     bindles: LaneDecision
+    currentlyCompacting: Record<LaneName, boolean>
+    nextCompacting: Record<LaneName, boolean>
     compactAny: boolean
   }
 
@@ -203,7 +208,7 @@ export namespace TokenBudget {
     const hardLimit = contextWindow - overhead - reserve
     const softRaw = (input.softThresholdOverride ?? Math.floor(contextWindow * 0.6)) - overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
-    const lanePolicy = computeDoltLanePolicy({ hardLimit, softThreshold })
+    const lanePolicy = computeDoltLanePolicy({ hardLimit })
 
     log.debug("computed budget", {
       overhead,
@@ -249,14 +254,13 @@ export namespace TokenBudget {
    * - Under global hard-limit risk, bypass the hysteresis band gate and compact
    *   whenever laneTokens > target.
    */
-  export function computeDoltLanePolicy(input: { hardLimit: number; softThreshold: number }): DoltLanePolicy {
+  export function computeDoltLanePolicy(input: { hardLimit: number }): DoltLanePolicy {
     const hardLimit = nonNegativeInteger(input.hardLimit)
-    const turnsCap = clampToCap(readInt("VOLTCODE_LCM_DOLT_TURNS_CAP", hardLimit), hardLimit)
-    const turnsSoftDefault = Math.min(nonNegativeInteger(input.softThreshold), turnsCap)
+    const turnsCap = clampToCap(readInt("VOLTCODE_LCM_DOLT_TURNS_CAP", DEFAULT_DOLT_TURNS_CAP), hardLimit)
     const turns = clampLane({
-      soft: readInt("VOLTCODE_LCM_DOLT_TURNS_SOFT", turnsSoftDefault),
+      soft: readInt("VOLTCODE_LCM_DOLT_TURNS_SOFT", DEFAULT_DOLT_TURNS_SOFT),
       delta: readInt("VOLTCODE_LCM_DOLT_TURNS_DELTA", DEFAULT_DOLT_TURNS_DELTA),
-      target: readInt("VOLTCODE_LCM_DOLT_TURNS_TARGET", turnsSoftDefault),
+      target: readInt("VOLTCODE_LCM_DOLT_TURNS_TARGET", DEFAULT_DOLT_TURNS_TARGET),
       cap: turnsCap,
     })
     const leaves = clampLane({
@@ -297,8 +301,14 @@ export namespace TokenBudget {
     laneTokens: LaneTokenCounts
     policy: DoltLanePolicy
     hardLimit: number
+    currentlyCompacting?: Partial<Record<LaneName, boolean>>
   }): DoltLaneDecisions {
     const hardLimit = nonNegativeInteger(input.hardLimit)
+    const currentlyCompacting: Record<LaneName, boolean> = {
+      turns: Boolean(input.currentlyCompacting?.turns),
+      leaves: Boolean(input.currentlyCompacting?.leaves),
+      bindles: Boolean(input.currentlyCompacting?.bindles),
+    }
     const laneTokens = {
       turns: nonNegativeInteger(input.laneTokens.turns),
       leaves: nonNegativeInteger(input.laneTokens.leaves),
@@ -312,18 +322,21 @@ export namespace TokenBudget {
       lane: "turns",
       laneTokens: laneTokens.turns,
       threshold: input.policy.turns,
+      currentlyCompacting: currentlyCompacting.turns,
       hardLimitRisk,
     })
     const leaves = evaluateLaneDecision({
       lane: "leaves",
       laneTokens: laneTokens.leaves,
       threshold: input.policy.leaves,
+      currentlyCompacting: currentlyCompacting.leaves,
       hardLimitRisk,
     })
     const bindles = evaluateLaneDecision({
       lane: "bindles",
       laneTokens: laneTokens.bindles,
       threshold: input.policy.bindles,
+      currentlyCompacting: currentlyCompacting.bindles,
       hardLimitRisk,
     })
 
@@ -332,6 +345,12 @@ export namespace TokenBudget {
       turns,
       leaves,
       bindles,
+      currentlyCompacting,
+      nextCompacting: {
+        turns: turns.shouldCompact,
+        leaves: leaves.shouldCompact,
+        bindles: bindles.shouldCompact,
+      },
       compactAny: turns.shouldCompact || leaves.shouldCompact || bindles.shouldCompact,
     }
   }
@@ -343,6 +362,7 @@ export namespace TokenBudget {
     lane: LaneName
     laneTokens: number
     threshold: LaneThreshold
+    currentlyCompacting?: boolean
     hardLimitRisk: boolean
   }): LaneDecision {
     const laneTokens = nonNegativeInteger(input.laneTokens)
@@ -352,8 +372,9 @@ export namespace TokenBudget {
     const upperBound = soft + delta
     const overUpperBand = laneTokens > upperBound
     const overTarget = laneTokens > target
+    const continuingCompaction = Boolean(input.currentlyCompacting) && overTarget && !overUpperBand
     const bypassedHysteresis = input.hardLimitRisk && overTarget && !overUpperBand
-    const shouldCompact = overTarget && (overUpperBand || bypassedHysteresis)
+    const shouldCompact = overTarget && (overUpperBand || continuingCompaction || bypassedHysteresis)
 
     return {
       lane: input.lane,
