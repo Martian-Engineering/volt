@@ -605,6 +605,41 @@ describe("session.lcm.context", () => {
       })
       expect(afterLabels).toEqual(["Message 0", compactedBindle, "Message 2", bindle, "Message 4", "Message 6", "Message 7"])
     })
+
+    test("replacePositionsWithSummary normalizes duplicate and unsorted positions", async () => {
+      for (let i = 0; i < 7; i++) {
+        await LcmDb.appendMessage({
+          conversationId: testConversationId,
+          role: "user",
+          content: `Message ${i}`,
+          tokenCount: 10,
+        })
+      }
+
+      const summaryId = `sum_${(Date.now() + 99).toString(16).padStart(16, "0")}`
+      await LcmDb.insertLeafSummary({
+        summaryId,
+        conversationId: testConversationId,
+        content: "Summary replacement",
+        tokenCount: 10,
+        messageIds: [],
+      })
+
+      await LcmDb.replacePositionsWithSummary({
+        conversationId: testConversationId,
+        positions: [4, 2, 2, 1, -3],
+        summaryId,
+      })
+
+      const context = await LcmDb.getCurrentContext(testConversationId)
+      expect(context.length).toBe(5)
+      expect(context.filter((entry) => entry.item_type === "summary").length).toBe(1)
+      expect(context[1].item_type).toBe("summary")
+      expect(context[0].content).toContain("Message 0")
+      expect(context[2].content).toContain("Message 3")
+      expect(context[3].content).toContain("Message 5")
+      expect(context[4].content).toContain("Message 6")
+    })
   })
 
   describe("full-text search", () => {

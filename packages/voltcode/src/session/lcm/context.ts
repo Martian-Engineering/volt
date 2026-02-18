@@ -167,6 +167,14 @@ export namespace LcmContext {
     condensationLevel?: string
   }
 
+  export interface TurnMessageInContext {
+    position: number
+    messageId: number
+    role: LcmDb.MessageRole
+    content: string
+    tokenCount: number
+  }
+
   /**
    * Check if the current context exceeds the threshold.
    *
@@ -284,14 +292,8 @@ export namespace LcmContext {
    */
   export async function getMessagesInContext(
     conversationId: number,
-  ): Promise<{ position: number; messageId: number; role: LcmDb.MessageRole; content: string; tokenCount: number }[]> {
-    const messages: {
-      position: number
-      messageId: number
-      role: LcmDb.MessageRole
-      content: string
-      tokenCount: number
-    }[] = []
+  ): Promise<TurnMessageInContext[]> {
+    const messages: TurnMessageInContext[] = []
 
     // Get the context items to find message IDs
     const conn = LcmDb.getConnection()
@@ -317,6 +319,47 @@ export namespace LcmContext {
     }
 
     return messages
+  }
+
+  /**
+   * Select the oldest turn window for L0->L1 compaction while protecting a fresh tail.
+   *
+   * The selected window is a prefix of message turns and never includes messages from the
+   * protected tail region. If the oldest eligible turn alone exceeds budget, it is selected
+   * to ensure compaction can still make progress without consuming fresh-tail turns.
+   */
+  export function selectTurnsForLeafCompaction(input: {
+    messages: TurnMessageInContext[]
+    tokenBudget: number
+    protectedTailCount: number
+  }): { selectedMessages: TurnMessageInContext[]; protectedTailMessages: TurnMessageInContext[] } {
+    const tokenBudget = Math.max(1, Math.floor(input.tokenBudget))
+    const protectedTailCount = Math.max(0, Math.floor(input.protectedTailCount))
+    const protectedStart = Math.max(0, input.messages.length - protectedTailCount)
+    const eligible = input.messages.slice(0, protectedStart)
+    const protectedTailMessages = input.messages.slice(protectedStart)
+
+    if (eligible.length === 0) {
+      return { selectedMessages: [], protectedTailMessages }
+    }
+
+    const selectedMessages: TurnMessageInContext[] = []
+    let tokens = 0
+
+    for (const message of eligible) {
+      const nextTokens = tokens + Math.max(0, message.tokenCount)
+      if (selectedMessages.length > 0 && nextTokens > tokenBudget) break
+      selectedMessages.push(message)
+      tokens = nextTokens
+      if (tokens >= tokenBudget) break
+    }
+
+    // If the first turn alone exceeds budget, still summarize it for forward progress.
+    if (selectedMessages.length === 0) {
+      selectedMessages.push(eligible[0])
+    }
+
+    return { selectedMessages, protectedTailMessages }
   }
 
   /**
@@ -416,23 +459,35 @@ export namespace LcmContext {
     const modelMaxTokens = conversation?.model_ctx_max_tokens ?? 128000
     const maxSummarizationInputTokens = Math.floor(modelMaxTokens * 0.75)
 
-    let selectedMessages = messagesInContext
-    let tokenAccum = 0
-    for (let i = 0; i < messagesInContext.length; i++) {
-      tokenAccum += messagesInContext[i].tokenCount
-      if (tokenAccum > maxSummarizationInputTokens) {
-        const cutoff = Math.max(i, MIN_MESSAGES_TO_SUMMARIZE)
-        selectedMessages = messagesInContext.slice(0, cutoff)
-        log.info("limiting messages for summarization to fit model context", {
-          conversationId: input.conversationId,
-          totalMessages: messagesInContext.length,
-          selectedMessages: selectedMessages.length,
-          tokenBudget: maxSummarizationInputTokens,
-          tokenAccum,
-        })
-        break
-      }
+    const turnsOverTarget = Math.max(1, thresholdCheck.laneTokens.turns - thresholdCheck.lanePolicy.turns.target)
+    const selectionTokenBudget = Math.min(turnsOverTarget, maxSummarizationInputTokens)
+    const protectedTailCount = thresholdCheck.lanePolicy.turns.freshTailFloor
+    const { selectedMessages, protectedTailMessages } = selectTurnsForLeafCompaction({
+      messages: messagesInContext,
+      tokenBudget: selectionTokenBudget,
+      protectedTailCount,
+    })
+
+    if (selectedMessages.length === 0) {
+      log.info("no eligible turns for leaf compaction after fresh-tail protection", {
+        conversationId: input.conversationId,
+        totalMessages: messagesInContext.length,
+        protectedTailCount,
+      })
+      return { actionTaken: false, condensed: false, ...baseResult, messagesSummarized: 0 }
     }
+
+    log.info("selected turn window for leaf compaction", {
+      conversationId: input.conversationId,
+      totalMessages: messagesInContext.length,
+      selectedMessages: selectedMessages.length,
+      selectedTokens: selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0),
+      tokenBudget: selectionTokenBudget,
+      turnsOverTarget,
+      protectedTailCount,
+      protectedTailMessages: protectedTailMessages.length,
+      protectedTailPositions: protectedTailMessages.map((m) => m.position),
+    })
 
     // Convert LcmDb messages to MessageV2.WithParts format for summarization
     const messagesToSummarize = await convertToMessageV2(selectedMessages)
@@ -701,7 +756,7 @@ export namespace LcmContext {
    * - "tool" -> "assistant" (tool results are part of assistant turns)
    */
   async function convertToMessageV2(
-    messages: { position: number; messageId: number; role: LcmDb.MessageRole; content: string; tokenCount: number }[],
+    messages: TurnMessageInContext[],
   ): Promise<MessageV2.WithParts[]> {
     return messages.map((msg) => {
       // Map LcmDb roles to MessageV2 roles (only "user" | "assistant" supported)

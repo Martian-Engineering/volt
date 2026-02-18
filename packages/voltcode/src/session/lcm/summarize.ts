@@ -29,6 +29,18 @@ try {
  */
 export namespace LcmSummarize {
   const log = Log.create({ service: "lcm.summarize" })
+  const LCM_MESSAGE_ID_PATTERN = /^lcm_msg_(\d+)$/
+
+  function resolveDbMessageIds(messages: MessageV2.WithParts[], dbMessageIds?: number[]): number[] {
+    if (dbMessageIds && dbMessageIds.length > 0) return dbMessageIds
+    const parsed: number[] = []
+    for (const message of messages) {
+      const match = message.info.id.match(LCM_MESSAGE_ID_PATTERN)
+      if (!match) return []
+      parsed.push(Number.parseInt(match[1], 10))
+    }
+    return parsed
+  }
 
   /**
    * Summarize a list of messages into a leaf summary.
@@ -135,21 +147,23 @@ export namespace LcmSummarize {
       timestamp,
     )
 
-    // Store the summary in the database with linked message IDs
-    // Use dbMessageIds if provided (numeric DB IDs), otherwise leave empty
-    // The caller in context.ts provides the actual DB message IDs
+    const linkedDbMessageIds = resolveDbMessageIds(input.messages, input.dbMessageIds)
+
+    // Store the summary in the database with linked message IDs.
+    // If numeric IDs were not provided, recover them from lcm_msg_<id> placeholders.
     await LcmDb.insertLeafSummary({
       summaryId: summaryInfo.summaryId,
       conversationId: input.conversationId,
       content: summaryInfo.content,
       tokenCount: summaryInfo.tokenCount,
-      messageIds: input.dbMessageIds ?? [],
+      messageIds: linkedDbMessageIds,
       fileIds,
     })
 
     log.info("summary stored", {
       summaryId: summaryInfo.summaryId,
       conversationId: input.conversationId,
+      linkedMessageCount: linkedDbMessageIds.length,
     })
 
     // Return the summary with linked message IDs
@@ -349,19 +363,22 @@ export namespace LcmSummarize {
       timestamp,
     )
 
+    const linkedDbMessageIds = resolveDbMessageIds(input.messages, input.dbMessageIds)
+
     // Store the summary in the database with linked message IDs
     await LcmDb.insertLeafSummary({
       summaryId: summaryInfo.summaryId,
       conversationId: input.conversationId,
       content: summaryInfo.content,
       tokenCount: summaryInfo.tokenCount,
-      messageIds: input.dbMessageIds ?? [],
+      messageIds: linkedDbMessageIds,
       fileIds,
     })
 
     log.info("aggressive summary stored", {
       summaryId: summaryInfo.summaryId,
       conversationId: input.conversationId,
+      linkedMessageCount: linkedDbMessageIds.length,
     })
 
     // Return the summary with linked message IDs
@@ -439,13 +456,15 @@ export namespace LcmSummarize {
       timestamp,
     )
 
+    const linkedDbMessageIds = resolveDbMessageIds(input.messages, input.dbMessageIds)
+
     // Store the summary in the database with linked message IDs
     await LcmDb.insertLeafSummary({
       summaryId: summaryInfo.summaryId,
       conversationId: input.conversationId,
       content: summaryInfo.content,
       tokenCount: summaryInfo.tokenCount,
-      messageIds: input.dbMessageIds ?? [],
+      messageIds: linkedDbMessageIds,
     })
 
     log.info("fallback summary stored", {
@@ -454,6 +473,7 @@ export namespace LcmSummarize {
       originalTokens,
       fallbackTokens: tokenCount,
       fileIdCount: fileIds.length,
+      linkedMessageCount: linkedDbMessageIds.length,
     })
 
     // Return the summary with linked message IDs

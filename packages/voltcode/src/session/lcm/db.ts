@@ -1491,11 +1491,12 @@ export namespace LcmDb {
     positions: number[]
     summaryId: string
   }): Promise<void> {
-    if (input.positions.length === 0) return
+    const positions = [...new Set(input.positions.map((position) => Math.floor(position)).filter((position) => position >= 0))]
+    if (positions.length === 0) return
 
     const conn = sql()
-    const insertPosition = Math.min(...input.positions)
-    const positionsSet = new Set(input.positions)
+    const insertPosition = Math.min(...positions)
+    const positionsSet = new Set(positions)
 
     await conn.begin(async (tx) => {
       // Collect items to keep (NOT in the positions list)
@@ -1574,7 +1575,7 @@ export namespace LcmDb {
     })
     log.debug("replaced positions with summary", {
       conversationId: input.conversationId,
-      positions: input.positions,
+      positions,
       summaryId: input.summaryId,
     })
   }
