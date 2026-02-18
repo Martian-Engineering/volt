@@ -28,6 +28,19 @@ export namespace Condense {
   const log = Log.create({ service: "lcm.condense" })
 
   /**
+   * Enforce Dolt L1->L2 invariant: bindles are created from leaves only.
+   * Any non-leaf parent would create bindle->bindle aggregation paths.
+   */
+  function assertLeafParentsOnly(summaries: Summary.Info[]): void {
+    const nonLeafParents = summaries.filter((summary) => summary.kind !== "leaf")
+    if (nonLeafParents.length > 0) {
+      throw new Error(
+        `Cannot condense non-leaf summaries into bindles: ${nonLeafParents.map((s) => s.summaryId).join(", ")}`,
+      )
+    }
+  }
+
+  /**
    * Format summaries for the condense prompt.
    * Each summary is formatted with its ID and content for the LLM to process.
    */
@@ -70,6 +83,7 @@ export namespace Condense {
     if (input.summaries.length === 0) {
       throw new Error("Cannot condense empty list of summaries")
     }
+    assertLeafParentsOnly(input.summaries)
 
     const inputTokens = input.summaries.reduce((sum, s) => sum + s.tokenCount, 0)
     log.info("condensing summaries", {
@@ -196,6 +210,7 @@ ${formattedSummaries}
     if (input.summaries.length === 0) {
       throw new Error("Cannot condense empty list of summaries")
     }
+    assertLeafParentsOnly(input.summaries)
 
     const inputTokens = input.summaries.reduce((sum, s) => sum + s.tokenCount, 0)
     log.info("condensing summaries (aggressive)", {
@@ -314,6 +329,7 @@ ${formattedSummaries}
     if (input.summaries.length === 0) {
       throw new Error("Cannot condense empty list of summaries")
     }
+    assertLeafParentsOnly(input.summaries)
 
     log.info("condensing summaries (fallback/deterministic)", {
       count: input.summaries.length,

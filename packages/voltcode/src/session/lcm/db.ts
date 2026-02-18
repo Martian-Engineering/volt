@@ -45,6 +45,14 @@ export namespace LcmDb {
     }),
   )
 
+  export const InvariantError = NamedError.create(
+    "LcmDbInvariantError",
+    z.object({
+      message: z.string(),
+      summaryIds: z.array(z.string()).optional(),
+    }),
+  )
+
   // Enums matching the PostgreSQL types
   export const MessageRole = z.enum(["system", "user", "assistant", "tool"])
   export type MessageRole = z.infer<typeof MessageRole>
@@ -1331,6 +1339,36 @@ export namespace LcmDb {
     const conn = sql()
     const fileIds = JSON.stringify(input.fileIds ?? [])
     await conn.begin(async (tx) => {
+      if (input.parentSummaryIds.length > 0) {
+        const parentRows = await tx<{ summary_id: string; summary_level: SummaryLevel; summary_type: SummaryType }[]>`
+          SELECT
+            s.summary_id,
+            COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
+            COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type
+          FROM summaries s
+          WHERE s.summary_id = ANY(${input.parentSummaryIds})
+        `
+
+        const foundParentIds = new Set(parentRows.map((row) => row.summary_id))
+        const missingParentIds = input.parentSummaryIds.filter((summaryId) => !foundParentIds.has(summaryId))
+        if (missingParentIds.length > 0) {
+          throw new InvariantError({
+            message: "Cannot create bindle summary with unknown parent summaries",
+            summaryIds: missingParentIds,
+          })
+        }
+
+        const nonLeafParentIds = parentRows
+          .filter((row) => row.summary_level !== "leaf" || row.summary_type !== "leaf")
+          .map((row) => row.summary_id)
+        if (nonLeafParentIds.length > 0) {
+          throw new InvariantError({
+            message: "Cannot aggregate bindle summaries; bindles may only be created from leaf summaries",
+            summaryIds: nonLeafParentIds,
+          })
+        }
+      }
+
       await tx`
         INSERT INTO summaries (
           summary_id,

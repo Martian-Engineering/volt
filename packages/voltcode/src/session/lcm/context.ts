@@ -528,7 +528,7 @@ export namespace LcmContext {
       }
     }
 
-    // Step 6: Still over threshold, condense all summaries (even a single one can be re-condensed)
+    // Step 6: Still over threshold, condense eligible leaf summaries into a bindle
     const allSummaries = await getSummariesInContext(input.conversationId)
     if (allSummaries.length >= 1) {
       log.info("still over threshold, condensing summaries", {
@@ -539,9 +539,9 @@ export namespace LcmContext {
       const condensationResult = await attemptCondensation(input, allSummaries)
       return {
         actionTaken: true,
-        newTokenCount: condensationResult.newTokenCount,
-        createdSummary: condensationResult.createdSummary,
-        condensed: true,
+        newTokenCount: condensationResult.newTokenCount ?? newThresholdCheck.currentTokens,
+        createdSummary: condensationResult.createdSummary ?? leafSummary,
+        condensed: condensationResult.condensed,
         messagesSummarized: selectedMessages.length,
         summarizationLevel,
         condensationLevel: condensationResult.condensationLevel,
@@ -567,14 +567,13 @@ export namespace LcmContext {
   }
 
   /**
-   * Attempt to condense summaries into one.
+   * Attempt to condense leaf summaries into a bindle.
    *
-   * When there are multiple summaries, they are merged into a single condensed summary.
-   * When there is only a single summary, it is re-condensed to make it more compact.
-   * This ensures we always make progress toward reducing context size.
+   * Dolt L2 bindles are only formed from L1 leaves. Existing bindles are never
+   * aggregated again, preventing bindle->bindle compaction chains.
    *
    * @param input - The base input parameters
-   * @param summaries - The summaries to condense (1 or more)
+   * @param summaries - The summaries currently in context
    * @returns Result of the condensation attempt
    */
   async function attemptCondensation(
@@ -592,15 +591,25 @@ export namespace LcmContext {
       return { actionTaken: false, condensed: false }
     }
 
-    const inputTokens = summaries.reduce((sum, s) => sum + s.tokenCount, 0)
+    const leafSummaries = summaries.filter((summary) => summary.kind === "leaf")
+    if (leafSummaries.length < 1) {
+      log.info("attemptCondensation: skipping, no leaf summaries available", {
+        conversationId: input.conversationId,
+        summaryCount: summaries.length,
+      })
+      return { actionTaken: false, condensed: false }
+    }
+
+    const inputTokens = leafSummaries.reduce((sum, s) => sum + s.tokenCount, 0)
     log.debug("attemptCondensation", {
       conversationId: input.conversationId,
       summaryCount: summaries.length,
+      leafSummaryCount: leafSummaries.length,
       inputTokens,
-      summaryIds: summaries.map((s) => s.summaryId),
+      summaryIds: leafSummaries.map((s) => s.summaryId),
     })
     const condenseParams = {
-      summaries,
+      summaries: leafSummaries,
       conversationId: input.conversationId.toString(),
       dbConversationId: input.conversationId,
       model: input.model,
@@ -635,13 +644,13 @@ export namespace LcmContext {
     log.info("created condensed summary", {
       summaryId: condensedSummary.summaryId,
       tokenCount: condensedSummary.tokenCount,
-      parentCount: summaries.length,
+      parentCount: leafSummaries.length,
       condensationLevel,
     })
 
-    // Find positions of all the summaries in context and replace with condensed
+    // Find positions of all leaf summaries in context and replace with condensed
     const context = await LcmDb.getCurrentContext(input.conversationId)
-    const summaryIds = new Set(summaries.map((s) => s.summaryId))
+    const summaryIds = new Set(leafSummaries.map((s) => s.summaryId))
     const positions: number[] = []
 
     for (const entry of context) {
@@ -664,7 +673,7 @@ export namespace LcmContext {
 
       log.info("replaced summaries with condensed summary in context", {
         conversationId: input.conversationId,
-        replacedCount: summaries.length,
+        replacedCount: leafSummaries.length,
         summaryId: condensedSummary.summaryId,
       })
     }
