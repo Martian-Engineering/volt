@@ -80,6 +80,9 @@ describe("session.lcm.context", () => {
     const conn = LcmDb.getConnection()
     // Delete in order to avoid FK violations
     await conn`DELETE FROM context_items WHERE conversation_id = ${id}`.catch(() => {})
+    await conn`DELETE FROM summary_lineage_pointers WHERE summary_id IN (SELECT summary_id FROM summaries WHERE conversation_id = ${id})`.catch(
+      () => {},
+    )
     await conn`DELETE FROM summary_parents WHERE summary_id IN (SELECT summary_id FROM summaries WHERE conversation_id = ${id})`.catch(
       () => {},
     )
@@ -261,6 +264,8 @@ describe("session.lcm.context", () => {
       expect(summary).not.toBeNull()
       expect(summary!.summary_id).toBe(summaryId)
       expect(summary!.kind).toBe("leaf")
+      expect(summary!.summary_level).toBe("leaf")
+      expect(summary!.summary_type).toBe("leaf")
       expect(summary!.content).toBe(content)
       expect(summary!.token_count).toBe(tokenCount)
     })
@@ -299,10 +304,80 @@ describe("session.lcm.context", () => {
       const summary = await LcmDb.getSummaryById(condensedId)
       expect(summary).not.toBeNull()
       expect(summary!.kind).toBe("condensed")
+      expect(summary!.summary_level).toBe("bindle")
+      expect(summary!.summary_type).toBe("bindle")
 
       const parentIds = await LcmDb.getSummaryParentIds(condensedId)
       expect(parentIds).toContain(parent1)
       expect(parentIds).toContain(parent2)
+    })
+
+    test("supports archive stub lineage pointers and off-context retrieval metadata", async () => {
+      const leaf1 = `sum_${(Date.now() + 10).toString(16).padStart(16, "0")}`
+      const leaf2 = `sum_${(Date.now() + 11).toString(16).padStart(16, "0")}`
+      const bindleId = `sum_${(Date.now() + 12).toString(16).padStart(16, "0")}`
+      const stubId = `sum_${(Date.now() + 13).toString(16).padStart(16, "0")}`
+
+      await LcmDb.insertLeafSummary({
+        summaryId: leaf1,
+        conversationId: testConversationId,
+        content: "Leaf 1",
+        tokenCount: 5,
+        messageIds: [],
+      })
+      await LcmDb.insertLeafSummary({
+        summaryId: leaf2,
+        conversationId: testConversationId,
+        content: "Leaf 2",
+        tokenCount: 5,
+        messageIds: [],
+      })
+      await LcmDb.insertCondensedSummary({
+        summaryId: bindleId,
+        conversationId: testConversationId,
+        content: "Bindle over two leaves",
+        tokenCount: 8,
+        parentSummaryIds: [leaf1, leaf2],
+      })
+      await LcmDb.insertCondensedSummary({
+        summaryId: stubId,
+        conversationId: testConversationId,
+        content: "Short archive stub",
+        tokenCount: 4,
+        parentSummaryIds: [],
+      })
+
+      await LcmDb.markSummaryAsArchiveStub(stubId)
+      await LcmDb.upsertSummaryLineagePointers({
+        summaryId: stubId,
+        pointers: [{ pointsToSummaryId: bindleId, pointerKind: "archive_stub" }],
+      })
+      await LcmDb.setSummaryQmdDocMapping({
+        summaryId: bindleId,
+        qmdDocId: `qmd:${bindleId}`,
+        qmdDocVersion: 1,
+      })
+      await LcmDb.setSummariesOffContext([bindleId], true)
+
+      const pointers = await LcmDb.getSummaryLineagePointers(stubId)
+      expect(pointers.length).toBe(1)
+      expect(pointers[0].points_to_summary_id).toBe(bindleId)
+      expect(pointers[0].pointer_kind).toBe("archive_stub")
+
+      const lineage = await LcmDb.getSummaryLineageIds(stubId)
+      expect(lineage).toContain(stubId)
+      expect(lineage).toContain(bindleId)
+      expect(lineage).toContain(leaf1)
+      expect(lineage).toContain(leaf2)
+
+      const offContextBindles = await LcmDb.getOffContextSummaries({
+        conversationId: testConversationId,
+        summaryLevel: "bindle",
+      })
+      const matched = offContextBindles.find((s) => s.summary_id === bindleId)
+      expect(matched).toBeDefined()
+      expect(matched!.qmd_doc_id).toBe(`qmd:${bindleId}`)
+      expect(matched!.is_off_context).toBe(true)
     })
   })
 

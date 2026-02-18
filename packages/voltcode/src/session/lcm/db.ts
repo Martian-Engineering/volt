@@ -52,6 +52,28 @@ export namespace LcmDb {
   export const SummaryKind = z.enum(["leaf", "condensed"])
   export type SummaryKind = z.infer<typeof SummaryKind>
 
+  /**
+   * Dolt summary lane. L1 = leaf summaries (turn compaction), L2 = bindles.
+   * Legacy rows map via `kind`: leaf -> leaf, condensed -> bindle.
+   */
+  export const SummaryLevel = z.enum(["leaf", "bindle"])
+  export type SummaryLevel = z.infer<typeof SummaryLevel>
+
+  /**
+   * Dolt summary node type.
+   * - leaf: L1 summary over turns/messages
+   * - bindle: L2 summary over leaves
+   * - archive_stub: short off-context pointer node for evicted bindles
+   */
+  export const SummaryType = z.enum(["leaf", "bindle", "archive_stub"])
+  export type SummaryType = z.infer<typeof SummaryType>
+
+  /**
+   * Archive and lineage pointer kinds for traversal.
+   */
+  export const SummaryLineagePointerKind = z.enum(["archive_stub", "archive_full", "lineage_parent"])
+  export type SummaryLineagePointerKind = z.infer<typeof SummaryLineagePointerKind>
+
   export const ContextItemType = z.enum(["message", "summary"])
   export type ContextItemType = z.infer<typeof ContextItemType>
 
@@ -146,12 +168,26 @@ export namespace LcmDb {
     summary_id: z.string(),
     conversation_id: z.number(),
     kind: SummaryKind,
+    summary_level: SummaryLevel,
+    summary_type: SummaryType,
     content: z.string(),
     token_count: z.number(),
     file_ids: z.array(z.string()).default([]),
+    qmd_doc_id: z.string().nullable(),
+    qmd_doc_version: z.number().nullable(),
+    is_off_context: z.boolean(),
     created_at: z.date(),
   })
   export type Summary = z.infer<typeof Summary>
+
+  export const SummaryLineagePointer = z.object({
+    summary_id: z.string(),
+    points_to_summary_id: z.string(),
+    pointer_kind: SummaryLineagePointerKind,
+    ord: z.number(),
+    created_at: z.date(),
+  })
+  export type SummaryLineagePointer = z.infer<typeof SummaryLineagePointer>
 
   export const ContextItem = z.object({
     conversation_id: z.number(),
@@ -428,6 +464,73 @@ export namespace LcmDb {
       DO $$ BEGIN
         ALTER TABLE summaries ADD COLUMN file_ids jsonb NOT NULL DEFAULT '[]';
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+      -- Dolt migration: add explicit level/type metadata for leaf vs bindle semantics
+      DO $$ BEGIN
+        ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'leaf';
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE summaries ADD COLUMN summary_type text NOT NULL DEFAULT 'leaf';
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE summaries
+          ADD CONSTRAINT summaries_summary_level_check
+          CHECK (summary_level IN ('leaf', 'bindle'));
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE summaries
+          ADD CONSTRAINT summaries_summary_type_check
+          CHECK (summary_type IN ('leaf', 'bindle', 'archive_stub'));
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      -- Dolt migration: retrieval metadata for qmd mapping + off-context exclusion
+      DO $$ BEGIN
+        ALTER TABLE summaries ADD COLUMN qmd_doc_id text;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE summaries ADD COLUMN qmd_doc_version integer;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE summaries ADD COLUMN is_off_context boolean NOT NULL DEFAULT false;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE summaries
+          ADD CONSTRAINT summaries_qmd_doc_version_nonnegative_check
+          CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      -- Backfill legacy rows so existing leaf/condensed data remains readable.
+      UPDATE summaries
+      SET summary_level = CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END,
+          summary_type = CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END
+      WHERE summary_level IS NULL
+         OR summary_type IS NULL
+         OR summary_level NOT IN ('leaf', 'bindle')
+         OR summary_type NOT IN ('leaf', 'bindle', 'archive_stub')
+         OR (kind = 'condensed'::summary_kind AND (summary_level <> 'bindle' OR summary_type <> 'bindle'))
+         OR (kind = 'leaf'::summary_kind AND (summary_level <> 'leaf' OR summary_type <> 'leaf'));
+
+      CREATE INDEX IF NOT EXISTS summaries_off_context_idx
+        ON summaries (is_off_context, summary_level, created_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS summaries_qmd_doc_id_uq
+        ON summaries (qmd_doc_id) WHERE qmd_doc_id IS NOT NULL;
+
+      -- Dolt migration: lineage pointers for archive stubs and bindle traversal.
+      CREATE TABLE IF NOT EXISTS summary_lineage_pointers (
+        summary_id            text NOT NULL REFERENCES summaries(summary_id) ON DELETE CASCADE,
+        points_to_summary_id  text NOT NULL REFERENCES summaries(summary_id) ON DELETE CASCADE,
+        pointer_kind          text NOT NULL,
+        ord                   integer NOT NULL DEFAULT 1,
+        created_at            timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (summary_id, pointer_kind, points_to_summary_id),
+        CONSTRAINT summary_lineage_no_self_pointer CHECK (summary_id <> points_to_summary_id),
+        CONSTRAINT summary_lineage_pointer_kind_not_empty CHECK (length(pointer_kind) > 0),
+        CONSTRAINT summary_lineage_ord_positive CHECK (ord > 0)
+      );
+      CREATE INDEX IF NOT EXISTS summary_lineage_points_to_idx
+        ON summary_lineage_pointers(points_to_summary_id);
+      CREATE INDEX IF NOT EXISTS summary_lineage_summary_ord_idx
+        ON summary_lineage_pointers(summary_id, ord);
 
       -- 4) Leaf summaries -> messages (ordered)
       CREATE TABLE IF NOT EXISTS summary_messages (
@@ -1181,8 +1284,28 @@ export namespace LcmDb {
     const fileIds = JSON.stringify(input.fileIds ?? [])
     await conn.begin(async (tx) => {
       await tx`
-        INSERT INTO summaries (summary_id, conversation_id, kind, content, token_count, file_ids)
-        VALUES (${input.summaryId}, ${input.conversationId}, 'leaf', ${escNull(input.content)}, ${input.tokenCount}, ${fileIds}::jsonb)
+        INSERT INTO summaries (
+          summary_id,
+          conversation_id,
+          kind,
+          summary_level,
+          summary_type,
+          content,
+          token_count,
+          file_ids,
+          is_off_context
+        )
+        VALUES (
+          ${input.summaryId},
+          ${input.conversationId},
+          'leaf',
+          'leaf',
+          'leaf',
+          ${escNull(input.content)},
+          ${input.tokenCount},
+          ${fileIds}::jsonb,
+          false
+        )
       `
       if (input.messageIds.length > 0) {
         const values = input.messageIds.map((id, i) => ({ summary_id: input.summaryId, message_id: id, ord: i + 1 }))
@@ -1209,8 +1332,28 @@ export namespace LcmDb {
     const fileIds = JSON.stringify(input.fileIds ?? [])
     await conn.begin(async (tx) => {
       await tx`
-        INSERT INTO summaries (summary_id, conversation_id, kind, content, token_count, file_ids)
-        VALUES (${input.summaryId}, ${input.conversationId}, 'condensed', ${escNull(input.content)}, ${input.tokenCount}, ${fileIds}::jsonb)
+        INSERT INTO summaries (
+          summary_id,
+          conversation_id,
+          kind,
+          summary_level,
+          summary_type,
+          content,
+          token_count,
+          file_ids,
+          is_off_context
+        )
+        VALUES (
+          ${input.summaryId},
+          ${input.conversationId},
+          'condensed',
+          'bindle',
+          'bindle',
+          ${escNull(input.content)},
+          ${input.tokenCount},
+          ${fileIds}::jsonb,
+          false
+        )
       `
       if (input.parentSummaryIds.length > 0) {
         const values = input.parentSummaryIds.map((id, i) => ({
@@ -1410,7 +1553,19 @@ export namespace LcmDb {
     // If no conversationId provided, just do a simple lookup (backwards compatible)
     if (conversationId === undefined) {
       const rows = await conn<Summary[]>`
-        SELECT summary_id, conversation_id, kind, content, token_count, file_ids, created_at
+        SELECT
+          summary_id,
+          conversation_id,
+          kind,
+          COALESCE(summary_level, CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
+          COALESCE(summary_type, CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type,
+          content,
+          token_count,
+          file_ids,
+          qmd_doc_id,
+          qmd_doc_version,
+          COALESCE(is_off_context, false) AS is_off_context,
+          created_at
         FROM summaries
         WHERE summary_id = ${summaryId}
       `
@@ -1428,7 +1583,19 @@ export namespace LcmDb {
         FROM conversations c
         JOIN ancestors a ON c.conversation_id = a.parent_conversation_id
       )
-      SELECT s.summary_id, s.conversation_id, s.kind, s.content, s.token_count, s.file_ids, s.created_at
+      SELECT
+        s.summary_id,
+        s.conversation_id,
+        s.kind,
+        COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
+        COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type,
+        s.content,
+        s.token_count,
+        s.file_ids,
+        s.qmd_doc_id,
+        s.qmd_doc_version,
+        COALESCE(s.is_off_context, false) AS is_off_context,
+        s.created_at
       FROM summaries s
       JOIN ancestors a ON s.conversation_id = a.conversation_id
       WHERE s.summary_id = ${summaryId}
@@ -1452,6 +1619,10 @@ export namespace LcmDb {
         SELECT sp.parent_summary_id
         FROM summary_parents sp
         JOIN walk w ON sp.summary_id = w.summary_id
+        UNION
+        SELECT sl.points_to_summary_id
+        FROM summary_lineage_pointers sl
+        JOIN walk w ON sl.summary_id = w.summary_id
       ),
       leaf_messages AS (
         SELECT DISTINCT sm.message_id
@@ -1596,6 +1767,154 @@ export namespace LcmDb {
   }
 
   /**
+   * Attach or update lineage pointers for a summary.
+   * Used by archive stubs to point at full bindles and preserve traversal.
+   */
+  export async function upsertSummaryLineagePointers(input: {
+    summaryId: string
+    pointers: { pointsToSummaryId: string; pointerKind: SummaryLineagePointerKind; ord?: number }[]
+  }): Promise<void> {
+    if (input.pointers.length === 0) return
+    const conn = sql()
+
+    await conn.begin(async (tx) => {
+      for (const [index, pointer] of input.pointers.entries()) {
+        await tx`
+          INSERT INTO summary_lineage_pointers (summary_id, points_to_summary_id, pointer_kind, ord)
+          VALUES (${input.summaryId}, ${pointer.pointsToSummaryId}, ${pointer.pointerKind}, ${pointer.ord ?? index + 1})
+          ON CONFLICT (summary_id, pointer_kind, points_to_summary_id)
+          DO UPDATE SET ord = EXCLUDED.ord
+        `
+      }
+    })
+  }
+
+  /**
+   * Get outgoing lineage pointers for a summary in ordinal order.
+   */
+  export async function getSummaryLineagePointers(summaryId: string): Promise<SummaryLineagePointer[]> {
+    const conn = sql()
+    return conn<SummaryLineagePointer[]>`
+      SELECT summary_id, points_to_summary_id, pointer_kind, ord, created_at
+      FROM summary_lineage_pointers
+      WHERE summary_id = ${summaryId}
+      ORDER BY ord
+    `
+  }
+
+  /**
+   * Traverse full lineage from a summary via both parent and archive pointer edges.
+   * Returns the reachable summary IDs including the starting summary.
+   */
+  export async function getSummaryLineageIds(summaryId: string): Promise<string[]> {
+    const conn = sql()
+    const rows = await conn<{ summary_id: string }[]>`
+      WITH RECURSIVE walk(summary_id) AS (
+        SELECT ${summaryId}::text
+        UNION
+        SELECT sp.parent_summary_id
+        FROM summary_parents sp
+        JOIN walk w ON sp.summary_id = w.summary_id
+        UNION
+        SELECT sl.points_to_summary_id
+        FROM summary_lineage_pointers sl
+        JOIN walk w ON sl.summary_id = w.summary_id
+      )
+      SELECT summary_id FROM walk
+    `
+    return rows.map((r) => r.summary_id)
+  }
+
+  /**
+   * Update retrieval mapping metadata for a summary.
+   * qmd_doc_id links a summary to a deterministic qmd recall artifact.
+   */
+  export async function setSummaryQmdDocMapping(input: {
+    summaryId: string
+    qmdDocId: string | null
+    qmdDocVersion?: number | null
+  }): Promise<void> {
+    const conn = sql()
+    await conn`
+      UPDATE summaries
+      SET qmd_doc_id = ${input.qmdDocId},
+          qmd_doc_version = ${input.qmdDocVersion ?? null}
+      WHERE summary_id = ${input.summaryId}
+    `
+  }
+
+  /**
+   * Mark a summary as an archive stub for bindle eviction lineage.
+   */
+  export async function markSummaryAsArchiveStub(summaryId: string): Promise<void> {
+    const conn = sql()
+    await conn`
+      UPDATE summaries
+      SET summary_level = 'bindle',
+          summary_type = 'archive_stub',
+          is_off_context = true
+      WHERE summary_id = ${summaryId}
+    `
+  }
+
+  /**
+   * Mark summaries as active-context or off-context for retrieval filtering.
+   * Off-context summaries are eligible for retrieval hooks and qmd vector recall.
+   */
+  export async function setSummariesOffContext(summaryIds: string[], isOffContext: boolean): Promise<void> {
+    if (summaryIds.length === 0) return
+    const conn = sql()
+    await conn`
+      UPDATE summaries
+      SET is_off_context = ${isOffContext}
+      WHERE summary_id = ANY(${summaryIds})
+    `
+  }
+
+  /**
+   * Fetch off-context summaries for retrieval, optionally restricted by lane.
+   */
+  export async function getOffContextSummaries(input: {
+    conversationId: number
+    summaryLevel?: SummaryLevel
+    limit?: number
+  }): Promise<Summary[]> {
+    const conn = sql()
+    const limit = input.limit ?? 50
+    const rows = await conn<Summary[]>`
+      WITH RECURSIVE ancestors AS (
+        SELECT conversation_id, parent_conversation_id
+        FROM conversations
+        WHERE conversation_id = ${input.conversationId}
+        UNION ALL
+        SELECT c.conversation_id, c.parent_conversation_id
+        FROM conversations c
+        JOIN ancestors a ON c.conversation_id = a.parent_conversation_id
+      )
+      SELECT
+        s.summary_id,
+        s.conversation_id,
+        s.kind,
+        COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
+        COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type,
+        s.content,
+        s.token_count,
+        s.file_ids,
+        s.qmd_doc_id,
+        s.qmd_doc_version,
+        COALESCE(s.is_off_context, false) AS is_off_context,
+        s.created_at
+      FROM summaries s
+      JOIN ancestors a ON s.conversation_id = a.conversation_id
+      WHERE COALESCE(s.is_off_context, false) = true
+        AND (${input.summaryLevel ?? null}::text IS NULL OR s.summary_level = ${input.summaryLevel ?? null})
+      ORDER BY s.created_at DESC
+      LIMIT ${limit}
+    `
+    return rows
+  }
+
+  /**
    * Find the covering summary for a message - the smallest (most specific) summary
    * that directly or indirectly contains the message.
    *
@@ -1639,6 +1958,10 @@ export namespace LcmDb {
           SELECT sp.parent_summary_id
           FROM summary_parents sp
           JOIN walk w ON sp.summary_id = w.summary_id
+          UNION
+          SELECT sl.points_to_summary_id
+          FROM summary_lineage_pointers sl
+          JOIN walk w ON sl.summary_id = w.summary_id
         ),
         scoped_messages AS (
           SELECT DISTINCT sm.message_id

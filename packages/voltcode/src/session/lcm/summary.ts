@@ -22,6 +22,23 @@ export namespace Summary {
   export type Kind = z.infer<typeof Kind>
 
   /**
+   * Dolt lane level for summaries.
+   * - leaf: L1 summaries over turns/messages
+   * - bindle: L2 summaries over leaves
+   */
+  export const Level = z.enum(["leaf", "bindle"])
+  export type Level = z.infer<typeof Level>
+
+  /**
+   * Dolt summary node type.
+   * - leaf: standard leaf summary
+   * - bindle: aggregated summary over leaves
+   * - archive_stub: off-context pointer node for evicted bindles
+   */
+  export const Type = z.enum(["leaf", "bindle", "archive_stub"])
+  export type Type = z.infer<typeof Type>
+
+  /**
    * Base schema for Summary data
    */
   export const Schema = z
@@ -32,6 +49,10 @@ export namespace Summary {
       content: z.string(),
       /** Whether this is a leaf (message summary) or condensed (summary of summaries) */
       kind: Kind,
+      /** Explicit Dolt lane level for leaf vs bindle semantics */
+      level: Level.optional(),
+      /** Explicit Dolt summary node type */
+      summaryType: Type.optional(),
       /** Estimated token count for the summary content */
       tokenCount: z.number().int().nonnegative(),
       /** Reference to the conversation/session this summary belongs to */
@@ -136,6 +157,8 @@ export namespace Summary {
       summaryId: generateId(input.content, ts),
       content: input.content,
       kind: "leaf",
+      level: "leaf",
+      summaryType: "leaf",
       tokenCount: input.tokenCount,
       conversationId: input.conversationId,
       parents: [],
@@ -160,6 +183,8 @@ export namespace Summary {
       summaryId: generateId(input.content, ts),
       content: input.content,
       kind: "condensed",
+      level: "bindle",
+      summaryType: "bindle",
       tokenCount: input.tokenCount,
       conversationId: input.conversationId,
       parents: input.parents,
@@ -187,6 +212,20 @@ export namespace Summary {
    */
   export function isValidId(id: string): boolean {
     return /^sum_[a-f0-9]{16}$/.test(id)
+  }
+
+  /**
+   * Backwards-compatible mapping from legacy kind values to Dolt level.
+   */
+  export function levelFromKind(kind: Kind): Level {
+    return kind === "condensed" ? "bindle" : "leaf"
+  }
+
+  /**
+   * Backwards-compatible mapping from legacy kind values to Dolt summary type.
+   */
+  export function typeFromKind(kind: Kind): Type {
+    return kind === "condensed" ? "bindle" : "leaf"
   }
 
   /**

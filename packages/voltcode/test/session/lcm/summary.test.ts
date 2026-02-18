@@ -74,6 +74,8 @@ describe("session.lcm.summary", () => {
       expect(summary.content).toBe(input.content)
       expect(summary.tokenCount).toBe(input.tokenCount)
       expect(summary.conversationId).toBe(input.conversationId)
+      expect(summary.level).toBe("leaf")
+      expect(summary.summaryType).toBe("leaf")
       expect(summary.parents).toEqual([])
       expect(summary.createdAt).toBe(timestamp)
       expect(Summary.isValidId(summary.summaryId)).toBe(true)
@@ -113,6 +115,8 @@ describe("session.lcm.summary", () => {
       expect(summary.content).toBe(input.content)
       expect(summary.tokenCount).toBe(input.tokenCount)
       expect(summary.conversationId).toBe(input.conversationId)
+      expect(summary.level).toBe("bindle")
+      expect(summary.summaryType).toBe("bindle")
       expect(summary.parents).toEqual(parentIds)
       expect(summary.createdAt).toBe(timestamp)
       expect(Summary.isValidId(summary.summaryId)).toBe(true)
@@ -314,6 +318,18 @@ describe("session.lcm.summary", () => {
       })
 
       expect(result.success).toBe(false)
+    })
+  })
+
+  describe("legacy kind mapping", () => {
+    test("maps leaf kind to leaf level/type", () => {
+      expect(Summary.levelFromKind("leaf")).toBe("leaf")
+      expect(Summary.typeFromKind("leaf")).toBe("leaf")
+    })
+
+    test("maps condensed kind to bindle level/type", () => {
+      expect(Summary.levelFromKind("condensed")).toBe("bindle")
+      expect(Summary.typeFromKind("condensed")).toBe("bindle")
     })
   })
 })

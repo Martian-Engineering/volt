@@ -162,15 +162,64 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       summary_id      text PRIMARY KEY,
       conversation_id bigint NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
       kind            public.summary_kind NOT NULL,
+      summary_level   text NOT NULL DEFAULT 'leaf',
+      summary_type    text NOT NULL DEFAULT 'leaf',
       content         text NOT NULL,
       token_count     integer NOT NULL,
       file_ids        jsonb NOT NULL DEFAULT '[]',
+      qmd_doc_id      text,
+      qmd_doc_version integer,
+      is_off_context  boolean NOT NULL DEFAULT false,
       created_at      timestamptz NOT NULL DEFAULT now(),
-      content_tsv     tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
+      content_tsv     tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+      CONSTRAINT summaries_summary_level_check CHECK (summary_level IN ('leaf', 'bindle')),
+      CONSTRAINT summaries_summary_type_check CHECK (summary_type IN ('leaf', 'bindle', 'archive_stub')),
+      CONSTRAINT summaries_qmd_doc_version_nonnegative_check CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0)
     );
 
     CREATE INDEX IF NOT EXISTS summaries_conv_created_idx ON summaries(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS summaries_tsv_gin_idx ON summaries USING GIN (content_tsv);
+    DO $$ BEGIN
+      ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'leaf';
+    EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries ADD COLUMN summary_type text NOT NULL DEFAULT 'leaf';
+    EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries ADD COLUMN qmd_doc_id text;
+    EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries ADD COLUMN qmd_doc_version integer;
+    EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries ADD COLUMN is_off_context boolean NOT NULL DEFAULT false;
+    EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries
+        ADD CONSTRAINT summaries_summary_level_check
+        CHECK (summary_level IN ('leaf', 'bindle'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries
+        ADD CONSTRAINT summaries_summary_type_check
+        CHECK (summary_type IN ('leaf', 'bindle', 'archive_stub'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries
+        ADD CONSTRAINT summaries_qmd_doc_version_nonnegative_check
+        CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    UPDATE summaries
+    SET summary_level = CASE WHEN kind = 'condensed'::public.summary_kind THEN 'bindle' ELSE 'leaf' END,
+        summary_type = CASE WHEN kind = 'condensed'::public.summary_kind THEN 'bindle' ELSE 'leaf' END
+    WHERE summary_level IS NULL
+       OR summary_type IS NULL
+       OR summary_level NOT IN ('leaf', 'bindle')
+       OR summary_type NOT IN ('leaf', 'bindle', 'archive_stub')
+       OR (kind = 'condensed'::public.summary_kind AND (summary_level <> 'bindle' OR summary_type <> 'bindle'))
+       OR (kind = 'leaf'::public.summary_kind AND (summary_level <> 'leaf' OR summary_type <> 'leaf'));
+    CREATE INDEX IF NOT EXISTS summaries_off_context_idx ON summaries (is_off_context, summary_level, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS summaries_qmd_doc_id_uq ON summaries (qmd_doc_id) WHERE qmd_doc_id IS NOT NULL;
 
     -- 4) Leaf summaries -> messages (ordered)
     CREATE TABLE IF NOT EXISTS summary_messages (
@@ -193,6 +242,22 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
     );
 
     CREATE INDEX IF NOT EXISTS summary_parents_parent_idx ON summary_parents(parent_summary_id);
+
+    -- 5b) Archive/stub lineage pointers for bindle traversal
+    CREATE TABLE IF NOT EXISTS summary_lineage_pointers (
+      summary_id            text NOT NULL REFERENCES summaries(summary_id) ON DELETE CASCADE,
+      points_to_summary_id  text NOT NULL REFERENCES summaries(summary_id) ON DELETE CASCADE,
+      pointer_kind          text NOT NULL,
+      ord                   integer NOT NULL DEFAULT 1,
+      created_at            timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (summary_id, pointer_kind, points_to_summary_id),
+      CONSTRAINT summary_lineage_no_self_pointer CHECK (summary_id <> points_to_summary_id),
+      CONSTRAINT summary_lineage_pointer_kind_not_empty CHECK (length(pointer_kind) > 0),
+      CONSTRAINT summary_lineage_ord_positive CHECK (ord > 0)
+    );
+
+    CREATE INDEX IF NOT EXISTS summary_lineage_points_to_idx ON summary_lineage_pointers(points_to_summary_id);
+    CREATE INDEX IF NOT EXISTS summary_lineage_summary_ord_idx ON summary_lineage_pointers(summary_id, ord);
 
     -- 6) Current context (ordered list of message+summary items)
     CREATE TABLE IF NOT EXISTS context_items (
