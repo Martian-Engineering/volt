@@ -6,6 +6,7 @@ Internal evaluation benchmarks for testing VoltCode agent capabilities. **These 
 
 | Benchmark              | Description                       | Tasks | Source                                                    |
 | ---------------------- | --------------------------------- | ----- | --------------------------------------------------------- |
+| **OOLONG**             | Long-context semantic aggregation | 50    | [arxiv](https://arxiv.org/abs/2511.02817)                |
 | **SWE-bench Verified** | Real GitHub issue resolution      | 500   | [swebench.com](https://www.swebench.com/)                 |
 | **MCP Atlas**          | Multi-tool MCP server tasks       | 1000  | [scale.com](https://scale.com/blog/mcp-atlas)             |
 | **LoCoBench-Agent**    | Long-context software engineering | 8000  | [arxiv](https://arxiv.org/abs/2511.13998)                 |
@@ -24,6 +25,20 @@ bun evals/cli.ts list
 # Run a specific benchmark
 bun evals/cli.ts swe-bench --limit 10
 
+# Run OOLONG with Volt harness
+bun evals/cli.ts oolong --model anthropic/claude-opus-4-1 --output eval-results/oolong/dolt
+
+# Run OOLONG with Claude Code harness
+bun evals/cli.ts oolong --claude-code --model opus --output eval-results/oolong/claude-code
+
+# Build CC vs Volt vs Dolt overlay from existing artifacts
+bun evals/cli.ts oolong-overlay \
+  --cc eval-results/oolong/claude-code \
+  --volt eval-results/oolong/volt \
+  --dolt eval-results/oolong/dolt \
+  --output eval-results/oolong/overlay.json \
+  --table eval-results/oolong/overlay.md
+
 # Run with a specific model
 bun evals/cli.ts aider-polyglot --model anthropic/claude-sonnet-4 --limit 20
 
@@ -41,6 +56,51 @@ bun evals/cli.ts all --limit 5
 | `--concurrency <n>` | Parallel tasks      | 1              |
 | `--output <dir>`    | Results directory   | ./eval-results |
 | `--tasks <ids>`     | Specific task IDs   | All            |
+
+## OOLONG Overlay Workflow (CC vs Volt vs Dolt)
+
+Use identical task/window settings per run so results are directly comparable:
+
+```bash
+bun evals/cli.ts oolong --claude-code --model opus --limit 50 --context-len 131072 --output eval-results/oolong/cc
+bun evals/cli.ts oolong --model anthropic/claude-opus-4-1 --limit 50 --context-len 131072 --output eval-results/oolong/volt
+bun evals/cli.ts oolong --model anthropic/claude-opus-4-1 --limit 50 --context-len 131072 --output eval-results/oolong/dolt
+```
+
+Build the overlay artifact:
+
+```bash
+bun evals/cli.ts oolong-overlay \
+  --cc eval-results/oolong/cc \
+  --volt eval-results/oolong/volt \
+  --dolt eval-results/oolong/dolt \
+  --output eval-results/oolong/overlay.json \
+  --table eval-results/oolong/overlay.md
+```
+
+Overlay row fields:
+
+- `system`
+- `sourcePath`
+- `format`
+- `score`
+- `passRate`
+- `passedTasks`
+- `totalTasks`
+- `totalDurationMs`
+- `model`
+- `startedAt`
+- `completedAt`
+
+Markdown table schema:
+
+```md
+| System | Score % | Pass Rate % | Tasks (pass/total) | Duration (s) | Model | Artifact |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| Claude Code | ... | ... | ... | ... | ... | ... |
+| Volt | ... | ... | ... | ... | ... | ... |
+| Dolt | ... | ... | ... | ... | ... | ... |
+```
 
 ## Benchmark Details
 
@@ -127,7 +187,8 @@ evals/
 ├── locobench-agent/   # LoCoBench-Agent implementation
 ├── context-bench/     # Context-Bench implementation
 ├── terminal-bench/    # Terminal-Bench implementation
-└── aider-polyglot/    # Aider Polyglot implementation
+├── aider-polyglot/    # Aider Polyglot implementation
+└── oolong/            # OOLONG runner + overlay tooling
 ```
 
 ## Adding New Benchmarks

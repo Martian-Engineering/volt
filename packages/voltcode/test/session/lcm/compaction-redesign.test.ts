@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { extractFileIds } from "../../../src/session/lcm/summarize"
-import { LcmSummarize } from "../../../src/session/lcm/summarize"
-import { Token } from "../../../src/util/token"
+import * as SummarizeModule from "../../../src/session/lcm/summarize"
+import * as CondenseModule from "../../../src/session/lcm/condense"
 import { LcmContext } from "../../../src/session/lcm/context"
 
 // ---------------------------------------------------------------------------
@@ -102,91 +102,21 @@ describe("extractFileIds", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 2. summarizeFallback convergence
+// 2. no deterministic fallback tier
 // ---------------------------------------------------------------------------
 
-describe("summarizeFallback convergence", () => {
-  // FALLBACK_MAX_TOKENS = 512, so maxChars = 512 * 4 = 2048
-  const FALLBACK_MAX_CHARS = 2048
-
-  test("fallback truncation produces fewer tokens than large input", () => {
-    const largeText = "x".repeat(10000)
-    const inputTokens = Token.estimate(largeText)
-
-    // Simulate what summarizeFallback does: truncate to 2048 chars + metadata
-    const truncated = largeText.slice(0, FALLBACK_MAX_CHARS)
-    const metadata = "\n[LCM File IDs: file_abc123def456789a]\n[Truncated from 2500 tokens to 512 tokens]"
-    const fallbackOutput = truncated + metadata
-    const outputTokens = Token.estimate(fallbackOutput)
-
-    expect(outputTokens).toBeLessThan(inputTokens)
+describe("compaction tiering policy", () => {
+  test("summarize module no longer exports summarizeFallback", () => {
+    expect("summarizeFallback" in SummarizeModule).toBe(false)
   })
 
-  test("fallback output is bounded regardless of input size", () => {
-    // Even with enormous input, the output is capped
-    const hugeText = "a".repeat(1_000_000)
-    const inputTokens = Token.estimate(hugeText)
-
-    const truncated = hugeText.slice(0, FALLBACK_MAX_CHARS)
-    const metadata = "\n[Truncated from 250000 tokens to 512 tokens]"
-    const fallbackOutput = truncated + metadata
-    const outputTokens = Token.estimate(fallbackOutput)
-
-    // Output should be roughly 512 + small metadata overhead
-    expect(outputTokens).toBeLessThan(700)
-    expect(outputTokens).toBeLessThan(inputTokens)
+  test("condense module no longer exports condenseFallback", () => {
+    expect("condenseFallback" in CondenseModule).toBe(false)
   })
 })
 
 // ---------------------------------------------------------------------------
-// 3. condenseFallback convergence
-// ---------------------------------------------------------------------------
-
-describe("condenseFallback convergence", () => {
-  const FALLBACK_MAX_CHARS = 2048
-
-  test("combining N summaries then truncating produces fewer tokens", () => {
-    // Simulate 5 summaries of ~1000 tokens each (4000 chars each)
-    const summaries = Array.from({ length: 5 }, (_, i) => `Summary ${i}: ${"y".repeat(4000)}`)
-    const combinedContent = summaries.join("\n\n")
-    const inputTokens = Token.estimate(combinedContent)
-
-    // Simulate what condenseFallback does
-    const truncated = combinedContent.slice(0, FALLBACK_MAX_CHARS)
-    const metadataBlock = [
-      "[Summary IDs: sum_aaaaaaaaaaaaaaaa, sum_bbbbbbbbbbbbbbbb]",
-      "[LCM File IDs: none]",
-      `[Truncated from ${inputTokens} tokens]`,
-    ].join("\n")
-    const fallbackOutput = `${truncated}\n\n${metadataBlock}`
-    const outputTokens = Token.estimate(fallbackOutput)
-
-    expect(outputTokens).toBeLessThan(inputTokens)
-  })
-
-  test("condenseFallback output bounded even with many large summaries", () => {
-    // 20 summaries of ~5000 tokens each
-    const summaries = Array.from({ length: 20 }, (_, i) => `Summary ${i}: ${"z".repeat(20000)}`)
-    const combinedContent = summaries.join("\n\n")
-    const inputTokens = Token.estimate(combinedContent)
-
-    const truncated = combinedContent.slice(0, FALLBACK_MAX_CHARS)
-    const metadataBlock = [
-      "[Summary IDs: sum_aaaaaaaaaaaaaaaa]",
-      "[LCM File IDs: file_abc123def456789a]",
-      `[Truncated from ${inputTokens} tokens]`,
-    ].join("\n")
-    const fallbackOutput = `${truncated}\n\n${metadataBlock}`
-    const outputTokens = Token.estimate(fallbackOutput)
-
-    // Output should be bounded around 512 + metadata overhead
-    expect(outputTokens).toBeLessThan(800)
-    expect(outputTokens).toBeLessThan(inputTokens)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 4. isOverThreshold math (unit test of the arithmetic, no DB)
+// 3. isOverThreshold math (unit test of the arithmetic, no DB)
 // ---------------------------------------------------------------------------
 
 describe("isOverThreshold math (TokenBudget)", () => {
@@ -227,7 +157,7 @@ describe("isOverThreshold math (TokenBudget)", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 5. MAX_COMPACTION_ROUNDS constant
+// 4. MAX_COMPACTION_ROUNDS constant
 // ---------------------------------------------------------------------------
 
 test("MAX_COMPACTION_ROUNDS is 10", () => {
@@ -235,7 +165,7 @@ test("MAX_COMPACTION_ROUNDS is 10", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 6. L0->L1 turn window selection
+// 5. L0->L1 turn window selection
 // ---------------------------------------------------------------------------
 
 describe("selectTurnsForLeafCompaction", () => {
@@ -283,7 +213,7 @@ describe("selectTurnsForLeafCompaction", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 7. File ID extraction from structured block
+// 6. File ID extraction from structured block
 // ---------------------------------------------------------------------------
 
 describe("file ID extraction from structured blocks", () => {

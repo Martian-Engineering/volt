@@ -9,8 +9,6 @@ import { BunProc } from "../bun"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
 import { CodexAuthPlugin } from "./codex"
-import { Session } from "../session"
-import { NamedError } from "@opencode-ai/util/error"
 import { CopilotAuthPlugin } from "./copilot"
 
 export namespace Plugin {
@@ -66,17 +64,11 @@ export namespace Plugin {
           if (!builtin) throw err
 
           const message = err instanceof Error ? err.message : String(err)
-          log.error("failed to install builtin plugin", {
+          log.warn("failed to install builtin plugin (continuing without it)", {
             pkg,
             version,
             error: message,
           })
-          Bus.publish(Session.Event.Error, {
-            error: new NamedError.Unknown({
-              message: `Failed to install built-in plugin ${pkg}@${version}: ${message}`,
-            }).toObject(),
-          })
-
           return ""
         })
         if (!plugin) continue

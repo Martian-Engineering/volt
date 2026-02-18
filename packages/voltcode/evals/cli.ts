@@ -25,6 +25,7 @@
 import { EvalRunner } from "./runner"
 import { EvalTypes } from "./types"
 import { Oolong } from "./oolong/index"
+import { OolongOverlay } from "./oolong/overlay"
 import { EvalLog } from "./log"
 import path from "path"
 import fs from "fs/promises"
@@ -38,6 +39,26 @@ async function main() {
   }
 
   const command = args[0]
+
+  // Build OOLONG comparison overlays from existing run artifacts.
+  if (command === "oolong-overlay") {
+    const overlayArgs = OolongOverlay.parseCliArgs(args.slice(1))
+    const report = await OolongOverlay.generate({
+      claudePath: overlayArgs.claudePath,
+      voltPath: overlayArgs.voltPath,
+      doltPath: overlayArgs.doltPath,
+      outputPath: overlayArgs.outputPath,
+      tablePath: overlayArgs.tablePath,
+    })
+    console.log(report.markdownTable)
+    if (overlayArgs.outputPath) {
+      console.log(`Overlay JSON written to: ${overlayArgs.outputPath}`)
+    }
+    if (overlayArgs.tablePath) {
+      console.log(`Overlay table written to: ${overlayArgs.tablePath}`)
+    }
+    process.exit(0)
+  }
 
   // List available benchmarks
   if (command === "list") {
@@ -303,6 +324,8 @@ USAGE:
   bun evals/cli.ts all [options]
 
 BENCHMARKS:
+  oolong          OOLONG - Long-context classification and aggregation
+  oolong-overlay  Build CC vs Volt vs Dolt overlay table from run artifacts
   swe-bench       SWE-bench Verified - Real GitHub issue resolution
   mcp-atlas       MCP Atlas - Multi-tool MCP server tasks
   locobench-agent LoCoBench-Agent - Long-context software engineering
@@ -338,6 +361,14 @@ EXAMPLES:
 
   # Run specific tasks from Aider Polyglot
   bun evals/cli.ts aider-polyglot --tasks python-hello-world,rust-hello-world
+
+  # Build an overlay table from OOLONG run outputs
+  bun evals/cli.ts oolong-overlay \
+    --cc eval-results/oolong/cc-baseline \
+    --volt eval-results/oolong/volt-baseline \
+    --dolt eval-results/oolong/dolt-run \
+    --output eval-results/oolong/overlay.json \
+    --table eval-results/oolong/overlay.md
 
 EXIT CODES:
   0  All tasks passed with no errors

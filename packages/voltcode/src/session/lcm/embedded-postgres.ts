@@ -361,8 +361,8 @@ async function downloadAndExtractWithProgress(
     const contentLength = response.headers.get("content-length")
     const totalBytes = contentLength ? parseInt(contentLength, 10) : 0
 
-    if (totalBytes && response.body && onProgress) {
-      // Stream download with progress
+    if (response.body) {
+      // Stream download to avoid Bun.file(...).write(Response) hangs on large archives.
       const reader = response.body.getReader()
       const chunks: Uint8Array[] = []
       let receivedBytes = 0
@@ -372,8 +372,10 @@ async function downloadAndExtractWithProgress(
         if (done) break
         chunks.push(value)
         receivedBytes += value.length
-        const percent = Math.round((receivedBytes / totalBytes) * 100)
-        onProgress(percent)
+        if (totalBytes > 0 && onProgress) {
+          const percent = Math.round((receivedBytes / totalBytes) * 100)
+          onProgress(percent)
+        }
       }
 
       const allChunks = new Uint8Array(receivedBytes)
@@ -383,10 +385,16 @@ async function downloadAndExtractWithProgress(
         position += chunk.length
       }
       await Bun.file(archivePath).write(allChunks)
+      if (onProgress) {
+        onProgress(100)
+      }
     } else {
-      // No progress tracking
-      await Bun.file(archivePath).write(response)
-      onProgress?.(100)
+      // Defensive fallback for environments without streaming response bodies.
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      await Bun.file(archivePath).write(bytes)
+      if (onProgress) {
+        onProgress(100)
+      }
     }
 
     if (archiveType === "zip") {
@@ -413,36 +421,7 @@ async function downloadAndExtractWithProgress(
 }
 
 async function downloadAndExtract(url: string, archiveType: ArchiveType) {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "voltcode-postgres-"))
-  const archivePath = path.join(tmpDir, `postgres.${archiveType === "zip" ? "zip" : "tar.gz"}`)
-  try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`download failed: ${response.status} ${response.statusText}`)
-    }
-    await Bun.file(archivePath).write(response)
-
-    if (archiveType === "zip") {
-      await Archive.extractZip(archivePath, tmpDir)
-    } else {
-      await $`tar -xzf ${archivePath} -C ${tmpDir}`.quiet()
-    }
-
-    const root = await findPostgresRoot(tmpDir)
-    if (!root) {
-      throw new Error("failed to locate postgres binary in archive")
-    }
-
-    await fs.mkdir(LCM_POSTGRES_ROOT, { recursive: true })
-    const entries = await fs.readdir(root)
-    for (const entry of entries) {
-      const src = path.join(root, entry)
-      const dest = path.join(LCM_POSTGRES_ROOT, entry)
-      await fs.cp(src, dest, { recursive: true, force: true })
-    }
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true })
-  }
+  await downloadAndExtractWithProgress(url, archiveType)
 }
 
 async function findPostgresRoot(base: string) {

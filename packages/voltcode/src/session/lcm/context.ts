@@ -161,9 +161,9 @@ export namespace LcmContext {
     threshold?: number
     /** Number of messages summarized in the leaf summary */
     messagesSummarized?: number
-    /** Which summarization level was used: 'normal' | 'aggressive' | 'fallback' */
+    /** Which summarization level was used: 'normal' | 'aggressive' */
     summarizationLevel?: string
-    /** Which condensation level was used: 'normal' | 'aggressive' | 'fallback' */
+    /** Which condensation level was used: 'normal' | 'aggressive' */
     condensationLevel?: string
     /** Active bindles evicted from context due to overflow */
     evictedBindleIds?: string[]
@@ -637,7 +637,7 @@ export namespace LcmContext {
     // Extract numeric DB message IDs to pass to the summarizer for proper linking
     const dbMessageIds = selectedMessages.map((m) => m.messageId)
 
-    // Step 3: Summarize messages with three-level escalation
+    // Step 3: Summarize messages with two-level escalation
     const inputTokens = selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0)
     const summarizeParams = {
       messages: messagesToSummarize,
@@ -664,18 +664,20 @@ export namespace LcmContext {
       summarizationLevel = "aggressive"
 
       if (leafSummary.tokenCount >= inputTokens) {
-        log.info("aggressive summary not smaller than input, escalating to fallback", {
+        log.warn("aggressive summary still not smaller than input; skipping leaf compaction round", {
           summaryTokens: leafSummary.tokenCount,
           inputTokens,
-        })
-        // Level 3: Fallback (deterministic, guaranteed smaller)
-        leafSummary = await LcmSummarize.summarizeFallback({
-          summaryText: leafSummary.content,
-          messages: messagesToSummarize,
           conversationId: input.conversationId,
-          dbMessageIds,
         })
-        summarizationLevel = "fallback"
+        return {
+          actionTaken: evictedBindleIds.length > 0,
+          condensed: false,
+          ...baseResult,
+          messagesSummarized: 0,
+          summarizationLevel,
+          evictedBindleIds,
+          archiveStubIds,
+        }
       }
     }
 
@@ -834,13 +836,16 @@ export namespace LcmContext {
       condensationLevel = "aggressive"
 
       if (condensedSummary.tokenCount >= inputTokens) {
-        log.info("aggressive condensation not smaller, escalating to fallback", {
+        log.warn("aggressive condensation still not smaller than input; skipping condensation round", {
           condensedTokens: condensedSummary.tokenCount,
           inputTokens,
+          conversationId: input.conversationId,
         })
-        // Level 3: Fallback (deterministic, guaranteed smaller)
-        condensedSummary = await Condense.condenseFallback(condenseParams)
-        condensationLevel = "fallback"
+        return {
+          actionTaken: false,
+          condensed: false,
+          condensationLevel,
+        }
       }
     }
 
@@ -997,7 +1002,7 @@ export namespace LcmContext {
    * Compact context until it is under the given hard limit.
    *
    * Runs up to MAX_COMPACTION_ROUNDS of compaction. Each round calls
-   * onContextThresholdReached() (which uses three-level escalation) and
+   * onContextThresholdReached() (which uses normal + aggressive escalation) and
    * rechecks context size. Stops when:
    * - Context is under the hard limit
    * - Compaction made no progress (no token reduction)
