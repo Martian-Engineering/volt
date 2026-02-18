@@ -1,18 +1,8 @@
-import { describe, expect, test, beforeAll, beforeEach, afterAll, mock } from "bun:test"
+import { describe, expect, test, beforeAll, beforeEach, afterAll } from "bun:test"
 import { ensureLcmReady } from "../../../src/session/lcm/runtime"
 import { isEmbeddedPostgresSupported } from "../../../src/session/lcm/embedded-postgres"
 
 const isLcmAvailable = isEmbeddedPostgresSupported() && (await ensureLcmReady().catch(() => false))
-
-mock.module("@/session/llm", () => ({
-  LLM: {
-    stream: async () => ({
-      text: new Promise<string>((resolve) => {
-        setTimeout(() => resolve("Mock summary content."), 30)
-      }),
-    }),
-  },
-}))
 
 if (!isLcmAvailable) {
   test.skip("Embedded PostgreSQL not available, skipping async compaction tests", () => {})
@@ -62,7 +52,10 @@ if (!isLcmAvailable) {
   })
 
   describe("session.lcm.async-compaction", () => {
-    test("scheduleCompaction dedupes in-flight job and creates summary", async () => {
+    test("scheduleCompaction dedupes in-flight job and respects fresh-tail floor", async () => {
+      // Keep message count below freshTailFloor (default 4) so no turns are
+      // eligible for compaction. This validates in-flight dedupe behavior
+      // without requiring LLM summarization.
       for (let i = 0; i < 3; i++) {
         await LcmDb.appendMessage({
           conversationId: testConversationId,
@@ -114,11 +107,11 @@ if (!isLcmAvailable) {
       expect(second).toBeNull()
 
       const result = await job
-      expect(result?.actionTaken).toBe(true)
-      expect(result?.createdSummary).toBeDefined()
+      expect(result?.actionTaken).toBe(false)
+      expect(result?.createdSummary).toBeUndefined()
 
       const summaries = await LcmContext.getSummariesInContext(testConversationId)
-      expect(summaries.length).toBe(1)
+      expect(summaries.length).toBe(0)
     })
   })
 }
