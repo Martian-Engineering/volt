@@ -1926,6 +1926,31 @@ export namespace LcmDb {
   }
 
   /**
+   * Return active summary IDs currently present in context for this conversation
+   * and its ancestor chain. Used by retrieval to enforce off-context-only recall.
+   */
+  export async function getActiveContextSummaryIds(conversationId: number): Promise<string[]> {
+    const conn = sql()
+    const rows = await conn<{ summary_id: string }[]>`
+      WITH RECURSIVE ancestors AS (
+        SELECT conversation_id, parent_conversation_id
+        FROM conversations
+        WHERE conversation_id = ${conversationId}
+        UNION ALL
+        SELECT c.conversation_id, c.parent_conversation_id
+        FROM conversations c
+        JOIN ancestors a ON c.conversation_id = a.parent_conversation_id
+      )
+      SELECT DISTINCT ci.summary_id
+      FROM context_items ci
+      JOIN ancestors a ON ci.conversation_id = a.conversation_id
+      WHERE ci.item_type = 'summary'::context_item_type
+        AND ci.summary_id IS NOT NULL
+    `
+    return rows.map((row) => row.summary_id)
+  }
+
+  /**
    * Get child summary IDs that have this summary as a parent.
    * This returns summaries that were condensed from this summary.
    */

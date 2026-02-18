@@ -52,3 +52,67 @@ export const LCM_POSTGRES_BIN = path.join(LCM_POSTGRES_ROOT, "bin")
 export const LCM_POSTGRES_DATA = path.join(LCM_POSTGRES_ROOT, "data")
 export const LCM_POSTGRES_LOG = path.join(Global.Path.log, "postgres.log")
 export const LCM_POSTGRES_LOCK = path.join(LCM_POSTGRES_ROOT, "install.lock")
+
+const DEFAULT_RETRIEVAL_TOP_K = 3
+const DEFAULT_RETRIEVAL_MIN_SCORE = 0.3
+const DEFAULT_RETRIEVAL_QMD_INDEX_PREFIX = "voltcode-lcm-retrieval"
+const DEFAULT_RETRIEVAL_COLLECTION_NAME = "off-context-bindles"
+
+/**
+ * qmd index namespace for Dolt retrieval artifacts.
+ * Runtime uses a per-conversation suffix to keep recall spaces isolated.
+ */
+export const LCM_RETRIEVAL_QMD_INDEX_PREFIX =
+  process.env.VOLTCODE_LCM_RETRIEVAL_QMD_INDEX_PREFIX ?? DEFAULT_RETRIEVAL_QMD_INDEX_PREFIX
+
+/**
+ * qmd collection name used for bindle/off-context recall artifacts.
+ */
+export const LCM_RETRIEVAL_QMD_COLLECTION_NAME =
+  process.env.VOLTCODE_LCM_RETRIEVAL_QMD_COLLECTION_NAME ?? DEFAULT_RETRIEVAL_COLLECTION_NAME
+
+/**
+ * Default top-K for off-context bindle recall.
+ */
+export const LCM_RETRIEVAL_TOP_K = readPositiveInt("VOLTCODE_LCM_RETRIEVAL_TOP_K", DEFAULT_RETRIEVAL_TOP_K)
+
+/**
+ * Minimum score threshold for retrieval results.
+ * Values outside [0, 1] fall back to default.
+ */
+export const LCM_RETRIEVAL_MIN_SCORE = readUnitFloat("VOLTCODE_LCM_RETRIEVAL_MIN_SCORE", DEFAULT_RETRIEVAL_MIN_SCORE)
+
+/**
+ * Optional max distance threshold (derived from qmd score).
+ * Unset or invalid values disable distance filtering.
+ */
+export const LCM_RETRIEVAL_MAX_DISTANCE = readNonNegativeFloatOrUndefined("VOLTCODE_LCM_RETRIEVAL_MAX_DISTANCE")
+
+/**
+ * Filesystem root for generated qmd recall artifacts.
+ */
+export const LCM_RETRIEVAL_ROOT = path.join(Global.Path.data, "lcm", "retrieval")
+
+function readPositiveInt(key: string, fallback: number): number {
+  const raw = process.env[key]
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed <= 0) return fallback
+  return parsed
+}
+
+function readUnitFloat(key: string, fallback: number): number {
+  const raw = process.env[key]
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return fallback
+  return parsed
+}
+
+function readNonNegativeFloatOrUndefined(key: string): number | undefined {
+  const raw = process.env[key]
+  if (!raw) return undefined
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined
+  return parsed
+}
