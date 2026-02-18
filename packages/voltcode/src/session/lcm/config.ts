@@ -57,6 +57,7 @@ const DEFAULT_RETRIEVAL_TOP_K = 3
 const DEFAULT_RETRIEVAL_MIN_SCORE = 0.3
 const DEFAULT_RETRIEVAL_QMD_INDEX_PREFIX = "voltcode-lcm-retrieval"
 const DEFAULT_RETRIEVAL_COLLECTION_NAME = "off-context-bindles"
+const DEFAULT_PRE_RESPONSE_HOOK_TOP_K = 3
 
 /**
  * qmd index namespace for Dolt retrieval artifacts.
@@ -92,6 +93,29 @@ export const LCM_RETRIEVAL_MAX_DISTANCE = readNonNegativeFloatOrUndefined("VOLTC
  * Filesystem root for generated qmd recall artifacts.
  */
 export const LCM_RETRIEVAL_ROOT = path.join(Global.Path.data, "lcm", "retrieval")
+
+/**
+ * Top-K injected pre-response memory cues from off-context retrieval.
+ */
+export const LCM_PRE_RESPONSE_HOOK_TOP_K = readPositiveInt(
+  "VOLTCODE_LCM_PRE_RESPONSE_HOOK_TOP_K",
+  DEFAULT_PRE_RESPONSE_HOOK_TOP_K,
+)
+
+/**
+ * Minimum retrieval score threshold for injected pre-response memory cues.
+ */
+export const LCM_PRE_RESPONSE_HOOK_MIN_SCORE = readUnitFloat(
+  "VOLTCODE_LCM_PRE_RESPONSE_HOOK_MIN_SCORE",
+  LCM_RETRIEVAL_MIN_SCORE,
+)
+
+/**
+ * Optional distance threshold for injected pre-response memory cues.
+ */
+export const LCM_PRE_RESPONSE_HOOK_MAX_DISTANCE = readNonNegativeFloatOrUndefined(
+  "VOLTCODE_LCM_PRE_RESPONSE_HOOK_MAX_DISTANCE",
+)
 
 function readPositiveInt(key: string, fallback: number): number {
   const raw = process.env[key]

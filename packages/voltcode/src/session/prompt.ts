@@ -60,6 +60,12 @@ import { LargeFileThreshold } from "./lcm/large-file-threshold"
 import { ExploreDispatcher } from "./lcm/explore/dispatcher"
 import { LcmDb } from "./lcm/db"
 import { LcmContext } from "./lcm/context"
+import { LcmRetrieval } from "./lcm/retrieval"
+import {
+  LCM_PRE_RESPONSE_HOOK_MAX_DISTANCE,
+  LCM_PRE_RESPONSE_HOOK_MIN_SCORE,
+  LCM_PRE_RESPONSE_HOOK_TOP_K,
+} from "./lcm/config"
 import { LargeFile } from "./lcm/large-file"
 import { Token } from "@/util/token"
 import { TokenBudget } from "./token-budget"
@@ -744,6 +750,84 @@ export namespace SessionPrompt {
       .trim()
   }
 
+  const SUMMARY_ID_IN_CONTEXT_RE = /\[Summary ID: (sum_[a-f0-9]{16})\]/g
+
+  /**
+   * Build a retrieval query string from the latest user message text parts.
+   */
+  export function buildPreResponseRetrievalQuery(message: MessageV2.WithParts | undefined): string {
+    if (!message || message.info.role !== "user") return ""
+
+    const chunks: string[] = []
+    for (const part of message.parts) {
+      if (part.type === "text" && !part.ignored && !part.synthetic) {
+        const text = part.text.trim()
+        if (text) chunks.push(text)
+      }
+      if (part.type === "subtask") {
+        const prompt = part.prompt.trim()
+        if (prompt) chunks.push(prompt)
+      }
+    }
+    return chunks.join("\n").trim()
+  }
+
+  /**
+   * Extract active summary IDs already present in the in-context summary lane.
+   */
+  export function collectActiveSummaryIdsFromContext(
+    context: Array<{ item_type: string; content: string }>,
+  ): Set<string> {
+    const ids = new Set<string>()
+    for (const item of context) {
+      if (item.item_type !== "summary") continue
+      for (const match of item.content.matchAll(SUMMARY_ID_IN_CONTEXT_RE)) {
+        if (match[1]) {
+          ids.add(match[1])
+        }
+      }
+    }
+    return ids
+  }
+
+  /**
+   * Format retrieval hits into ultra-short pre-response memory cue lines.
+   */
+  export function formatPreResponseMemoryCueBlock(input: {
+    hits: LcmRetrieval.QueryHit[]
+    activeSummaryIds: Iterable<string>
+    topK?: number
+  }): string | null {
+    const topK = Math.max(1, Math.floor(input.topK ?? LCM_PRE_RESPONSE_HOOK_TOP_K))
+    const active = new Set(input.activeSummaryIds)
+    const cues = input.hits.filter((hit) => !active.has(hit.summaryId)).slice(0, topK)
+    if (cues.length === 0) return null
+
+    const lines = ["<memory-cues>"]
+    for (const [index, cue] of cues.entries()) {
+      const pointerIds = cue.pointerSummaryIds.length > 0 ? cue.pointerSummaryIds.join(",") : "-"
+      const lineageIds = cue.lineageSummaryIds.length > 0 ? cue.lineageSummaryIds.join(",") : "-"
+      lines.push(
+        `[cue ${index + 1}] summaryId=${cue.summaryId} score=${cue.score.toFixed(3)} distance=${cue.distance.toFixed(3)} pointerIds=${pointerIds} lineageIds=${lineageIds} cue=${JSON.stringify(cue.cueText)}`,
+      )
+    }
+    lines.push("</memory-cues>")
+    return lines.join("\n")
+  }
+
+  /**
+   * Insert the cue block before the latest user message so the current query remains last.
+   */
+  export function injectPreResponseMemoryCueBlock(messages: ModelMessage[], cueBlock: string | null): ModelMessage[] {
+    if (!cueBlock) return messages
+    const lastUserIndex = [...messages].reverse().findIndex((message) => message.role === "user")
+    if (lastUserIndex === -1) {
+      return [...messages, { role: "user", content: cueBlock }]
+    }
+    const insertAt = messages.length - 1 - lastUserIndex
+    return [...messages.slice(0, insertAt), { role: "user", content: cueBlock }, ...messages.slice(insertAt)]
+  }
+
   async function buildLcmModelMessages(input: {
     sessionID: string
     user: MessageV2.User
@@ -1005,6 +1089,40 @@ export namespace SessionPrompt {
         messageIds.length > 0
           ? await LcmDb.getMessagePartsForMessages(messageIds)
           : new Map<number, LcmDb.MessagePart[]>()
+      const activeSummaryIds = collectActiveSummaryIdsFromContext(context)
+      const currentUserMessage = input.sessionMessages.find((message) => message.info.id === input.user.id)
+      const retrievalQuery = buildPreResponseRetrievalQuery(currentUserMessage)
+
+      let preResponseCueBlock: string | null = null
+      if (retrievalQuery) {
+        try {
+          const retrieval = await LcmRetrieval.queryOffContextBindles({
+            conversationId,
+            query: retrievalQuery,
+            topK: LCM_PRE_RESPONSE_HOOK_TOP_K,
+            minScore: LCM_PRE_RESPONSE_HOOK_MIN_SCORE,
+            maxDistance: LCM_PRE_RESPONSE_HOOK_MAX_DISTANCE,
+          })
+          preResponseCueBlock = formatPreResponseMemoryCueBlock({
+            hits: retrieval.hits,
+            activeSummaryIds,
+            topK: LCM_PRE_RESPONSE_HOOK_TOP_K,
+          })
+          if (preResponseCueBlock) {
+            log.debug("prepared pre-response memory cues", {
+              sessionID: input.sessionID,
+              conversationId,
+              cueCount: retrieval.hits.filter((hit) => !activeSummaryIds.has(hit.summaryId)).length,
+            })
+          }
+        } catch (error) {
+          log.warn("failed pre-response off-context retrieval", {
+            sessionID: input.sessionID,
+            conversationId,
+            error,
+          })
+        }
+      }
 
       // Determine interleaved capability - check model config first, then auto-detect from model ID
       // Models like DeepSeek use reasoning_content field even if not explicitly configured
@@ -1216,12 +1334,13 @@ export namespace SessionPrompt {
           return msg
         })
 
+        const messagesWithCues = injectPreResponseMemoryCueBlock(messages, preResponseCueBlock)
         log.debug("buildLcmModelMessages: interleaved result", {
           conversationId,
-          messageCount: messages.length,
-          roles: messages.map((m) => m.role),
+          messageCount: messagesWithCues.length,
+          roles: messagesWithCues.map((m) => m.role),
         })
-        return messages
+        return messagesWithCues
       }
 
       // Non-interleaved models: parse tool XML from LCM content into structured messages
@@ -1283,16 +1402,17 @@ export namespace SessionPrompt {
         return [{ role, content: entry.content }]
       })
 
+      const messagesWithCues = injectPreResponseMemoryCueBlock(messages, preResponseCueBlock)
       log.debug("buildLcmModelMessages: non-interleaved result", {
         conversationId,
-        messageCount: messages.length,
+        messageCount: messagesWithCues.length,
         skippedEmpty: skippedEmpty.length,
-        roles: messages.map((m) => m.role),
-        contentLengths: messages.map((m) =>
+        roles: messagesWithCues.map((m) => m.role),
+        contentLengths: messagesWithCues.map((m) =>
           typeof m.content === "string" ? m.content.length : JSON.stringify(m.content).length,
         ),
       })
-      return messages
+      return messagesWithCues
     } catch (e) {
       log.error("failed to build LCM context", {
         sessionID: input.sessionID,

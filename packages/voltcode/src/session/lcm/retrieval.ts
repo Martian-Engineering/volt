@@ -18,6 +18,7 @@ const MAX_RECALL_CANDIDATES = 500
 
 export namespace LcmRetrieval {
   const log = Log.create({ service: "lcm.retrieval" })
+  const MAX_CUE_LENGTH = 140
 
   /**
    * Query input for Dolt off-context bindle recall.
@@ -39,6 +40,7 @@ export namespace LcmRetrieval {
   export interface QueryHit {
     summaryId: string
     summaryType: LcmDb.SummaryType
+    cueText: string
     score: number
     distance: number
     qmdDocId: string
@@ -81,7 +83,11 @@ export namespace LcmRetrieval {
     getSummaryParentIds(summaryId: string): Promise<string[]>
     getSummaryLineagePointers(summaryId: string): Promise<LcmDb.SummaryLineagePointer[]>
     getSummaryLineageIds(summaryId: string): Promise<string[]>
-    setSummaryQmdDocMapping(input: { summaryId: string; qmdDocId: string | null; qmdDocVersion?: number | null }): Promise<void>
+    setSummaryQmdDocMapping(input: {
+      summaryId: string
+      qmdDocId: string | null
+      qmdDocVersion?: number | null
+    }): Promise<void>
   }
 
   interface QmdVectorHit {
@@ -194,6 +200,7 @@ export namespace LcmRetrieval {
       const candidateHit: QueryHit = {
         summaryId: artifact.summaryId,
         summaryType: artifact.summary.summary_type,
+        cueText: compactCueText(artifact.summary.content),
         score,
         distance,
         qmdDocId,
@@ -309,6 +316,13 @@ export namespace LcmRetrieval {
     lines.push(input.summary.content.trim())
     lines.push("")
     return lines.join("\n")
+  }
+
+  function compactCueText(content: string): string {
+    const compacted = content.replace(/\s+/g, " ").trim()
+    if (!compacted) return "(empty summary)"
+    if (compacted.length <= MAX_CUE_LENGTH) return compacted
+    return `${compacted.slice(0, MAX_CUE_LENGTH - 1)}…`
   }
 
   const defaultQmdClient: QmdClient = {
