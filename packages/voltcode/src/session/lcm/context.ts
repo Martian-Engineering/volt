@@ -5,9 +5,9 @@ import { LcmDb } from "./db"
 import { LcmSummarize } from "./summarize"
 import { Condense } from "./condense"
 import { Summary } from "./summary"
-import { Flag } from "@/flag/flag"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
+import { TokenBudget } from "@/session/token-budget"
 import z from "zod"
 
 /**
@@ -184,37 +184,58 @@ export namespace LcmContext {
     reserve: number
     contextWindow: number
     softThresholdOverride?: number
+    laneTokens?: Partial<TokenBudget.LaneTokenCounts>
   }): Promise<{
     overHard: boolean
     overSoft: boolean
     currentTokens: number
     hardLimit: number
     softThreshold: number
+    lanePolicy: TokenBudget.DoltLanePolicy
+    laneTokens: TokenBudget.LaneTokenCounts
+    laneDecisions: TokenBudget.DoltLaneDecisions
   }> {
     const currentTokens = await LcmDb.getContextTokenCount(input.conversationId)
     const hardLimit = input.contextWindow - input.overhead - input.reserve
     const softRaw = (input.softThresholdOverride ?? Math.floor(input.contextWindow * 0.6)) - input.overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
+    const lanePolicy = TokenBudget.computeDoltLanePolicy({ hardLimit, softThreshold })
+    const laneTokens: TokenBudget.LaneTokenCounts = {
+      turns: Math.max(0, Math.floor(input.laneTokens?.turns ?? currentTokens)),
+      leaves: Math.max(0, Math.floor(input.laneTokens?.leaves ?? 0)),
+      bindles: Math.max(0, Math.floor(input.laneTokens?.bindles ?? 0)),
+      total: Math.max(0, Math.floor(input.laneTokens?.total ?? currentTokens)),
+    }
+    const laneDecisions = TokenBudget.evaluateDoltLaneDecisions({
+      laneTokens,
+      policy: lanePolicy,
+      hardLimit,
+    })
 
     log.debug("isOverThreshold", {
       conversationId: input.conversationId,
       currentTokens,
       softThreshold,
       hardLimit,
+      laneTokens,
+      laneDecisions,
       contextWindow: input.contextWindow,
       overhead: input.overhead,
       reserve: input.reserve,
       softThresholdOverride: input.softThresholdOverride ?? "none",
-      overSoft: currentTokens > softThreshold,
+      overSoft: laneDecisions.turns.shouldCompact,
       overHard: currentTokens > hardLimit,
     })
 
     return {
       overHard: currentTokens > hardLimit,
-      overSoft: currentTokens > softThreshold,
+      overSoft: laneDecisions.turns.shouldCompact,
       currentTokens,
       hardLimit,
       softThreshold,
+      lanePolicy,
+      laneTokens,
+      laneDecisions,
     }
   }
 

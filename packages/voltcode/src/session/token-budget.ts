@@ -8,8 +8,65 @@ import type { Tool } from "ai"
 const log = Log.create({ service: "token-budget" })
 
 const DEFAULT_OUTPUT_RESERVE = 20_000
+const DEFAULT_DOLT_BINDLES_SOFT = 10_000
+const DEFAULT_DOLT_BINDLES_DELTA = 1_000
+const DEFAULT_DOLT_BINDLES_TARGET = 9_000
+const DEFAULT_DOLT_LEAVES_SOFT = 20_000
+const DEFAULT_DOLT_LEAVES_DELTA = 2_000
+const DEFAULT_DOLT_LEAVES_TARGET = 18_000
+const DEFAULT_DOLT_TURNS_DELTA = 0
+const DEFAULT_DOLT_TURNS_FRESH_TAIL_FLOOR = 4
+const DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER = 0
 
 export namespace TokenBudget {
+  export type LaneName = "turns" | "leaves" | "bindles"
+
+  export interface LaneThreshold {
+    soft: number
+    delta: number
+    target: number
+  }
+
+  export interface TurnsLaneThreshold extends LaneThreshold {
+    cap: number
+    freshTailFloor: number
+  }
+
+  export interface DoltLanePolicy {
+    turns: TurnsLaneThreshold
+    leaves: LaneThreshold
+    bindles: LaneThreshold
+    hardLimitRiskBuffer: number
+  }
+
+  export interface LaneTokenCounts {
+    turns: number
+    leaves: number
+    bindles: number
+    total: number
+  }
+
+  export interface LaneDecision {
+    lane: LaneName
+    laneTokens: number
+    soft: number
+    delta: number
+    target: number
+    upperBound: number
+    overUpperBand: boolean
+    overTarget: boolean
+    bypassedHysteresis: boolean
+    shouldCompact: boolean
+  }
+
+  export interface DoltLaneDecisions {
+    hardLimitRisk: boolean
+    turns: LaneDecision
+    leaves: LaneDecision
+    bindles: LaneDecision
+    compactAny: boolean
+  }
+
   export interface Budget {
     overhead: number
     reserve: number
@@ -18,6 +75,7 @@ export namespace TokenBudget {
     contextWindow: number
     systemPromptTokens: number
     toolTokens: number
+    lanePolicy: DoltLanePolicy
   }
 
   interface CachedSystemPrompt {
@@ -145,12 +203,25 @@ export namespace TokenBudget {
     const hardLimit = contextWindow - overhead - reserve
     const softRaw = (input.softThresholdOverride ?? Math.floor(contextWindow * 0.6)) - overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
+    const lanePolicy = computeDoltLanePolicy({ hardLimit, softThreshold })
 
     log.debug("computed budget", {
       overhead,
       reserve,
       hardLimit,
       softThreshold,
+      turnsCap: lanePolicy.turns.cap,
+      turnsSoft: lanePolicy.turns.soft,
+      turnsDelta: lanePolicy.turns.delta,
+      turnsTarget: lanePolicy.turns.target,
+      turnsFreshTailFloor: lanePolicy.turns.freshTailFloor,
+      leavesSoft: lanePolicy.leaves.soft,
+      leavesDelta: lanePolicy.leaves.delta,
+      leavesTarget: lanePolicy.leaves.target,
+      bindlesSoft: lanePolicy.bindles.soft,
+      bindlesDelta: lanePolicy.bindles.delta,
+      bindlesTarget: lanePolicy.bindles.target,
+      hardLimitRiskBuffer: lanePolicy.hardLimitRiskBuffer,
       contextWindow,
       systemPromptTokens: input.systemPromptTokens,
       toolTokens: input.toolTokens,
@@ -165,6 +236,136 @@ export namespace TokenBudget {
       contextWindow,
       systemPromptTokens: input.systemPromptTokens,
       toolTokens: input.toolTokens,
+      lanePolicy,
+    }
+  }
+
+  /**
+   * Build Dolt lane-policy thresholds from defaults + environment overrides.
+   *
+   * Lane behavior:
+   * - Compact when laneTokens > soft + delta (upper hysteresis band)
+   * - Keep compacting until laneTokens <= target
+   * - Under global hard-limit risk, bypass the hysteresis band gate and compact
+   *   whenever laneTokens > target.
+   */
+  export function computeDoltLanePolicy(input: { hardLimit: number; softThreshold: number }): DoltLanePolicy {
+    const hardLimit = nonNegativeInteger(input.hardLimit)
+    const turnsCap = clampToCap(readInt("VOLTCODE_LCM_DOLT_TURNS_CAP", hardLimit), hardLimit)
+    const turnsSoftDefault = Math.min(nonNegativeInteger(input.softThreshold), turnsCap)
+    const turns = clampLane({
+      soft: readInt("VOLTCODE_LCM_DOLT_TURNS_SOFT", turnsSoftDefault),
+      delta: readInt("VOLTCODE_LCM_DOLT_TURNS_DELTA", DEFAULT_DOLT_TURNS_DELTA),
+      target: readInt("VOLTCODE_LCM_DOLT_TURNS_TARGET", turnsSoftDefault),
+      cap: turnsCap,
+    })
+    const leaves = clampLane({
+      soft: readInt("VOLTCODE_LCM_DOLT_LEAVES_SOFT", DEFAULT_DOLT_LEAVES_SOFT),
+      delta: readInt("VOLTCODE_LCM_DOLT_LEAVES_DELTA", DEFAULT_DOLT_LEAVES_DELTA),
+      target: readInt("VOLTCODE_LCM_DOLT_LEAVES_TARGET", DEFAULT_DOLT_LEAVES_TARGET),
+      cap: hardLimit,
+    })
+    const bindles = clampLane({
+      soft: readInt("VOLTCODE_LCM_DOLT_BINDLES_SOFT", DEFAULT_DOLT_BINDLES_SOFT),
+      delta: readInt("VOLTCODE_LCM_DOLT_BINDLES_DELTA", DEFAULT_DOLT_BINDLES_DELTA),
+      target: readInt("VOLTCODE_LCM_DOLT_BINDLES_TARGET", DEFAULT_DOLT_BINDLES_TARGET),
+      cap: hardLimit,
+    })
+
+    return {
+      turns: {
+        ...turns,
+        cap: turnsCap,
+        freshTailFloor: Math.max(
+          1,
+          readInt("VOLTCODE_LCM_DOLT_TURNS_FRESH_TAIL_FLOOR", DEFAULT_DOLT_TURNS_FRESH_TAIL_FLOOR),
+        ),
+      },
+      leaves,
+      bindles,
+      hardLimitRiskBuffer: Math.min(
+        hardLimit,
+        nonNegativeInteger(readInt("VOLTCODE_LCM_DOLT_HARD_LIMIT_RISK_BUFFER", DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER)),
+      ),
+    }
+  }
+
+  /**
+   * Evaluate Dolt lane decisions with hysteresis and hard-limit bypass semantics.
+   */
+  export function evaluateDoltLaneDecisions(input: {
+    laneTokens: LaneTokenCounts
+    policy: DoltLanePolicy
+    hardLimit: number
+  }): DoltLaneDecisions {
+    const hardLimit = nonNegativeInteger(input.hardLimit)
+    const laneTokens = {
+      turns: nonNegativeInteger(input.laneTokens.turns),
+      leaves: nonNegativeInteger(input.laneTokens.leaves),
+      bindles: nonNegativeInteger(input.laneTokens.bindles),
+      total: nonNegativeInteger(input.laneTokens.total),
+    }
+    const riskThreshold = Math.max(0, hardLimit - input.policy.hardLimitRiskBuffer)
+    const hardLimitRisk = laneTokens.total >= riskThreshold
+
+    const turns = evaluateLaneDecision({
+      lane: "turns",
+      laneTokens: laneTokens.turns,
+      threshold: input.policy.turns,
+      hardLimitRisk,
+    })
+    const leaves = evaluateLaneDecision({
+      lane: "leaves",
+      laneTokens: laneTokens.leaves,
+      threshold: input.policy.leaves,
+      hardLimitRisk,
+    })
+    const bindles = evaluateLaneDecision({
+      lane: "bindles",
+      laneTokens: laneTokens.bindles,
+      threshold: input.policy.bindles,
+      hardLimitRisk,
+    })
+
+    return {
+      hardLimitRisk,
+      turns,
+      leaves,
+      bindles,
+      compactAny: turns.shouldCompact || leaves.shouldCompact || bindles.shouldCompact,
+    }
+  }
+
+  /**
+   * Evaluate a single lane against soft/delta/target thresholds.
+   */
+  export function evaluateLaneDecision(input: {
+    lane: LaneName
+    laneTokens: number
+    threshold: LaneThreshold
+    hardLimitRisk: boolean
+  }): LaneDecision {
+    const laneTokens = nonNegativeInteger(input.laneTokens)
+    const soft = nonNegativeInteger(input.threshold.soft)
+    const delta = nonNegativeInteger(input.threshold.delta)
+    const target = Math.min(soft, nonNegativeInteger(input.threshold.target))
+    const upperBound = soft + delta
+    const overUpperBand = laneTokens > upperBound
+    const overTarget = laneTokens > target
+    const bypassedHysteresis = input.hardLimitRisk && overTarget && !overUpperBand
+    const shouldCompact = overTarget && (overUpperBand || bypassedHysteresis)
+
+    return {
+      lane: input.lane,
+      laneTokens,
+      soft,
+      delta,
+      target,
+      upperBound,
+      overUpperBand,
+      overTarget,
+      bypassedHysteresis,
+      shouldCompact,
     }
   }
 
@@ -202,5 +403,31 @@ export namespace TokenBudget {
     systemPromptCache.delete(sessionID)
     sessionBudgets.delete(sessionID)
     log.debug("invalidated session cache", { sessionID })
+  }
+
+  function readInt(key: string, fallback: number): number {
+    const value = process.env[key]
+    if (!value) return fallback
+    const parsed = Number(value)
+    if (!Number.isInteger(parsed) || parsed < 0) return fallback
+    return parsed
+  }
+
+  function nonNegativeInteger(value: number): number {
+    if (!Number.isFinite(value)) return 0
+    const floored = Math.floor(value)
+    return floored < 0 ? 0 : floored
+  }
+
+  function clampToCap(value: number, cap: number): number {
+    return Math.min(nonNegativeInteger(cap), nonNegativeInteger(value))
+  }
+
+  function clampLane(input: { soft: number; delta: number; target: number; cap: number }): LaneThreshold {
+    const cap = nonNegativeInteger(input.cap)
+    const soft = Math.min(nonNegativeInteger(input.soft), cap)
+    const delta = nonNegativeInteger(input.delta)
+    const target = Math.min(soft, nonNegativeInteger(input.target))
+    return { soft, delta, target }
   }
 }
