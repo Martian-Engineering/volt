@@ -165,6 +165,10 @@ export namespace LcmContext {
     summarizationLevel?: string
     /** Which condensation level was used: 'normal' | 'aggressive' | 'fallback' */
     condensationLevel?: string
+    /** Active bindles evicted from context due to overflow */
+    evictedBindleIds?: string[]
+    /** Archive stubs generated for evicted bindles */
+    archiveStubIds?: string[]
   }
 
   export interface TurnMessageInContext {
@@ -204,14 +208,15 @@ export namespace LcmContext {
     laneDecisions: TokenBudget.DoltLaneDecisions
   }> {
     const currentTokens = await LcmDb.getContextTokenCount(input.conversationId)
+    const measuredLaneTokens = await LcmDb.getContextLaneTokenCounts(input.conversationId)
     const hardLimit = input.contextWindow - input.overhead - input.reserve
     const softRaw = (input.softThresholdOverride ?? Math.floor(input.contextWindow * 0.6)) - input.overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
     const lanePolicy = TokenBudget.computeDoltLanePolicy({ hardLimit })
     const laneTokens: TokenBudget.LaneTokenCounts = {
-      turns: Math.max(0, Math.floor(input.laneTokens?.turns ?? currentTokens)),
-      leaves: Math.max(0, Math.floor(input.laneTokens?.leaves ?? 0)),
-      bindles: Math.max(0, Math.floor(input.laneTokens?.bindles ?? 0)),
+      turns: Math.max(0, Math.floor(input.laneTokens?.turns ?? measuredLaneTokens.turns)),
+      leaves: Math.max(0, Math.floor(input.laneTokens?.leaves ?? measuredLaneTokens.leaves)),
+      bindles: Math.max(0, Math.floor(input.laneTokens?.bindles ?? measuredLaneTokens.bindles)),
       total: Math.max(0, Math.floor(input.laneTokens?.total ?? currentTokens)),
     }
     const laneDecisions = TokenBudget.evaluateDoltLaneDecisions({
@@ -231,13 +236,13 @@ export namespace LcmContext {
       overhead: input.overhead,
       reserve: input.reserve,
       softThresholdOverride: input.softThresholdOverride ?? "none",
-      overSoft: laneDecisions.turns.shouldCompact,
+      overSoft: laneDecisions.compactAny,
       overHard: currentTokens > hardLimit,
     })
 
     return {
       overHard: currentTokens > hardLimit,
-      overSoft: laneDecisions.turns.shouldCompact,
+      overSoft: laneDecisions.compactAny,
       currentTokens,
       hardLimit,
       softThreshold,
@@ -362,6 +367,80 @@ export namespace LcmContext {
     return { selectedMessages, protectedTailMessages }
   }
 
+  async function evictOverflowBindles(input: {
+    conversationId: number
+    lanePolicy: TokenBudget.DoltLanePolicy
+    laneTokens: TokenBudget.LaneTokenCounts
+    laneDecisions: TokenBudget.DoltLaneDecisions
+  }): Promise<{ evictedBindleIds: string[]; archiveStubIds: string[]; newTokenCount: number }> {
+    if (!input.laneDecisions.bindles.shouldCompact) {
+      return { evictedBindleIds: [], archiveStubIds: [], newTokenCount: input.laneTokens.total }
+    }
+
+    const activeBindles = await LcmDb.getActiveBindlesInContext(input.conversationId)
+    if (activeBindles.length === 0) {
+      return { evictedBindleIds: [], archiveStubIds: [], newTokenCount: input.laneTokens.total }
+    }
+
+    const evictedBindles: LcmDb.ActiveContextBindle[] = []
+    let projectedBindleTokens = input.laneTokens.bindles
+    for (const bindle of activeBindles) {
+      if (projectedBindleTokens <= input.lanePolicy.bindles.target) break
+      evictedBindles.push(bindle)
+      projectedBindleTokens = Math.max(0, projectedBindleTokens - bindle.token_count)
+    }
+
+    if (evictedBindles.length === 0) {
+      return { evictedBindleIds: [], archiveStubIds: [], newTokenCount: input.laneTokens.total }
+    }
+
+    const evictedBindleIds = evictedBindles.map((bindle) => bindle.summary_id)
+    await LcmDb.removeContextPositions({
+      conversationId: input.conversationId,
+      positions: evictedBindles.map((bindle) => bindle.position),
+    })
+    await LcmDb.setSummariesOffContext(evictedBindleIds, true)
+
+    const archiveStubIds: string[] = []
+    for (const [index, bindle] of evictedBindles.entries()) {
+      const archiveStub = Summary.createArchiveStub(
+        {
+          archivedSummaryId: bindle.summary_id,
+          archivedSummaryContent: bindle.content,
+          conversationId: input.conversationId.toString(),
+        },
+        Date.now() + index,
+      )
+
+      await LcmDb.insertCondensedSummary({
+        summaryId: archiveStub.summaryId,
+        conversationId: input.conversationId,
+        content: archiveStub.content,
+        tokenCount: archiveStub.tokenCount,
+        parentSummaryIds: [],
+      })
+      await LcmDb.markSummaryAsArchiveStub(archiveStub.summaryId)
+      await LcmDb.upsertSummaryLineagePointers({
+        summaryId: archiveStub.summaryId,
+        pointers: [{ pointsToSummaryId: bindle.summary_id, pointerKind: "archive_stub" }],
+      })
+
+      archiveStubIds.push(archiveStub.summaryId)
+    }
+
+    const newTokenCount = await LcmDb.getContextTokenCount(input.conversationId)
+    log.info("evicted overflow bindles to archive", {
+      conversationId: input.conversationId,
+      evictedBindleIds,
+      archiveStubIds,
+      bindlesBefore: input.laneTokens.bindles,
+      bindlesAfter: projectedBindleTokens,
+      bindleTarget: input.lanePolicy.bindles.target,
+      newTokenCount,
+    })
+    return { evictedBindleIds, archiveStubIds, newTokenCount }
+  }
+
   /**
    * Main handler called when context threshold is reached.
    *
@@ -398,7 +477,7 @@ export namespace LcmContext {
     })
 
     // Check if we're actually over threshold
-    const thresholdCheck = await isOverThreshold({
+    let thresholdCheck = await isOverThreshold({
       conversationId: input.conversationId,
       overhead: input.overhead,
       reserve: input.reserve,
@@ -417,6 +496,53 @@ export namespace LcmContext {
         softThreshold: thresholdCheck.softThreshold,
       })
       return { actionTaken: false, condensed: false, ...baseResult }
+    }
+
+    const evictedBindleIds: string[] = []
+    const archiveStubIds: string[] = []
+    const bindleEvictionResult = await evictOverflowBindles({
+      conversationId: input.conversationId,
+      lanePolicy: thresholdCheck.lanePolicy,
+      laneTokens: thresholdCheck.laneTokens,
+      laneDecisions: thresholdCheck.laneDecisions,
+    })
+    if (bindleEvictionResult.evictedBindleIds.length > 0) {
+      evictedBindleIds.push(...bindleEvictionResult.evictedBindleIds)
+      archiveStubIds.push(...bindleEvictionResult.archiveStubIds)
+
+      thresholdCheck = await isOverThreshold({
+        conversationId: input.conversationId,
+        overhead: input.overhead,
+        reserve: input.reserve,
+        contextWindow: input.contextWindow,
+        softThresholdOverride: input.softThresholdOverride,
+      })
+      if (!thresholdCheck.overSoft && !input.force) {
+        return {
+          actionTaken: true,
+          condensed: false,
+          newTokenCount: bindleEvictionResult.newTokenCount,
+          evictedBindleIds,
+          archiveStubIds,
+          ...baseResult,
+        }
+      }
+    }
+
+    if (
+      !thresholdCheck.laneDecisions.turns.shouldCompact &&
+      !thresholdCheck.laneDecisions.leaves.shouldCompact &&
+      !input.force
+    ) {
+      return {
+        actionTaken: evictedBindleIds.length > 0,
+        condensed: false,
+        newTokenCount: thresholdCheck.currentTokens,
+        messagesSummarized: 0,
+        evictedBindleIds,
+        archiveStubIds,
+        ...baseResult,
+      }
     }
 
     // Step 1: Find existing summaries in context
@@ -442,6 +568,8 @@ export namespace LcmContext {
           ...condensationResult,
           ...baseResult,
           messagesSummarized: 0,
+          evictedBindleIds,
+          archiveStubIds,
         }
       }
 
@@ -449,7 +577,14 @@ export namespace LcmContext {
         conversationId: input.conversationId,
         summaryCount: existingSummaries.length,
       })
-      return { actionTaken: false, condensed: false, ...baseResult, messagesSummarized: 0 }
+      return {
+        actionTaken: evictedBindleIds.length > 0,
+        condensed: false,
+        ...baseResult,
+        messagesSummarized: 0,
+        evictedBindleIds,
+        archiveStubIds,
+      }
     }
 
     // Step 3: Summarize messages into a leaf summary
@@ -474,7 +609,14 @@ export namespace LcmContext {
         totalMessages: messagesInContext.length,
         protectedTailCount,
       })
-      return { actionTaken: false, condensed: false, ...baseResult, messagesSummarized: 0 }
+      return {
+        actionTaken: evictedBindleIds.length > 0,
+        condensed: false,
+        ...baseResult,
+        messagesSummarized: 0,
+        evictedBindleIds,
+        archiveStubIds,
+      }
     }
 
     log.info("selected turn window for leaf compaction", {
@@ -579,6 +721,8 @@ export namespace LcmContext {
         condensed: false,
         messagesSummarized: selectedMessages.length,
         summarizationLevel,
+        evictedBindleIds,
+        archiveStubIds,
         ...baseResult,
       }
     }
@@ -600,6 +744,8 @@ export namespace LcmContext {
         messagesSummarized: selectedMessages.length,
         summarizationLevel,
         condensationLevel: condensationResult.condensationLevel,
+        evictedBindleIds,
+        archiveStubIds,
         ...baseResult,
       }
     }
@@ -617,6 +763,8 @@ export namespace LcmContext {
       condensed: false,
       messagesSummarized: messagesInContext.length,
       summarizationLevel,
+      evictedBindleIds,
+      archiveStubIds,
       ...baseResult,
     }
   }

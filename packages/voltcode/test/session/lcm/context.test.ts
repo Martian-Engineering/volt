@@ -426,6 +426,166 @@ describe("session.lcm.context", () => {
       expect(matched!.qmd_doc_id).toBe(`qmd:${bindleId}`)
       expect(matched!.is_off_context).toBe(true)
     })
+
+    test("evicts oldest active bindles on overflow with archive-stub lineage across repeated rounds", async () => {
+      const previousBindlesSoft = process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT
+      const previousBindlesDelta = process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA
+      const previousBindlesTarget = process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET
+      process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT = "20"
+      process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA = "0"
+      process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET = "15"
+
+      let offset = 50
+      const nextSummaryId = () => `sum_${(Date.now() + offset++).toString(16).padStart(16, "0")}`
+      const conn = LcmDb.getConnection()
+
+      async function appendBindleToContext(label: string): Promise<string> {
+        const leaf1 = nextSummaryId()
+        const leaf2 = nextSummaryId()
+        const bindleId = nextSummaryId()
+
+        await LcmDb.insertLeafSummary({
+          summaryId: leaf1,
+          conversationId: testConversationId,
+          content: `${label} leaf 1`,
+          tokenCount: 4,
+          messageIds: [],
+        })
+        await LcmDb.insertLeafSummary({
+          summaryId: leaf2,
+          conversationId: testConversationId,
+          content: `${label} leaf 2`,
+          tokenCount: 4,
+          messageIds: [],
+        })
+        await LcmDb.insertCondensedSummary({
+          summaryId: bindleId,
+          conversationId: testConversationId,
+          content: `${label} bindle with longer content to ensure deterministic eviction behavior`,
+          tokenCount: 12,
+          parentSummaryIds: [leaf1, leaf2],
+        })
+
+        await LcmDb.appendMessage({
+          conversationId: testConversationId,
+          role: "user",
+          content: `placeholder for ${bindleId}`,
+          tokenCount: 1,
+        })
+        const contextBeforeReplacement = await LcmDb.getCurrentContext(testConversationId)
+        const insertedMessagePosition = contextBeforeReplacement.length - 1
+        await LcmDb.replaceContextWithSummary({
+          conversationId: testConversationId,
+          startPosition: insertedMessagePosition,
+          endPosition: insertedMessagePosition,
+          summaryId: bindleId,
+        })
+
+        return bindleId
+      }
+
+      try {
+        const firstBatch = [
+          await appendBindleToContext("batch-1"),
+          await appendBindleToContext("batch-2"),
+          await appendBindleToContext("batch-3"),
+          await appendBindleToContext("batch-4"),
+        ]
+
+        const user = {
+          id: "user-overflow",
+          sessionID: "session-overflow",
+          role: "user",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: Date.now() },
+        } as any
+        const model = { id: "test-model", providerID: "test" } as any
+
+        const firstPass = await LcmContext.onContextThresholdReached({
+          conversationId: testConversationId,
+          sessionID: "session-overflow",
+          user,
+          model,
+          overhead: 0,
+          reserve: 0,
+          contextWindow: MAX_TOKENS,
+        })
+        expect(firstPass.actionTaken).toBe(true)
+
+        const contextAfterFirstPass = await LcmContext.getSummariesInContext(testConversationId)
+        expect(contextAfterFirstPass.map((summary) => summary.summaryId)).toEqual([firstBatch[3]])
+
+        const secondBatch = [await appendBindleToContext("batch-5"), await appendBindleToContext("batch-6")]
+        const secondPass = await LcmContext.onContextThresholdReached({
+          conversationId: testConversationId,
+          sessionID: "session-overflow",
+          user,
+          model,
+          overhead: 0,
+          reserve: 0,
+          contextWindow: MAX_TOKENS,
+        })
+        expect(secondPass.actionTaken).toBe(true)
+
+        const contextAfterSecondPass = await LcmContext.getSummariesInContext(testConversationId)
+        expect(contextAfterSecondPass.map((summary) => summary.summaryId)).toEqual([secondBatch[1]])
+
+        const evictedBindles = [firstBatch[0], firstBatch[1], firstBatch[2], firstBatch[3], secondBatch[0]]
+        for (const bindleId of evictedBindles) {
+          const bindle = await LcmDb.getSummaryById(bindleId)
+          expect(bindle).not.toBeNull()
+          expect(bindle!.summary_type).toBe("bindle")
+          expect(bindle!.is_off_context).toBe(true)
+
+          const pointersToBindle = await conn<{ summary_id: string; pointer_kind: string }[]>`
+            SELECT summary_id, pointer_kind
+            FROM summary_lineage_pointers
+            WHERE points_to_summary_id = ${bindleId}
+              AND pointer_kind = 'archive_stub'
+            ORDER BY created_at ASC
+          `
+          expect(pointersToBindle.length).toBeGreaterThan(0)
+          const stubId = pointersToBindle[0].summary_id
+          const stub = await LcmDb.getSummaryById(stubId)
+          expect(stub).not.toBeNull()
+          expect(stub!.summary_type).toBe("archive_stub")
+          expect(stub!.is_off_context).toBe(true)
+          const parentLeafIds = await LcmDb.getSummaryParentIds(bindleId)
+          expect(parentLeafIds.length).toBeGreaterThan(0)
+        }
+
+        const activeBindle = await LcmDb.getSummaryById(secondBatch[1])
+        expect(activeBindle).not.toBeNull()
+        expect(activeBindle!.summary_type).toBe("bindle")
+        expect(activeBindle!.is_off_context).toBe(false)
+
+        const offContextBindles = await LcmDb.getOffContextSummaries({
+          conversationId: testConversationId,
+          summaryLevel: "bindle",
+        })
+        for (const bindleId of evictedBindles) {
+          expect(offContextBindles.some((summary) => summary.summary_id === bindleId)).toBe(true)
+        }
+        expect(offContextBindles.some((summary) => summary.summary_id === secondBatch[1])).toBe(false)
+
+        const bindleToBindleEdges = await conn<{ count: number }[]>`
+          SELECT COUNT(*)::int AS count
+          FROM summary_parents sp
+          JOIN summaries child ON child.summary_id = sp.summary_id
+          JOIN summaries parent ON parent.summary_id = sp.parent_summary_id
+          WHERE COALESCE(child.summary_level, CASE WHEN child.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) = 'bindle'
+            AND COALESCE(parent.summary_level, CASE WHEN parent.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) = 'bindle'
+        `
+        expect(bindleToBindleEdges[0]?.count ?? 0).toBe(0)
+      } finally {
+        if (previousBindlesSoft === undefined) delete process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT
+        else process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT = previousBindlesSoft
+        if (previousBindlesDelta === undefined) delete process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA
+        else process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA = previousBindlesDelta
+        if (previousBindlesTarget === undefined) delete process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET
+        else process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET = previousBindlesTarget
+      }
+    })
   })
 
   describe("context replacement operations", () => {

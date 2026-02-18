@@ -123,6 +123,32 @@ describe("session.lcm.summary", () => {
     })
   })
 
+  describe("createArchiveStub", () => {
+    test("creates an archive stub with bindle metadata and short content", () => {
+      const timestamp = 1700000003000
+      const archivedSummaryId = Summary.generateId("archived bindle", timestamp - 1000)
+      const summary = Summary.createArchiveStub(
+        {
+          archivedSummaryId,
+          archivedSummaryContent:
+            "This is a much longer bindle body that should be truncated for archival stubs so retrieval gets a short cue only.",
+          conversationId: "ses_test123",
+        },
+        timestamp,
+      )
+
+      expect(summary.kind).toBe("condensed")
+      expect(summary.level).toBe("bindle")
+      expect(summary.summaryType).toBe("archive_stub")
+      expect(summary.parents).toEqual([])
+      expect(summary.conversationId).toBe("ses_test123")
+      expect(summary.content).toContain(`[Archive Stub for ${archivedSummaryId}]`)
+      expect(summary.tokenCount).toBeGreaterThan(0)
+      expect(summary.createdAt).toBe(timestamp)
+      expect(Summary.isValidId(summary.summaryId)).toBe(true)
+    })
+  })
+
   describe("formatForContext", () => {
     test("formats leaf summary without parents", () => {
       const summary = Summary.createLeaf(
@@ -315,6 +341,28 @@ describe("session.lcm.summary", () => {
         tokenCount: 20,
         conversationId: "ses_test",
         parents: ["msg_abc123def4567890"],
+      })
+
+      expect(result.success).toBe(false)
+    })
+  })
+
+  describe("CreateArchiveStubInput validation", () => {
+    test("validates correct archive stub input", () => {
+      const result = Summary.CreateArchiveStubInput.safeParse({
+        archivedSummaryId: "sum_abc123def4567890",
+        archivedSummaryContent: "archived bindle body",
+        conversationId: "ses_test",
+      })
+
+      expect(result.success).toBe(true)
+    })
+
+    test("rejects archive stub input with invalid summary ID", () => {
+      const result = Summary.CreateArchiveStubInput.safeParse({
+        archivedSummaryId: "msg_abc123def4567890",
+        archivedSummaryContent: "archived bindle body",
+        conversationId: "ses_test",
       })
 
       expect(result.success).toBe(false)

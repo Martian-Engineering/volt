@@ -1,5 +1,6 @@
 import { createHash } from "crypto"
 import z from "zod"
+import { Token } from "@/util/token"
 
 /**
  * Lossless Context Management (LCM) Summary Module
@@ -109,6 +110,24 @@ export namespace Summary {
   export type CreateCondensedInput = z.infer<typeof CreateCondensedInput>
 
   /**
+   * Schema for creating an archival stub for an evicted bindle.
+   *
+   * Archive stubs are short, off-context pointer nodes that reference a full
+   * bindle via lineage pointers.
+   */
+  export const CreateArchiveStubInput = z
+    .object({
+      archivedSummaryId: z.string().startsWith("sum_"),
+      archivedSummaryContent: z.string(),
+      conversationId: z.string(),
+    })
+    .meta({
+      ref: "CreateArchiveStubInput",
+    })
+
+  export type CreateArchiveStubInput = z.infer<typeof CreateArchiveStubInput>
+
+  /**
    * Schema for summary with linked message IDs (for leaf summaries)
    */
   export const WithMessages = Schema.extend({
@@ -189,6 +208,38 @@ export namespace Summary {
       conversationId: input.conversationId,
       parents: input.parents,
       fileIds: input.fileIds ?? [],
+      createdAt: ts,
+    }
+  }
+
+  /**
+   * Create a short archival stub for an evicted bindle.
+   *
+   * The stub carries a compact textual cue for retrieval and keeps the full
+   * lineage in DB pointer tables (stub -> full bindle -> leaves/messages).
+   *
+   * @param input - Input data for creating the archive stub
+   * @param timestamp - Optional timestamp (defaults to Date.now())
+   * @returns Complete Summary.Info object for the archive stub
+   */
+  export function createArchiveStub(input: CreateArchiveStubInput, timestamp?: number): Info {
+    const ts = timestamp ?? Date.now()
+    const normalizedContent = input.archivedSummaryContent.replace(/\s+/g, " ").trim()
+    const excerptLimit = 160
+    const excerpt = normalizedContent.slice(0, excerptLimit).trimEnd()
+    const suffix = normalizedContent.length > excerptLimit ? "..." : ""
+    const content = `[Archive Stub for ${input.archivedSummaryId}] ${excerpt}${suffix}`
+
+    return {
+      summaryId: generateId(`archive_stub:${input.archivedSummaryId}:${content}`, ts),
+      content,
+      kind: "condensed",
+      level: "bindle",
+      summaryType: "archive_stub",
+      tokenCount: Token.estimate(content),
+      conversationId: input.conversationId,
+      parents: [],
+      fileIds: [],
       createdAt: ts,
     }
   }

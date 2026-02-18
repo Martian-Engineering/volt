@@ -197,6 +197,18 @@ export namespace LcmDb {
   })
   export type SummaryLineagePointer = z.infer<typeof SummaryLineagePointer>
 
+  /**
+   * Active bindle node currently present in context (eligible for eviction).
+   */
+  export const ActiveContextBindle = z.object({
+    position: z.number(),
+    summary_id: z.string(),
+    content: z.string(),
+    token_count: z.number(),
+    created_at: z.date(),
+  })
+  export type ActiveContextBindle = z.infer<typeof ActiveContextBindle>
+
   export const ContextItem = z.object({
     conversation_id: z.number(),
     position: z.number(),
@@ -229,6 +241,13 @@ export namespace LcmDb {
     kind: SummaryKind,
   })
   export type SummarySearchResult = z.infer<typeof SummarySearchResult>
+
+  export const ContextLaneTokenCounts = z.object({
+    turns: z.number(),
+    leaves: z.number(),
+    bindles: z.number(),
+  })
+  export type ContextLaneTokenCounts = z.infer<typeof ContextLaneTokenCounts>
 
   // Track if database has been initialized
   let dbInitialized = false
@@ -1223,6 +1242,52 @@ export namespace LcmDb {
   }
 
   /**
+   * Compute lane token totals for active context items.
+   *
+   * Lane semantics:
+   * - turns: raw message tokens in context
+   * - leaves: L1 leaf summary tokens in context
+   * - bindles: active L2 bindle summary tokens in context (archive stubs excluded)
+   */
+  export async function getContextLaneTokenCounts(conversationId: number): Promise<ContextLaneTokenCounts> {
+    const conn = sql()
+    const rows = await conn<
+      { item_type: ContextItemType; token_count: number; summary_level: SummaryLevel | null; summary_type: SummaryType | null }[]
+    >`
+      SELECT
+        ci.item_type,
+        COALESCE(m.token_count, s.token_count, 0) AS token_count,
+        COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
+        COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type
+      FROM context_items ci
+      LEFT JOIN messages  m ON m.message_id = ci.message_id
+      LEFT JOIN summaries s ON s.summary_id = ci.summary_id
+      WHERE ci.conversation_id = ${conversationId}
+    `
+
+    let turns = 0
+    let leaves = 0
+    let bindles = 0
+
+    for (const row of rows) {
+      const tokens = Math.max(0, row.token_count)
+      if (row.item_type === "message") {
+        turns += tokens
+        continue
+      }
+      if (row.summary_level === "leaf" && row.summary_type === "leaf") {
+        leaves += tokens
+        continue
+      }
+      if (row.summary_level === "bindle" && row.summary_type === "bindle") {
+        bindles += tokens
+      }
+    }
+
+    return { turns, leaves, bindles }
+  }
+
+  /**
    * Get the earliest messages in context to summarize (prefix within a token budget)
    */
   export async function getMessagesToSummarize(
@@ -1581,6 +1646,50 @@ export namespace LcmDb {
   }
 
   /**
+   * Remove specific context positions and renumber remaining items.
+   *
+   * Used by bindle overflow eviction to drop active bindles from context while
+   * preserving the relative order of all remaining items.
+   */
+  export async function removeContextPositions(input: {
+    conversationId: number
+    positions: number[]
+  }): Promise<void> {
+    const positions = [...new Set(input.positions.map((position) => Math.floor(position)).filter((position) => position >= 0))]
+    if (positions.length === 0) return
+
+    const positionsSet = new Set(positions)
+    const conn = sql()
+
+    await conn.begin(async (tx) => {
+      const items = await tx<
+        { position: number; item_type: ContextItemType; message_id: number | null; summary_id: string | null }[]
+      >`
+        SELECT position, item_type, message_id, summary_id
+        FROM context_items
+        WHERE conversation_id = ${input.conversationId}
+        ORDER BY position
+      `
+
+      await tx`DELETE FROM context_items WHERE conversation_id = ${input.conversationId}`
+
+      const keptItems = items.filter((item) => !positionsSet.has(item.position))
+      for (let i = 0; i < keptItems.length; i++) {
+        const item = keptItems[i]
+        await tx`
+          INSERT INTO context_items (conversation_id, position, item_type, message_id, summary_id)
+          VALUES (${input.conversationId}, ${i}, ${item.item_type}::context_item_type, ${item.message_id}, ${item.summary_id})
+        `
+      }
+    })
+
+    log.debug("removed context positions", {
+      conversationId: input.conversationId,
+      positions,
+    })
+  }
+
+  /**
    * Retrieve a summary by ID
    *
    * @param summaryId - The summary ID to retrieve
@@ -1788,6 +1897,32 @@ export namespace LcmDb {
       ORDER BY ord
     `
     return rows.map((r) => r.parent_summary_id)
+  }
+
+  /**
+   * Return active bindles currently present in context, ordered oldest-first.
+   *
+   * "Oldest" is evaluated by context position so eviction order matches active
+   * context chronology. Archive stubs and already off-context rows are excluded.
+   */
+  export async function getActiveBindlesInContext(conversationId: number): Promise<ActiveContextBindle[]> {
+    const conn = sql()
+    return conn<ActiveContextBindle[]>`
+      SELECT
+        ci.position,
+        s.summary_id,
+        s.content,
+        s.token_count,
+        s.created_at
+      FROM context_items ci
+      JOIN summaries s ON s.summary_id = ci.summary_id
+      WHERE ci.conversation_id = ${conversationId}
+        AND ci.item_type = 'summary'::context_item_type
+        AND COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) = 'bindle'
+        AND COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) = 'bindle'
+        AND COALESCE(s.is_off_context, false) = false
+      ORDER BY ci.position
+    `
   }
 
   /**
