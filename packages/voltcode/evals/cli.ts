@@ -161,7 +161,7 @@ function parseConfig(args: string[]): EvalTypes.RunConfig {
     agent: "voltcode",
     concurrency: 1,
     binary: false,
-    timeout: 3_600_000,
+    timeout: 7_200_000,
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -336,7 +336,7 @@ BENCHMARKS:
 OPTIONS:
   --limit <n>        Maximum number of tasks to run (useful for testing)
   --model <model>    Model to use (e.g., anthropic/claude-sonnet-4)
-  --timeout <ms>     Timeout per task in milliseconds (default: 600000)
+  --timeout <ms>     Timeout per task in milliseconds (default: 7200000)
   --concurrency <n>  Number of parallel tasks (default: 1)
   --output <dir>     Output directory for result.json and trace.jsonl
   --tasks <ids>      Comma-separated list of specific task IDs

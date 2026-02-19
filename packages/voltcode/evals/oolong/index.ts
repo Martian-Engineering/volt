@@ -761,8 +761,8 @@ export namespace Oolong {
   /** Default context length matching the RLM paper's Table 1 */
   const DEFAULT_CONTEXT_LEN = 131072
 
-  /** Default timeout: 60 minutes per task (Opus 4.6 and other reasoning models need longer) */
-  const DEFAULT_TIMEOUT = 3_600_000
+  /** Default timeout: 120 minutes per task (large-context runs can exceed 60 minutes) */
+  const DEFAULT_TIMEOUT = 7_200_000
 
   /** VoltCode source dir for running from the local codebase */
   const VOLTCODE_DIR = path.resolve(import.meta.dir, "../..")

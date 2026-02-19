@@ -38,7 +38,7 @@ export namespace EvalTypes {
     /** Specific task IDs to run */
     taskIds: z.array(z.string()).optional(),
     /** Maximum time per task in milliseconds */
-    timeout: z.number().positive().default(1_800_000),
+    timeout: z.number().positive().default(7_200_000),
     /** Number of parallel tasks */
     concurrency: z.number().positive().default(1),
     /** Output directory for results */

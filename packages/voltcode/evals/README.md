@@ -52,7 +52,7 @@ bun evals/cli.ts all --limit 5
 | ------------------- | ------------------- | -------------- |
 | `--limit <n>`       | Max tasks to run    | All            |
 | `--model <model>`   | Model (provider/id) | Default        |
-| `--timeout <ms>`    | Timeout per task    | 600000         |
+| `--timeout <ms>`    | Timeout per task    | 7200000        |
 | `--concurrency <n>` | Parallel tasks      | 1              |
 | `--output <dir>`    | Results directory   | ./eval-results |
 | `--tasks <ids>`     | Specific task IDs   | All            |
