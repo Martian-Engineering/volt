@@ -1,4 +1,4 @@
-# Summary Condensation Prompt
+# Upward d2 Summary Condensation Prompt
 
 You are condensing multiple chronological summaries into one higher-level narrative summary.
 

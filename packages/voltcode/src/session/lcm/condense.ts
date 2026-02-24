@@ -6,7 +6,35 @@ import { Summary } from "./summary"
 import { LcmDb } from "./db"
 import { extractFileIds } from "./summarize"
 import { getLcmPolicyConfig } from "./config"
-import CONDENSE_PROMPT from "./prompts/condense.txt"
+import { resolveLcmPrompt } from "./prompt-registry"
+
+type GenerateTextInput = Parameters<typeof generateText>[0]
+
+/**
+ * Build the `generateText` request payload for summary condensation.
+ */
+export function createCondenseLlmRequest(input: {
+  model: GenerateTextInput["model"]
+  promptTemplate: string
+  userMessage: string
+  abort?: AbortSignal
+}): GenerateTextInput {
+  return {
+    model: input.model,
+    abortSignal: input.abort,
+    maxOutputTokens: getLcmPolicyConfig().runtime.condenseMaxOutputTokens,
+    messages: [
+      {
+        role: "system",
+        content: input.promptTemplate,
+      },
+      {
+        role: "user",
+        content: input.userMessage,
+      },
+    ],
+  }
+}
 
 /**
  * LCM Condense Module
@@ -22,11 +50,22 @@ export namespace Condense {
    * Enforce L1->L2 invariant: bindles are created from sprigs only.
    * Any non-sprig parent would create bindle->bindle aggregation paths.
    */
-  function assertSprigParentsOnly(summaries: Summary.Info[]): void {
-    const nonSprigParents = summaries.filter((summary) => summary.kind !== "sprig")
-    if (nonSprigParents.length > 0) {
+  function assertParentsMatchCondensationOrder(summaries: Summary.Info[], condensationOrder: number): void {
+    const requiredParentOrder = condensationOrder - 1
+    const invalidParents = summaries.filter((summary) => {
+      const summaryOrder = summary.condensationOrder ?? Summary.condensationOrderFromKind(summary.kind)
+      if (requiredParentOrder === 1) {
+        return summary.kind !== "sprig" || summaryOrder !== 1
+      }
+      return summary.kind !== "bindle" || summaryOrder !== requiredParentOrder
+    })
+    if (invalidParents.length > 0) {
+      const expected =
+        requiredParentOrder === 1 ? "d1 sprig summaries" : `d${requiredParentOrder} bindle summaries`
       throw new Error(
-        `Cannot condense non-sprig summaries into bindles: ${nonSprigParents.map((s) => s.summaryId).join(", ")}`,
+        `Cannot condense into d${condensationOrder}; expected ${expected}. Invalid parents: ${invalidParents
+          .map((s) => s.summaryId)
+          .join(", ")}`,
       )
     }
   }
@@ -69,12 +108,18 @@ export namespace Condense {
     conversationId: string
     dbConversationId: number
     model: Provider.Model
+    /** Canonical condensation order for resulting bindle (default d2). */
+    condensationOrder?: number
     abort?: AbortSignal
   }): Promise<Summary.Info> {
     if (input.summaries.length === 0) {
       throw new Error("Cannot condense empty list of summaries")
     }
-    assertSprigParentsOnly(input.summaries)
+    const condensationOrder = Summary.CondensationOrder.parse(input.condensationOrder ?? 2)
+    if (condensationOrder < 2) {
+      throw new Error(`Cannot condense summaries into d${condensationOrder}; bindles require order >= d2`)
+    }
+    assertParentsMatchCondensationOrder(input.summaries, condensationOrder)
 
     const inputTokens = input.summaries.reduce((sum, s) => sum + s.tokenCount, 0)
     log.info("condensing summaries", {
@@ -97,27 +142,23 @@ ${parentIds.join(", ")}
 ${formattedSummaries}
 `.trim()
 
-    const promptTemplate = CONDENSE_PROMPT
+    const promptTemplate = await resolveLcmPrompt({
+      operation: "condense",
+      condensationOrder,
+    })
 
     // Get language model for the provider
     const language = await Provider.getLanguage(input.model)
 
     // Call the LLM to generate the bindle summary
-    const result = await generateText({
-      model: language,
-      abortSignal: input.abort,
-      maxOutputTokens: getLcmPolicyConfig().runtime.condenseMaxOutputTokens,
-      messages: [
-        {
-          role: "system",
-          content: promptTemplate,
-        },
-        {
-          role: "user",
-          content: userMessage,
-        },
-      ],
-    })
+    const result = await generateText(
+      createCondenseLlmRequest({
+        model: language,
+        promptTemplate,
+        userMessage,
+        abort: input.abort,
+      }),
+    )
 
     const finalContent = result.text.trim()
 
@@ -136,6 +177,7 @@ ${formattedSummaries}
         tokenCount: Token.estimate(finalContent),
         conversationId: input.conversationId,
         parents: parentIds,
+        condensationOrder,
         fileIds: allFileIds,
       },
       timestamp,
@@ -148,6 +190,7 @@ ${formattedSummaries}
       content: summary.content,
       tokenCount: summary.tokenCount,
       parentSummaryIds: parentIds,
+      condensationOrder,
       fileIds: allFileIds,
     })
 
@@ -156,6 +199,7 @@ ${formattedSummaries}
       tokenCount: summary.tokenCount,
       inputTokens,
       reduction: inputTokens - summary.tokenCount,
+      condensationOrder,
       parentCount: parentIds.length,
     })
 

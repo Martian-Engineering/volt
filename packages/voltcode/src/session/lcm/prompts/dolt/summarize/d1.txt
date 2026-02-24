@@ -1,4 +1,4 @@
-# Message Summarization Prompt
+# Dolt d1 Message Summarization Prompt
 
 You are summarizing a chronological slice of a coding conversation.
 

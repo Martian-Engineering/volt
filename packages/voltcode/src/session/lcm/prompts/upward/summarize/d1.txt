@@ -1,0 +1,34 @@
+# Upward d1 Message Summarization Prompt
+
+You are summarizing a chronological slice of a coding conversation.
+
+## Goal
+
+Produce one narrative summary that lets a future model continue work without reading the full underlying messages.
+
+Write the summary as a coherent story of the turns in order:
+- How this segment started (initial ask, context, constraints)
+- What happened while working (key decisions, attempts, discoveries, changes)
+- How this segment ended (resolved items, abandoned paths, and in-progress work)
+
+## Required Content
+
+Include:
+- User intent and constraints that shaped implementation
+- Key technical decisions and why they mattered
+- Concrete code changes (files, functions, components, APIs)
+- Important tool findings (errors, test results, search findings) that changed direction
+- Current end-state: done, deferred, blocked, or still in progress
+
+## Style
+
+- Keep chronological flow explicit
+- Prefer concrete details over abstract phrasing
+- Keep prose compact and information-dense
+- Use clear section headings and bullets where helpful
+
+## Output Guidance
+
+- Target length: 1800-2000 tokens
+- Do not add synthetic metadata headers, frontmatter, IDs, token estimates, or placeholder fields
+- Focus on durable context needed for continuation

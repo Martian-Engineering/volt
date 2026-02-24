@@ -6,7 +6,35 @@ import { MessageV2 } from "@/session/message-v2"
 import { Summary } from "./summary"
 import { LcmDb } from "./db"
 import { getLcmPolicyConfig } from "./config"
-import SUMMARIZE_PROMPT from "./prompts/summarize.txt"
+import { resolveLcmPrompt } from "./prompt-registry"
+
+type GenerateTextInput = Parameters<typeof generateText>[0]
+
+/**
+ * Build the `generateText` request payload for d1 summarization.
+ */
+export function createSummarizeLlmRequest(input: {
+  model: GenerateTextInput["model"]
+  promptTemplate: string
+  formattedMessages: string
+  abort?: AbortSignal
+}): GenerateTextInput {
+  return {
+    model: input.model,
+    abortSignal: input.abort,
+    maxOutputTokens: getLcmPolicyConfig().runtime.summaryMaxOutputTokens,
+    messages: [
+      {
+        role: "system",
+        content: input.promptTemplate,
+      },
+      {
+        role: "user",
+        content: `<messages>\n${input.formattedMessages}\n</messages>`,
+      },
+    ],
+  }
+}
 
 /**
  * LCM Summarize Module
@@ -78,23 +106,21 @@ export namespace LcmSummarize {
 
     const language = await Provider.getLanguage(model)
 
+    const promptTemplate = await resolveLcmPrompt({
+      operation: "summarize",
+      condensationOrder: 1,
+    })
+
     // Call the LLM to generate the summary (use generateText directly to avoid
     // streaming/reasoning middleware issues with thinking models)
-    const result = await generateText({
-      model: language,
-      abortSignal: input.abort,
-      maxOutputTokens: getLcmPolicyConfig().runtime.summaryMaxOutputTokens,
-      messages: [
-        {
-          role: "system",
-          content: SUMMARIZE_PROMPT,
-        },
-        {
-          role: "user",
-          content: `<messages>\n${formattedMessages}\n</messages>`,
-        },
-      ],
-    })
+    const result = await generateText(
+      createSummarizeLlmRequest({
+        model: language,
+        promptTemplate,
+        formattedMessages,
+        abort: input.abort,
+      }),
+    )
 
     const summaryContent = result.text.trim()
 

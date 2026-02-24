@@ -1,0 +1,34 @@
+# Dolt d2 Summary Condensation Prompt
+
+You are condensing multiple chronological summaries into one higher-level narrative summary.
+
+## Goal
+
+Merge the input summaries into a single summary that preserves continuity and can be used to keep working without re-reading all source summaries.
+
+Treat the input as a time-ordered sequence and produce a unified story:
+- How the overall effort began
+- How the work evolved across the grouped summaries
+- Where the effort stands at the end
+
+## Required Content
+
+Include:
+- Major decisions and how they shifted the implementation path
+- Important code changes and touched areas of the codebase
+- Key discoveries from tools/tests/errors that changed outcomes
+- Explicit transitions: what was pursued, what was dropped, what replaced it
+- Final state: completed work, open threads, and next likely actions
+
+## Style
+
+- Preserve chronology across the merged summaries
+- Resolve repetition by merging overlapping points cleanly
+- Keep language precise and implementation-oriented
+- Use structured headings and concise bullets where useful
+
+## Output Guidance
+
+- Target length: 1800-2000 tokens
+- Do not add synthetic metadata headers, frontmatter, IDs, token estimates, or placeholder fields
+- Prioritize context that enables accurate continuation of work
