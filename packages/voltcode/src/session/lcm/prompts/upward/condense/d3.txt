@@ -1,0 +1,34 @@
+# Upward d3+ Summary Condensation Prompt
+
+You are condensing higher-order chronological summaries into one next-order narrative summary.
+
+## Goal
+
+Merge the input summaries into a single summary that preserves continuity and enables reliable continuation without replaying all parent summaries.
+
+Treat the inputs as a time-ordered sequence and produce one coherent narrative:
+- How the larger effort progressed across these already-condensed layers
+- What changed in strategy, implementation, or scope over time
+- Where the effort stands now
+
+## Required Content
+
+Include:
+- Major decisions and their downstream effects
+- Important code changes and touched components
+- Material discoveries from tests/errors/tools that redirected work
+- Explicit transitions between attempts, including abandoned approaches
+- Current terminal state: completed work, unresolved threads, and likely next actions
+
+## Style
+
+- Preserve chronology and causality
+- Compress repetition while keeping decisive detail
+- Keep language concrete, implementation-oriented, and information-dense
+- Use headings and concise bullets where useful
+
+## Output Guidance
+
+- Target length: 1800-2000 tokens
+- Do not add synthetic metadata headers, frontmatter, IDs, token estimates, or placeholder fields
+- Focus on durable context needed to continue accurately

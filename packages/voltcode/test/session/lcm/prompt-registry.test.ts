@@ -32,6 +32,31 @@ describe("session.lcm.prompt-registry", () => {
     expect(upwardCondense).toContain("Upward d2 Summary Condensation Prompt")
   })
 
+  test("resolves upward condense d3 prompt", async () => {
+    const upwardCondenseD3 = await resolveLcmPrompt({
+      mode: "upward",
+      operation: "condense",
+      condensationOrder: 3,
+    })
+
+    expect(upwardCondenseD3).toContain("Upward d3+ Summary Condensation Prompt")
+  })
+
+  test("resolves upward condense d4 to shared d3+ prompt", async () => {
+    const upwardCondenseD3 = await resolveLcmPrompt({
+      mode: "upward",
+      operation: "condense",
+      condensationOrder: 3,
+    })
+    const upwardCondenseD4 = await resolveLcmPrompt({
+      mode: "upward",
+      operation: "condense",
+      condensationOrder: 4,
+    })
+
+    expect(upwardCondenseD4).toBe(upwardCondenseD3)
+  })
+
   test("fails explicitly when prompt mapping is missing", async () => {
     setLcmPromptRegistryForTesting({})
 

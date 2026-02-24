@@ -30,6 +30,7 @@ const PROMPT_REGISTRY: LcmPromptRegistry = {
   "dolt:condense:d2": "prompts/dolt/condense/d2.txt",
   "upward:summarize:d1": "prompts/upward/summarize/d1.txt",
   "upward:condense:d2": "prompts/upward/condense/d2.txt",
+  "upward:condense:d3": "prompts/upward/condense/d3.txt",
 }
 
 let promptRegistryOverride: Partial<LcmPromptRegistry> | null = null
@@ -50,15 +51,41 @@ export function createLcmPromptRegistryKey(input: {
 }
 
 /**
+ * Apply finite-depth prompt policy for mode/operation lookup.
+ *
+ * Upward condensation supports recursive dN compaction, but prompt templates
+ * are finite: d2 has a dedicated prompt and d3 is shared for d3+.
+ */
+function normalizeCondensationOrderForLookup(input: {
+  mode: LcmMode
+  operation: LcmPromptOperation
+  condensationOrder: number
+}): number {
+  const condensationOrder = Number(input.condensationOrder)
+  if (!Number.isFinite(condensationOrder) || !Number.isInteger(condensationOrder) || condensationOrder < 1) {
+    throw new Error(`Invalid LCM condensation order: ${input.condensationOrder}. Expected integer >= 1`)
+  }
+  if (input.mode === "upward" && input.operation === "condense" && condensationOrder >= 3) {
+    return 3
+  }
+  return condensationOrder
+}
+
+/**
  * Resolve a prompt template by active mode + operation + condensation order.
  * Fails explicitly when mapping or file is missing.
  */
 export async function resolveLcmPrompt(input: ResolveLcmPromptInput): Promise<string> {
   const mode = input.mode ?? getLcmPolicyConfig().mode
-  const key = createLcmPromptRegistryKey({
+  const condensationOrder = normalizeCondensationOrderForLookup({
     mode,
     operation: input.operation,
     condensationOrder: input.condensationOrder,
+  })
+  const key = createLcmPromptRegistryKey({
+    mode,
+    operation: input.operation,
+    condensationOrder,
   })
   const registry = promptRegistryOverride ?? PROMPT_REGISTRY
   const relativePath = registry[key]
