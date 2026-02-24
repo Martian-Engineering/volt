@@ -194,12 +194,28 @@ async function buildLcmWatchView(input: {
   const laneTokens = await LcmDb.getContextLaneTokenCounts(conversationId)
   const totalTokens = await LcmDb.getContextTokenCount(conversationId)
 
-  const bindles = rows.filter(
-    (row) => row.item_type === "summary" && row.summary_level === "bindle" && row.summary_type === "bindle",
-  )
-  const sprigs = rows.filter(
-    (row) => row.item_type === "summary" && row.summary_level === "sprig" && row.summary_type === "sprig",
-  )
+  const bindles = rows.filter((row) => {
+    if (row.item_type !== "summary") return false
+    return (
+      LcmDb.classifySummaryForDoltLane({
+        condensationOrder: row.condensation_order,
+        summaryLevel: row.summary_level,
+        summaryType: row.summary_type,
+        kind: null,
+      }) === "bindle"
+    )
+  })
+  const sprigs = rows.filter((row) => {
+    if (row.item_type !== "summary") return false
+    return (
+      LcmDb.classifySummaryForDoltLane({
+        condensationOrder: row.condensation_order,
+        summaryLevel: row.summary_level,
+        summaryType: row.summary_type,
+        kind: null,
+      }) === "sprig"
+    )
+  })
   const leaves = rows.filter((row) => row.item_type === "message")
   const ghosts = (await LcmDb.getOffContextSummaries({ conversationId, summaryLevel: "bindle", limit: 20 })).filter(
     (summary) => summary.summary_type === "archive_stub",

@@ -176,7 +176,8 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       summary_id      text PRIMARY KEY,
       conversation_id bigint NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
       kind            public.summary_kind NOT NULL,
-      summary_level   text NOT NULL DEFAULT 'sprig',
+      summary_level   text NOT NULL DEFAULT 'd1',
+      condensation_order integer NOT NULL DEFAULT 1,
       summary_type    text NOT NULL DEFAULT 'sprig',
       content         text NOT NULL,
       token_count     integer NOT NULL,
@@ -186,7 +187,8 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       is_off_context  boolean NOT NULL DEFAULT false,
       created_at      timestamptz NOT NULL DEFAULT now(),
       content_tsv     tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
-      CONSTRAINT summaries_summary_level_check CHECK (summary_level IN ('sprig', 'bindle')),
+      CONSTRAINT summaries_summary_level_check CHECK (summary_level ~ '^d[1-9][0-9]*$'),
+      CONSTRAINT summaries_condensation_order_check CHECK (condensation_order >= 1),
       CONSTRAINT summaries_summary_type_check CHECK (summary_type IN ('sprig', 'bindle', 'archive_stub')),
       CONSTRAINT summaries_qmd_doc_version_nonnegative_check CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0)
     );
@@ -194,7 +196,10 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
     CREATE INDEX IF NOT EXISTS summaries_conv_created_idx ON summaries(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS summaries_tsv_gin_idx ON summaries USING GIN (content_tsv);
     DO $$ BEGIN
-      ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'sprig';
+      ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'd1';
+    EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries ADD COLUMN condensation_order integer NOT NULL DEFAULT 1;
     EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     DO $$ BEGIN
       ALTER TABLE summaries ADD COLUMN summary_type text NOT NULL DEFAULT 'sprig';
@@ -209,30 +214,67 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       ALTER TABLE summaries ADD COLUMN is_off_context boolean NOT NULL DEFAULT false;
     EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     DO $$ BEGIN
-        ALTER TABLE summaries
-        ADD CONSTRAINT summaries_summary_level_check
-        CHECK (summary_level IN ('sprig', 'bindle'));
-    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      ALTER TABLE summaries DROP CONSTRAINT IF EXISTS summaries_summary_level_check;
+    EXCEPTION WHEN undefined_object THEN NULL; END $$;
     DO $$ BEGIN
-        ALTER TABLE summaries
-        ADD CONSTRAINT summaries_summary_type_check
-        CHECK (summary_type IN ('sprig', 'bindle', 'archive_stub'));
-    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      ALTER TABLE summaries DROP CONSTRAINT IF EXISTS summaries_condensation_order_check;
+    EXCEPTION WHEN undefined_object THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries DROP CONSTRAINT IF EXISTS summaries_summary_type_check;
+    EXCEPTION WHEN undefined_object THEN NULL; END $$;
     DO $$ BEGIN
       ALTER TABLE summaries
         ADD CONSTRAINT summaries_qmd_doc_version_nonnegative_check
         CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0);
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     UPDATE summaries
-    SET summary_level = CASE WHEN kind = 'bindle'::public.summary_kind THEN 'bindle' ELSE 'sprig' END,
-        summary_type = CASE WHEN kind = 'bindle'::public.summary_kind THEN 'bindle' ELSE 'sprig' END
-    WHERE summary_level IS NULL
+    SET condensation_order = CASE
+          WHEN condensation_order IS NOT NULL AND condensation_order >= 1 THEN condensation_order
+          WHEN summary_level = 'sprig' THEN 1
+          WHEN summary_level = 'bindle' THEN 2
+          WHEN summary_level ~ '^d[1-9][0-9]*$' THEN substring(summary_level from '^d([1-9][0-9]*)$')::integer
+          WHEN kind = 'bindle'::public.summary_kind THEN 2
+          ELSE 1
+        END,
+        summary_level = 'd' || CASE
+          WHEN condensation_order IS NOT NULL AND condensation_order >= 1 THEN condensation_order::text
+          WHEN summary_level = 'sprig' THEN '1'
+          WHEN summary_level = 'bindle' THEN '2'
+          WHEN summary_level ~ '^d[1-9][0-9]*$' THEN substring(summary_level from '^d([1-9][0-9]*)$')
+          WHEN kind = 'bindle'::public.summary_kind THEN '2'
+          ELSE '1'
+        END,
+        summary_type = CASE
+          WHEN summary_type IN ('sprig', 'bindle', 'archive_stub') THEN summary_type
+          WHEN kind = 'bindle'::public.summary_kind THEN 'bindle'
+          ELSE 'sprig'
+        END
+    WHERE condensation_order IS NULL
        OR summary_type IS NULL
-       OR summary_level NOT IN ('sprig', 'bindle')
+       OR summary_level IS NULL
+       OR summary_level !~ '^d[1-9][0-9]*$'
+       OR condensation_order < 1
        OR summary_type NOT IN ('sprig', 'bindle', 'archive_stub')
-       OR (kind = 'bindle'::public.summary_kind AND (summary_level <> 'bindle' OR summary_type <> 'bindle'))
-       OR (kind = 'sprig'::public.summary_kind AND (summary_level <> 'sprig' OR summary_type <> 'sprig'));
-    CREATE INDEX IF NOT EXISTS summaries_off_context_idx ON summaries (is_off_context, summary_level, created_at DESC);
+       OR (summary_type = 'sprig' AND condensation_order <> 1);
+    DO $$ BEGIN
+      ALTER TABLE summaries ALTER COLUMN condensation_order SET NOT NULL;
+    EXCEPTION WHEN others THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries
+      ADD CONSTRAINT summaries_summary_level_check
+      CHECK (summary_level ~ '^d[1-9][0-9]*$');
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries
+      ADD CONSTRAINT summaries_condensation_order_check
+      CHECK (condensation_order >= 1);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE summaries
+      ADD CONSTRAINT summaries_summary_type_check
+      CHECK (summary_type IN ('sprig', 'bindle', 'archive_stub'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE INDEX IF NOT EXISTS summaries_off_context_idx ON summaries (is_off_context, condensation_order, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS summaries_qmd_doc_id_uq ON summaries (qmd_doc_id) WHERE qmd_doc_id IS NOT NULL;
 
     -- 4) Sprig summaries -> messages (ordered)

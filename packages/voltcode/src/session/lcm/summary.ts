@@ -23,12 +23,27 @@ export namespace Summary {
   export type Kind = z.infer<typeof Kind>
 
   /**
-   * Dolt lane level for summaries.
-   * - sprig: L1 summaries over leaves/messages
-   * - bindle: L2 summaries over sprigs
+   * Storage/display level labels.
+   * - Dolt aliases: sprig (d1), bindle (d2)
+   * - Canonical ordered labels: d1, d2, d3, ...
    */
-  export const Level = z.enum(["sprig", "bindle"])
+  export const CanonicalLevel = z.string().regex(/^d[1-9]\d*$/)
+  export type CanonicalLevel = z.infer<typeof CanonicalLevel>
+
+  export const DisplayLevelAlias = z.enum(["sprig", "bindle"])
+  export type DisplayLevelAlias = z.infer<typeof DisplayLevelAlias>
+
+  export const Level = z.union([DisplayLevelAlias, CanonicalLevel])
   export type Level = z.infer<typeof Level>
+
+  /**
+   * Canonical condensation order for summary rows.
+   * - 1 => d1 (sprig alias in Dolt)
+   * - 2 => d2 (bindle alias in Dolt)
+   * - N => dN
+   */
+  export const CondensationOrder = z.number().int().min(1)
+  export type CondensationOrder = z.infer<typeof CondensationOrder>
 
   /**
    * Dolt summary node type.
@@ -52,6 +67,8 @@ export namespace Summary {
       kind: Kind,
       /** Explicit Dolt lane level for sprig vs bindle semantics */
       level: Level.optional(),
+      /** Canonical condensation order for summary hierarchy traversal */
+      condensationOrder: CondensationOrder.optional(),
       /** Explicit Dolt summary node type */
       summaryType: Type.optional(),
       /** Estimated token count for the summary content */
@@ -100,6 +117,8 @@ export namespace Summary {
       conversationId: z.string(),
       /** Parent summary IDs being grouped into a bindle */
       parents: z.array(z.string().startsWith("sum_")).min(1),
+      /** Canonical order for bindle condensation level (default: 2 / d2) */
+      condensationOrder: CondensationOrder.optional(),
       /** LCM file IDs propagated from child summaries */
       fileIds: z.array(z.string()).optional(),
     })
@@ -127,6 +146,51 @@ export namespace Summary {
     })
 
   export type CreateArchiveStubInput = z.infer<typeof CreateArchiveStubInput>
+
+  /**
+   * Convert canonical condensation order to canonical dN label.
+   */
+  export function canonicalLevelFromOrder(order: number): CanonicalLevel {
+    const parsed = CondensationOrder.parse(order)
+    return `d${parsed}`
+  }
+
+  /**
+   * Convert canonical order to Dolt presentation aliases where available.
+   */
+  export function displayLevelFromOrder(order: number): Level {
+    const parsed = CondensationOrder.parse(order)
+    if (parsed === 1) return "sprig"
+    if (parsed === 2) return "bindle"
+    return canonicalLevelFromOrder(parsed)
+  }
+
+  /**
+   * Convert stored/display level labels into canonical order.
+   */
+  export function condensationOrderFromLevel(level: string): CondensationOrder {
+    if (level === "sprig") return 1
+    if (level === "bindle") return 2
+    const match = level.match(/^d([1-9]\d*)$/)
+    if (!match) throw new Error(`Unknown condensation level label: ${level}`)
+    return CondensationOrder.parse(Number.parseInt(match[1], 10))
+  }
+
+  /**
+   * Convert canonical hierarchy level to condensation order.
+   * Leaves are basal units and do not correspond to summary rows.
+   */
+  export function condensationOrderFromHierarchyLevel(level: "leaf" | string): CondensationOrder | null {
+    if (level === "leaf") return null
+    return condensationOrderFromLevel(level)
+  }
+
+  /**
+   * Canonical order from legacy summary kind.
+   */
+  export function condensationOrderFromKind(kind: Kind): CondensationOrder {
+    return kind === "bindle" ? 2 : 1
+  }
 
   /**
    * Schema for summary with linked message IDs (for sprig summaries)
@@ -173,11 +237,13 @@ export namespace Summary {
    */
   export function createSprig(input: CreateSprigInput, timestamp?: number): Info {
     const ts = timestamp ?? Date.now()
+    const condensationOrder = condensationOrderFromKind("sprig")
     return {
       summaryId: generateId(input.content, ts),
       content: input.content,
       kind: "sprig",
-      level: "sprig",
+      level: displayLevelFromOrder(condensationOrder),
+      condensationOrder,
       summaryType: "sprig",
       tokenCount: input.tokenCount,
       conversationId: input.conversationId,
@@ -199,11 +265,14 @@ export namespace Summary {
    */
   export function createBindle(input: CreateBindleInput, timestamp?: number): Info {
     const ts = timestamp ?? Date.now()
+    const condensationOrder = CondensationOrder.parse(input.condensationOrder ?? 2)
+    if (condensationOrder < 2) throw new Error(`Bindle summaries require condensation order >= 2 (received ${condensationOrder})`)
     return {
       summaryId: generateId(input.content, ts),
       content: input.content,
       kind: "bindle",
-      level: "bindle",
+      level: displayLevelFromOrder(condensationOrder),
+      condensationOrder,
       summaryType: "bindle",
       tokenCount: input.tokenCount,
       conversationId: input.conversationId,
@@ -225,6 +294,7 @@ export namespace Summary {
    */
   export function createArchiveStub(input: CreateArchiveStubInput, timestamp?: number): Info {
     const ts = timestamp ?? Date.now()
+    const condensationOrder = 2
     const ghostCue = input.ghostCueContent?.trim()
     const content =
       ghostCue && ghostCue.length > 0
@@ -241,7 +311,8 @@ export namespace Summary {
       summaryId: generateId(`archive_stub:${input.archivedSummaryId}:${content}`, ts),
       content,
       kind: "bindle",
-      level: "bindle",
+      level: displayLevelFromOrder(condensationOrder),
+      condensationOrder,
       summaryType: "archive_stub",
       tokenCount: Token.estimate(content),
       conversationId: input.conversationId,
@@ -276,7 +347,7 @@ export namespace Summary {
    * Backwards-compatible mapping from legacy kind values to Dolt level.
    */
   export function levelFromKind(kind: Kind): Level {
-    return kind === "bindle" ? "bindle" : "sprig"
+    return displayLevelFromOrder(condensationOrderFromKind(kind))
   }
 
   /**

@@ -4,7 +4,7 @@ import os from "os"
 import path from "path"
 import { SessionPrompt } from "../../../src/session/prompt"
 import { TokenBudget } from "../../../src/session/token-budget"
-import type { LcmDb } from "../../../src/session/lcm/db"
+import { LcmDb } from "../../../src/session/lcm/db"
 import { LcmContext } from "../../../src/session/lcm/context"
 import { LcmRetrieval } from "../../../src/session/lcm/retrieval"
 import { Summary } from "../../../src/session/lcm/summary"
@@ -16,14 +16,27 @@ function sid(hex: string): string {
 function makeSummary(input: {
   summaryId: string
   summaryLevel?: LcmDb.SummaryLevel
+  condensationOrder?: number
   summaryType?: LcmDb.SummaryType
   isOffContext?: boolean
 }): LcmDb.Summary {
+  const condensationOrder =
+    input.condensationOrder ??
+    (input.summaryLevel === "sprig"
+      ? 1
+      : input.summaryLevel === "bindle"
+        ? 2
+        : input.summaryLevel?.startsWith("d")
+          ? Number.parseInt(input.summaryLevel.slice(1), 10)
+          : 2)
+  const summaryLevel =
+    input.summaryLevel ?? (condensationOrder === 1 ? "sprig" : condensationOrder === 2 ? "bindle" : (`d${condensationOrder}` as LcmDb.SummaryLevel))
   return {
     summary_id: input.summaryId,
     conversation_id: 1001,
-    kind: input.summaryLevel === "sprig" ? "sprig" : "bindle",
-    summary_level: input.summaryLevel ?? "bindle",
+    kind: condensationOrder === 1 ? "sprig" : "bindle",
+    summary_level: summaryLevel,
+    condensation_order: condensationOrder,
     summary_type: input.summaryType ?? "bindle",
     content: `summary content for ${input.summaryId}`,
     token_count: 12,
@@ -61,6 +74,31 @@ describe("dolt v1 validation suite", () => {
     expect(bindle.summaryType).toBe("bindle")
     expect(stub.level).toBe("bindle")
     expect(stub.summaryType).toBe("archive_stub")
+  })
+
+  test("fails fast when unknown level labels reach Dolt lane classification", () => {
+    expect(() =>
+      LcmDb.classifySummaryForDoltLane({
+        condensationOrder: null,
+        summaryLevel: "mystery",
+        summaryType: "bindle",
+        kind: "bindle",
+      }),
+    ).toThrow("LcmDbInvariantError")
+    expect(() =>
+      LcmDb.classifySummaryForDoltLane({
+        condensationOrder: null,
+        summaryLevel: "mystery",
+        summaryType: "bindle",
+        kind: "bindle",
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          message: expect.stringContaining("Unknown summary level label"),
+        }),
+      }),
+    )
   })
 
   test("applies hysteresis bands (no-op at boundary, compacts above upper band)", () => {

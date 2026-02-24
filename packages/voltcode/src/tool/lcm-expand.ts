@@ -16,6 +16,7 @@ interface LcmExpandMetadata {
   summaryId: string
   summaryKind?: LcmDb.SummaryKind
   summaryLevel?: LcmDb.SummaryLevel
+  condensationOrder?: number
   summaryType?: LcmDb.SummaryType
   isOffContext?: boolean
   messageCount: number
@@ -102,6 +103,8 @@ The sub-agent will be able to call lcm_expand to see the full content.`,
       "Summary metadata:",
       `- kind: ${summary.kind}`,
       `- level: ${summary.summary_level}`,
+      `- condensation_order: ${summary.condensation_order}`,
+      `- canonical_level: ${LcmDb.condensationOrderToCanonicalLevel(summary.condensation_order)}`,
       `- type: ${summary.summary_type}`,
       `- off_context: ${summary.is_off_context}`,
       `- archived_pointer: ${isArchiveStub}`,
@@ -136,6 +139,7 @@ The sub-agent will be able to call lcm_expand to see the full content.`,
           summaryId: params.summary_id,
           summaryKind: summary.kind,
           summaryLevel: summary.summary_level,
+          condensationOrder: summary.condensation_order,
           summaryType: summary.summary_type,
           isOffContext: summary.is_off_context,
           messageCount: 0,
@@ -164,6 +168,7 @@ The sub-agent will be able to call lcm_expand to see the full content.`,
         summaryId: params.summary_id,
         summaryKind: summary.kind,
         summaryLevel: summary.summary_level,
+        condensationOrder: summary.condensation_order,
         summaryType: summary.summary_type,
         isOffContext: summary.is_off_context,
         messageCount: messages.length,

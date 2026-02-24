@@ -82,6 +82,12 @@ describe("session.lcm.context", () => {
     return match ? match[1] : null
   }
 
+  let summaryIdCounter = 0
+  function nextSummaryId(prefix = "sum"): string {
+    summaryIdCounter += 1
+    return `${prefix}_${summaryIdCounter.toString(16).padStart(16, "0")}`
+  }
+
   async function cleanupConversation(id: number) {
     const conn = LcmDb.getConnection()
     // Delete in order to avoid FK violations
@@ -254,7 +260,7 @@ describe("session.lcm.context", () => {
 
   describe("summary storage and retrieval", () => {
     test("insertSprigSummary creates valid summary", async () => {
-      const summaryId = `sum_${Date.now().toString(16).padStart(16, "0")}`
+      const summaryId = nextSummaryId()
       const content = "This is a test summary of messages"
       const tokenCount = Token.estimate(content)
 
@@ -278,8 +284,8 @@ describe("session.lcm.context", () => {
 
     test("insertBindleSummary links to parent summaries", async () => {
       // Create parent summaries
-      const parent1 = `sum_${(Date.now() + 1).toString(16).padStart(16, "0")}`
-      const parent2 = `sum_${(Date.now() + 2).toString(16).padStart(16, "0")}`
+      const parent1 = nextSummaryId()
+      const parent2 = nextSummaryId()
 
       await LcmDb.insertSprigSummary({
         summaryId: parent1,
@@ -298,7 +304,7 @@ describe("session.lcm.context", () => {
       })
 
       // Create bindle summary
-      const condensedId = `sum_${(Date.now() + 3).toString(16).padStart(16, "0")}`
+      const condensedId = nextSummaryId()
       await LcmDb.insertBindleSummary({
         summaryId: condensedId,
         conversationId: testConversationId,
@@ -319,10 +325,10 @@ describe("session.lcm.context", () => {
     })
 
     test("insertBindleSummary rejects bindle parents", async () => {
-      const leaf1 = `sum_${(Date.now() + 20).toString(16).padStart(16, "0")}`
-      const leaf2 = `sum_${(Date.now() + 21).toString(16).padStart(16, "0")}`
-      const bindleId = `sum_${(Date.now() + 22).toString(16).padStart(16, "0")}`
-      const invalidBindleId = `sum_${(Date.now() + 23).toString(16).padStart(16, "0")}`
+      const leaf1 = nextSummaryId()
+      const leaf2 = nextSummaryId()
+      const bindleId = nextSummaryId()
+      const invalidBindleId = nextSummaryId()
 
       await LcmDb.insertSprigSummary({
         summaryId: leaf1,
@@ -354,17 +360,116 @@ describe("session.lcm.context", () => {
           tokenCount: 10,
           parentSummaryIds: [bindleId],
         }),
-      ).rejects.toThrow("Cannot aggregate bindle summaries")
+      ).rejects.toMatchObject({
+        name: "LcmDbInvariantError",
+        data: { message: "Cannot aggregate bindle summaries; bindles may only be created from sprig summaries" },
+      })
 
       const invalidBindle = await LcmDb.getSummaryById(invalidBindleId)
       expect(invalidBindle).toBeNull()
     })
 
+    test("migrate remaps legacy sprig/bindle labels to canonical order metadata", async () => {
+      const sprigId = nextSummaryId()
+      const bindleId = nextSummaryId()
+      const conn = LcmDb.getConnection()
+
+      await LcmDb.insertSprigSummary({
+        summaryId: sprigId,
+        conversationId: testConversationId,
+        content: "legacy sprig seed",
+        tokenCount: 6,
+        messageIds: [],
+      })
+      await LcmDb.insertBindleSummary({
+        summaryId: bindleId,
+        conversationId: testConversationId,
+        content: "legacy bindle seed",
+        tokenCount: 8,
+        parentSummaryIds: [sprigId],
+      })
+
+      await conn`ALTER TABLE summaries DROP CONSTRAINT IF EXISTS summaries_summary_level_check`
+      await conn`ALTER TABLE summaries ALTER COLUMN condensation_order DROP NOT NULL`
+      await conn`
+        UPDATE summaries
+        SET summary_level = 'sprig',
+            condensation_order = NULL,
+            summary_type = 'sprig'
+        WHERE summary_id = ${sprigId}
+      `
+      await conn`
+        UPDATE summaries
+        SET summary_level = 'bindle',
+            condensation_order = NULL,
+            summary_type = 'bindle'
+        WHERE summary_id = ${bindleId}
+      `
+
+      await LcmDb.migrate()
+
+      const rows = await conn<{ summary_id: string; summary_level: string; condensation_order: number }[]>`
+        SELECT summary_id, summary_level, condensation_order
+        FROM summaries
+        WHERE summary_id IN (${sprigId}, ${bindleId})
+        ORDER BY summary_id ASC
+      `
+      const byId = new Map(rows.map((row) => [row.summary_id, row]))
+      expect(byId.get(sprigId)?.summary_level).toBe("d1")
+      expect(byId.get(sprigId)?.condensation_order).toBe(1)
+      expect(byId.get(bindleId)?.summary_level).toBe("d2")
+      expect(byId.get(bindleId)?.condensation_order).toBe(2)
+    })
+
+    test("persists and reads d3 condensation order summaries", async () => {
+      const sprig1 = nextSummaryId()
+      const sprig2 = nextSummaryId()
+      const d2 = nextSummaryId()
+      const d3 = nextSummaryId()
+
+      await LcmDb.insertSprigSummary({
+        summaryId: sprig1,
+        conversationId: testConversationId,
+        content: "d1 parent 1",
+        tokenCount: 4,
+        messageIds: [],
+      })
+      await LcmDb.insertSprigSummary({
+        summaryId: sprig2,
+        conversationId: testConversationId,
+        content: "d1 parent 2",
+        tokenCount: 4,
+        messageIds: [],
+      })
+      await LcmDb.insertBindleSummary({
+        summaryId: d2,
+        conversationId: testConversationId,
+        content: "d2 condensation",
+        tokenCount: 7,
+        parentSummaryIds: [sprig1, sprig2],
+        condensationOrder: 2,
+      })
+      await LcmDb.insertBindleSummary({
+        summaryId: d3,
+        conversationId: testConversationId,
+        content: "d3 condensation",
+        tokenCount: 9,
+        parentSummaryIds: [d2],
+        condensationOrder: 3,
+      })
+
+      const summary = await LcmDb.getSummaryById(d3)
+      expect(summary).not.toBeNull()
+      expect(summary!.condensation_order).toBe(3)
+      expect(summary!.summary_level).toBe("d3")
+      expect(summary!.summary_type).toBe("bindle")
+    })
+
     test("supports archive stub lineage pointers and off-context retrieval metadata", async () => {
-      const leaf1 = `sum_${(Date.now() + 10).toString(16).padStart(16, "0")}`
-      const leaf2 = `sum_${(Date.now() + 11).toString(16).padStart(16, "0")}`
-      const bindleId = `sum_${(Date.now() + 12).toString(16).padStart(16, "0")}`
-      const stubId = `sum_${(Date.now() + 13).toString(16).padStart(16, "0")}`
+      const leaf1 = nextSummaryId()
+      const leaf2 = nextSummaryId()
+      const bindleId = nextSummaryId()
+      const stubId = nextSummaryId()
 
       await LcmDb.insertSprigSummary({
         summaryId: leaf1,
@@ -437,8 +542,6 @@ describe("session.lcm.context", () => {
         }),
       )
 
-      let offset = 50
-      const nextSummaryId = () => `sum_${(Date.now() + offset++).toString(16).padStart(16, "0")}`
       const conn = LcmDb.getConnection()
 
       async function appendBindleToContext(label: string): Promise<string> {
@@ -575,8 +678,10 @@ describe("session.lcm.context", () => {
           FROM summary_parents sp
           JOIN summaries child ON child.summary_id = sp.summary_id
           JOIN summaries parent ON parent.summary_id = sp.parent_summary_id
-          WHERE COALESCE(child.summary_level, CASE WHEN child.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) = 'bindle'
-            AND COALESCE(parent.summary_level, CASE WHEN parent.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) = 'bindle'
+          WHERE child.condensation_order = 2
+            AND parent.condensation_order = 2
+            AND child.summary_type = 'bindle'
+            AND parent.summary_type = 'bindle'
         `
         expect(bindleToBindleEdges[0]?.count ?? 0).toBe(0)
       } finally {
@@ -598,7 +703,7 @@ describe("session.lcm.context", () => {
       }
 
       // Create a summary to replace messages 1-3
-      const summaryId = `sum_${Date.now().toString(16).padStart(16, "0")}`
+      const summaryId = nextSummaryId()
       await LcmDb.insertSprigSummary({
         summaryId,
         conversationId: testConversationId,
@@ -635,8 +740,8 @@ describe("session.lcm.context", () => {
       }
 
       // Create two summaries and add them to context
-      const summary1 = `sum_${(Date.now() + 1).toString(16).padStart(16, "0")}`
-      const summary2 = `sum_${(Date.now() + 2).toString(16).padStart(16, "0")}`
+      const summary1 = nextSummaryId()
+      const summary2 = nextSummaryId()
 
       await LcmDb.insertSprigSummary({
         summaryId: summary1,
@@ -678,10 +783,10 @@ describe("session.lcm.context", () => {
         })
       }
 
-      const leaf1 = `sum_${(Date.now() + 30).toString(16).padStart(16, "0")}`
-      const leaf2 = `sum_${(Date.now() + 31).toString(16).padStart(16, "0")}`
-      const bindle = `sum_${(Date.now() + 32).toString(16).padStart(16, "0")}`
-      const compactedBindle = `sum_${(Date.now() + 33).toString(16).padStart(16, "0")}`
+      const leaf1 = nextSummaryId()
+      const leaf2 = nextSummaryId()
+      const bindle = nextSummaryId()
+      const compactedBindle = nextSummaryId()
 
       await LcmDb.insertSprigSummary({
         summaryId: leaf1,
@@ -779,7 +884,7 @@ describe("session.lcm.context", () => {
         })
       }
 
-      const summaryId = `sum_${(Date.now() + 99).toString(16).padStart(16, "0")}`
+      const summaryId = nextSummaryId()
       await LcmDb.insertSprigSummary({
         summaryId,
         conversationId: testConversationId,
@@ -866,7 +971,7 @@ describe("session.lcm.context", () => {
       console.log(`Initial context: ${messageCount} messages, ${contextTokens} tokens`)
 
       // Phase 2: First round of summarization (summarize messages 0-9)
-      const summary1Id = `sum_${Date.now().toString(16).padStart(16, "0")}`
+      const summary1Id = nextSummaryId()
       await LcmDb.insertSprigSummary({
         summaryId: summary1Id,
         conversationId: testConversationId,
@@ -891,7 +996,7 @@ describe("session.lcm.context", () => {
       console.log(`After first summary: ${context.length} items, ${summariesAfterFirst.length} summary`)
 
       // Phase 3: Second round of summarization (summarize messages 10-19, now at positions 1-10)
-      const summary2Id = `sum_${(Date.now() + 1).toString(16).padStart(16, "0")}`
+      const summary2Id = nextSummaryId()
       await LcmDb.insertSprigSummary({
         summaryId: summary2Id,
         conversationId: testConversationId,
@@ -915,7 +1020,7 @@ describe("session.lcm.context", () => {
       console.log(`After second summary: ${context.length} items, ${summariesAfterSecond.length} summaries`)
 
       // Phase 4: Third round of summarization (summarize remaining messages 20-29, now at positions 2-11)
-      const summary3Id = `sum_${(Date.now() + 2).toString(16).padStart(16, "0")}`
+      const summary3Id = nextSummaryId()
       await LcmDb.insertSprigSummary({
         summaryId: summary3Id,
         conversationId: testConversationId,
@@ -939,7 +1044,7 @@ describe("session.lcm.context", () => {
       console.log(`After third summary: ${context.length} items, ${summariesAfterThird.length} summaries`)
 
       // Phase 5: Condensation - combine all 3 summaries into one
-      const condensedId = `sum_${(Date.now() + 3).toString(16).padStart(16, "0")}`
+      const condensedId = nextSummaryId()
       await LcmDb.insertBindleSummary({
         summaryId: condensedId,
         conversationId: testConversationId,
@@ -1007,7 +1112,7 @@ describe("session.lcm.context", () => {
         const messages = await LcmContext.getMessagesInContext(testConversationId)
         if (messages.length > 20) {
           // Summarize the oldest 10 messages
-          const summaryId = `sum_${(Date.now() + batch).toString(16).padStart(16, "0")}`
+          const summaryId = nextSummaryId()
           await LcmDb.insertSprigSummary({
             summaryId,
             conversationId: testConversationId,
@@ -1035,7 +1140,7 @@ describe("session.lcm.context", () => {
         const summaries = await LcmContext.getSummariesInContext(testConversationId)
         const leafSummaries = summaries.filter((summary) => summary.kind === "sprig")
         if (leafSummaries.length >= 5) {
-          const condensedId = `sum_cond_${(Date.now() + batch).toString(16).padStart(16, "0")}`
+          const condensedId = nextSummaryId("sum_cond")
           const parentIds = leafSummaries.map((summary) => summary.summaryId)
 
           await LcmDb.insertBindleSummary({
@@ -1079,8 +1184,10 @@ describe("session.lcm.context", () => {
         FROM summary_parents sp
         JOIN summaries child ON child.summary_id = sp.summary_id
         JOIN summaries parent ON parent.summary_id = sp.parent_summary_id
-        WHERE COALESCE(child.summary_level, CASE WHEN child.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) = 'bindle'
-          AND COALESCE(parent.summary_level, CASE WHEN parent.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) = 'bindle'
+        WHERE child.condensation_order = 2
+          AND parent.condensation_order = 2
+          AND child.summary_type = 'bindle'
+          AND parent.summary_type = 'bindle'
       `
 
       console.log(`Final state after ${targetMessages} messages:`)

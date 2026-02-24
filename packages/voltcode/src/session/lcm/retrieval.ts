@@ -302,6 +302,7 @@ export namespace LcmRetrieval {
     lines.push(`summary_id: ${input.summary.summary_id}`)
     lines.push(`conversation_id: ${input.summary.conversation_id}`)
     lines.push(`summary_level: ${input.summary.summary_level}`)
+    lines.push(`condensation_order: ${input.summary.condensation_order}`)
     lines.push(`summary_type: ${input.summary.summary_type}`)
     lines.push(`is_off_context: ${input.summary.is_off_context}`)
     lines.push(`pointer_summary_ids: ${toYamlArray(input.pointerSummaryIds)}`)

@@ -17,6 +17,7 @@ interface LcmDescribeMetadata {
   found: boolean
   summaryKind?: LcmDb.SummaryKind
   summaryLevel?: LcmDb.SummaryLevel
+  condensationOrder?: number
   summaryType?: LcmDb.SummaryType
   isOffContext?: boolean
   archivedPointer?: boolean
@@ -169,6 +170,8 @@ async function describeSummary(summaryId: string, sessionID: string) {
   lines.push("")
   lines.push(`**Kind:** ${summary.kind}`)
   lines.push(`**Level:** ${summary.summary_level}`)
+  lines.push(`**Condensation Order:** ${summary.condensation_order}`)
+  lines.push(`**Canonical Level:** ${LcmDb.condensationOrderToCanonicalLevel(summary.condensation_order)}`)
   lines.push(`**Type:** ${summary.summary_type}`)
   lines.push(`**Off-context:** ${summary.is_off_context}`)
   lines.push(`**Archived Pointer:** ${isArchiveStub}`)
@@ -209,6 +212,7 @@ async function describeSummary(summaryId: string, sessionID: string) {
       found: true,
       summaryKind: summary.kind,
       summaryLevel: summary.summary_level,
+      condensationOrder: summary.condensation_order,
       summaryType: summary.summary_type,
       isOffContext: summary.is_off_context,
       archivedPointer: isArchiveStub,

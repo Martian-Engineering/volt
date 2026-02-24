@@ -75,6 +75,7 @@ describe("session.lcm.summary", () => {
       expect(summary.tokenCount).toBe(input.tokenCount)
       expect(summary.conversationId).toBe(input.conversationId)
       expect(summary.level).toBe("sprig")
+      expect(summary.condensationOrder).toBe(1)
       expect(summary.summaryType).toBe("sprig")
       expect(summary.parents).toEqual([])
       expect(summary.createdAt).toBe(timestamp)
@@ -116,6 +117,7 @@ describe("session.lcm.summary", () => {
       expect(summary.tokenCount).toBe(input.tokenCount)
       expect(summary.conversationId).toBe(input.conversationId)
       expect(summary.level).toBe("bindle")
+      expect(summary.condensationOrder).toBe(2)
       expect(summary.summaryType).toBe("bindle")
       expect(summary.parents).toEqual(parentIds)
       expect(summary.createdAt).toBe(timestamp)
@@ -139,6 +141,7 @@ describe("session.lcm.summary", () => {
 
       expect(summary.kind).toBe("bindle")
       expect(summary.level).toBe("bindle")
+      expect(summary.condensationOrder).toBe(2)
       expect(summary.summaryType).toBe("archive_stub")
       expect(summary.parents).toEqual([])
       expect(summary.conversationId).toBe("ses_test123")
@@ -378,6 +381,21 @@ describe("session.lcm.summary", () => {
     test("maps bindle kind to bindle level/type", () => {
       expect(Summary.levelFromKind("bindle")).toBe("bindle")
       expect(Summary.typeFromKind("bindle")).toBe("bindle")
+    })
+  })
+
+  describe("canonical hierarchy mapping", () => {
+    test("maps leaf, d1, d2, and dN deterministically", () => {
+      expect(Summary.condensationOrderFromHierarchyLevel("leaf")).toBeNull()
+      expect(Summary.condensationOrderFromLevel("d1")).toBe(1)
+      expect(Summary.condensationOrderFromLevel("sprig")).toBe(1)
+      expect(Summary.condensationOrderFromLevel("d2")).toBe(2)
+      expect(Summary.condensationOrderFromLevel("bindle")).toBe(2)
+      expect(Summary.condensationOrderFromLevel("d7")).toBe(7)
+      expect(Summary.canonicalLevelFromOrder(7)).toBe("d7")
+      expect(Summary.displayLevelFromOrder(1)).toBe("sprig")
+      expect(Summary.displayLevelFromOrder(2)).toBe("bindle")
+      expect(Summary.displayLevelFromOrder(7)).toBe("d7")
     })
   })
 })

@@ -119,7 +119,7 @@ export const LcmGrepTool = Tool.define<typeof parameters, LcmGrepMetadata>("lcm_
       const headerParts = [`### Covered by: ${summaryId}`]
       if (summary) {
         headerParts.push(
-          `[type=${summary.summary_type} level=${summary.summary_level} off_context=${summary.is_off_context} archived_pointer=${isArchiveStub}]`,
+          `[type=${summary.summary_type} level=${summary.summary_level} order=${summary.condensation_order} canonical_level=${LcmDb.condensationOrderToCanonicalLevel(summary.condensation_order)} off_context=${summary.is_off_context} archived_pointer=${isArchiveStub}]`,
         )
       }
       const lineageLines: string[] = []

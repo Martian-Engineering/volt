@@ -60,11 +60,17 @@ export namespace LcmContextSnapshot {
         leaves++
         continue
       }
-      if (row.summary_level === "sprig" && row.summary_type === "sprig") {
+      const lane = LcmDb.classifySummaryForDoltLane({
+        condensationOrder: row.condensation_order,
+        summaryLevel: row.summary_level,
+        summaryType: row.summary_type,
+        kind: null,
+      })
+      if (lane === "sprig") {
         sprigs++
         continue
       }
-      if (row.summary_level === "bindle" && row.summary_type === "bindle") {
+      if (lane === "bindle") {
         bindles++
       }
     }

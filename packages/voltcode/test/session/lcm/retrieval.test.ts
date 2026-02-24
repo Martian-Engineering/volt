@@ -13,14 +13,27 @@ function makeSummary(input: {
   summaryId: string
   summaryType?: LcmDb.SummaryType
   summaryLevel?: LcmDb.SummaryLevel
+  condensationOrder?: number
   isOffContext?: boolean
   content?: string
 }): LcmDb.Summary {
+  const condensationOrder =
+    input.condensationOrder ??
+    (input.summaryLevel === "sprig"
+      ? 1
+      : input.summaryLevel === "bindle"
+        ? 2
+        : input.summaryLevel?.startsWith("d")
+          ? Number.parseInt(input.summaryLevel.slice(1), 10)
+          : 2)
+  const summaryLevel =
+    input.summaryLevel ?? (condensationOrder === 1 ? "sprig" : condensationOrder === 2 ? "bindle" : (`d${condensationOrder}` as LcmDb.SummaryLevel))
   return {
     summary_id: input.summaryId,
     conversation_id: 101,
-    kind: input.summaryLevel === "sprig" ? "sprig" : "bindle",
-    summary_level: input.summaryLevel ?? "bindle",
+    kind: condensationOrder === 1 ? "sprig" : "bindle",
+    summary_level: summaryLevel,
+    condensation_order: condensationOrder,
     summary_type: input.summaryType ?? "bindle",
     content: input.content ?? `content for ${input.summaryId}`,
     token_count: 10,
