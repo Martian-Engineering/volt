@@ -81,14 +81,14 @@ Output: const xml = "</tool>";
     expect(result[0].output).toBe('const xml = "</tool>";')
   })
 
-  test("handles non-JSON input", () => {
+  test("handles non-JSON input by wrapping in value object", () => {
     const content = `<tool name="ask">
 Input: What is the weather?
 Output: It's sunny
 </tool>`
     const result = SessionPrompt.parseToolTagsFromLcm(content)
     expect(result).toHaveLength(1)
-    expect(result[0].input).toBe("What is the weather?")
+    expect(result[0].input).toEqual({ value: "What is the weather?" })
     expect(result[0].output).toBe("It's sunny")
   })
 

@@ -5,6 +5,7 @@ import { LcmDb } from "./db"
 import { LcmSummarize } from "./summarize"
 import { Condense } from "./condense"
 import { Summary } from "./summary"
+import { LcmGhostCue } from "./ghost-cue"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { TokenBudget } from "@/session/token-budget"
@@ -32,7 +33,7 @@ function getContextThresholdFlag(): number | undefined {
  * Algorithm (from prompt.md pseudocode):
  * 1. Find existing summaries in context
  * 2. Find messages in context
- * 3. Summarize messages into a leaf summary
+ * 3. Summarize messages into a sprig summary
  * 4. Append to existing summaries
  * 5. If still over threshold, condense all summaries
  */
@@ -129,6 +130,18 @@ export namespace LcmContext {
   export const MIN_MESSAGES_TO_SUMMARIZE = 3
 
   /**
+   * Minimum leaves required to form a sprig summary.
+   * Prevents one-leaf sprigs in high-pressure edge cases.
+   */
+  export const MIN_LEAVES_PER_SPRIG = 2
+
+  /**
+   * Fresh-tail protection is preferred at lanePolicy.leaves.freshTailFloor.
+   * Under sustained pressure we may relax down to this minimum.
+   */
+  export const MIN_PROTECTED_TAIL_LEAVES = 2
+
+  /**
    * Critical threshold multiplier - when context is this far over threshold,
    * we lower the minimum messages requirement to ensure progress is made.
    * At 1.2 = 20% over threshold, we'll summarize even 1-2 messages.
@@ -137,7 +150,7 @@ export namespace LcmContext {
 
   /**
    * Maximum number of compaction rounds before giving up.
-   * Each round attempts to reduce context size via three-level summarization escalation.
+   * Each round attempts to reduce context size via lane-aware compaction.
    */
   export const MAX_COMPACTION_ROUNDS = 10
 
@@ -159,16 +172,14 @@ export namespace LcmContext {
     maxTokens?: number
     /** Cutoff threshold used */
     threshold?: number
-    /** Number of messages summarized in the leaf summary */
+    /** Number of messages summarized in the sprig summary */
     messagesSummarized?: number
-    /** Which summarization level was used: 'normal' | 'aggressive' */
-    summarizationLevel?: string
-    /** Which condensation level was used: 'normal' | 'aggressive' */
-    condensationLevel?: string
     /** Active bindles evicted from context due to overflow */
     evictedBindleIds?: string[]
     /** Archive stubs generated for evicted bindles */
     archiveStubIds?: string[]
+    /** Why manual compaction could not take action on specific stages */
+    noOpReasons?: string[]
   }
 
   export interface TurnMessageInContext {
@@ -214,8 +225,8 @@ export namespace LcmContext {
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
     const lanePolicy = TokenBudget.computeDoltLanePolicy({ hardLimit })
     const laneTokens: TokenBudget.LaneTokenCounts = {
-      turns: Math.max(0, Math.floor(input.laneTokens?.turns ?? measuredLaneTokens.turns)),
       leaves: Math.max(0, Math.floor(input.laneTokens?.leaves ?? measuredLaneTokens.leaves)),
+      sprigs: Math.max(0, Math.floor(input.laneTokens?.sprigs ?? measuredLaneTokens.sprigs)),
       bindles: Math.max(0, Math.floor(input.laneTokens?.bindles ?? measuredLaneTokens.bindles)),
       total: Math.max(0, Math.floor(input.laneTokens?.total ?? currentTokens)),
     }
@@ -277,7 +288,7 @@ export namespace LcmContext {
               kind: summary.kind,
               tokenCount: summary.token_count,
               conversationId: conversationId.toString(),
-              parents: summary.kind === "condensed" ? await LcmDb.getSummaryParentIds(summary.summary_id) : [],
+              parents: summary.kind === "bindle" ? await LcmDb.getSummaryParentIds(summary.summary_id) : [],
               fileIds: summary.file_ids,
               createdAt: summary.created_at.getTime(),
             })
@@ -327,44 +338,88 @@ export namespace LcmContext {
   }
 
   /**
-   * Select the oldest turn window for L0->L1 compaction while protecting a fresh tail.
+   * Select the oldest leaf window for L0->L1 compaction while protecting a fresh tail.
    *
-   * The selected window is a prefix of message turns and never includes messages from the
-   * protected tail region. If the oldest eligible turn alone exceeds budget, it is selected
-   * to ensure compaction can still make progress without consuming fresh-tail turns.
+   * The selected window is a prefix of message leaves and never includes messages from the
+   * protected tail region. If no eligible window can be formed at the preferred tail size,
+   * the tail can relax down to a configured minimum. Selection enforces a minimum leaf count
+   * so we never create one-leaf sprigs.
    */
-  export function selectTurnsForLeafCompaction(input: {
+  export function selectLeavesForSprigCompaction(input: {
     messages: TurnMessageInContext[]
     tokenBudget: number
     protectedTailCount: number
-  }): { selectedMessages: TurnMessageInContext[]; protectedTailMessages: TurnMessageInContext[] } {
+    minimumProtectedTailCount?: number
+    minimumSelectionCount?: number
+  }): {
+    selectedMessages: TurnMessageInContext[]
+    protectedTailMessages: TurnMessageInContext[]
+    effectiveProtectedTailCount: number
+  } {
     const tokenBudget = Math.max(1, Math.floor(input.tokenBudget))
-    const protectedTailCount = Math.max(0, Math.floor(input.protectedTailCount))
-    const protectedStart = Math.max(0, input.messages.length - protectedTailCount)
-    const eligible = input.messages.slice(0, protectedStart)
-    const protectedTailMessages = input.messages.slice(protectedStart)
+    const preferredProtectedTailCount = Math.max(0, Math.floor(input.protectedTailCount))
+    const minimumProtectedTailCount = Math.max(
+      0,
+      Math.min(preferredProtectedTailCount, Math.floor(input.minimumProtectedTailCount ?? MIN_PROTECTED_TAIL_LEAVES)),
+    )
+    const minimumSelectionCount = Math.max(1, Math.floor(input.minimumSelectionCount ?? MIN_LEAVES_PER_SPRIG))
 
-    if (eligible.length === 0) {
-      return { selectedMessages: [], protectedTailMessages }
+    function computeSelection(protectedTailCount: number): {
+      selectedMessages: TurnMessageInContext[]
+      protectedTailMessages: TurnMessageInContext[]
+    } {
+      const protectedStart = Math.max(0, input.messages.length - protectedTailCount)
+      const eligible = input.messages.slice(0, protectedStart)
+      const protectedTailMessages = input.messages.slice(protectedStart)
+
+      if (eligible.length < minimumSelectionCount) {
+        return { selectedMessages: [], protectedTailMessages }
+      }
+
+      const selectedMessages: TurnMessageInContext[] = []
+      let tokens = 0
+      for (const message of eligible) {
+        const nextTokens = tokens + Math.max(0, message.tokenCount)
+        if (selectedMessages.length >= minimumSelectionCount && nextTokens > tokenBudget) break
+        selectedMessages.push(message)
+        tokens = nextTokens
+        if (tokens >= tokenBudget && selectedMessages.length >= minimumSelectionCount) break
+      }
+
+      if (selectedMessages.length < minimumSelectionCount) {
+        return { selectedMessages: [], protectedTailMessages }
+      }
+
+      return { selectedMessages, protectedTailMessages }
     }
 
-    const selectedMessages: TurnMessageInContext[] = []
-    let tokens = 0
-
-    for (const message of eligible) {
-      const nextTokens = tokens + Math.max(0, message.tokenCount)
-      if (selectedMessages.length > 0 && nextTokens > tokenBudget) break
-      selectedMessages.push(message)
-      tokens = nextTokens
-      if (tokens >= tokenBudget) break
+    const preferredSelection = computeSelection(preferredProtectedTailCount)
+    if (preferredSelection.selectedMessages.length > 0) {
+      return {
+        ...preferredSelection,
+        effectiveProtectedTailCount: preferredProtectedTailCount,
+      }
     }
 
-    // If the first turn alone exceeds budget, still summarize it for forward progress.
-    if (selectedMessages.length === 0) {
-      selectedMessages.push(eligible[0])
+    for (
+      let protectedTailCount = preferredProtectedTailCount - 1;
+      protectedTailCount >= minimumProtectedTailCount;
+      protectedTailCount--
+    ) {
+      const relaxedSelection = computeSelection(protectedTailCount)
+      if (relaxedSelection.selectedMessages.length > 0) {
+        return {
+          ...relaxedSelection,
+          effectiveProtectedTailCount: protectedTailCount,
+        }
+      }
     }
 
-    return { selectedMessages, protectedTailMessages }
+    return {
+      selectedMessages: [],
+      protectedTailMessages: input.messages.slice(Math.max(0, input.messages.length - preferredProtectedTailCount)),
+      effectiveProtectedTailCount: preferredProtectedTailCount,
+    }
   }
 
   async function evictOverflowBindles(input: {
@@ -372,8 +427,15 @@ export namespace LcmContext {
     lanePolicy: TokenBudget.DoltLanePolicy
     laneTokens: TokenBudget.LaneTokenCounts
     laneDecisions: TokenBudget.DoltLaneDecisions
+    model: Provider.Model
+    abort?: AbortSignal
+    maxEvictions?: number
+    evictWhenOverTarget?: boolean
   }): Promise<{ evictedBindleIds: string[]; archiveStubIds: string[]; newTokenCount: number }> {
-    if (!input.laneDecisions.bindles.shouldCompact) {
+    const shouldCompactBindles = input.evictWhenOverTarget
+      ? input.laneTokens.bindles > input.lanePolicy.bindles.target
+      : input.laneDecisions.bindles.shouldCompact
+    if (!shouldCompactBindles) {
       return { evictedBindleIds: [], archiveStubIds: [], newTokenCount: input.laneTokens.total }
     }
 
@@ -384,7 +446,9 @@ export namespace LcmContext {
 
     const evictedBindles: LcmDb.ActiveContextBindle[] = []
     let projectedBindleTokens = input.laneTokens.bindles
+    const maxEvictions = input.maxEvictions ? Math.max(1, Math.floor(input.maxEvictions)) : Number.POSITIVE_INFINITY
     for (const bindle of activeBindles) {
+      if (evictedBindles.length >= maxEvictions) break
       if (projectedBindleTokens <= input.lanePolicy.bindles.target) break
       evictedBindles.push(bindle)
       projectedBindleTokens = Math.max(0, projectedBindleTokens - bindle.token_count)
@@ -403,16 +467,22 @@ export namespace LcmContext {
 
     const archiveStubIds: string[] = []
     for (const [index, bindle] of evictedBindles.entries()) {
+      const ghostCueContent = await LcmGhostCue.generateWithFallback({
+        bindleId: bindle.summary_id,
+        bindleContent: bindle.content,
+        model: input.model,
+        abort: input.abort,
+      })
       const archiveStub = Summary.createArchiveStub(
         {
           archivedSummaryId: bindle.summary_id,
-          archivedSummaryContent: bindle.content,
+          ghostCueContent,
           conversationId: input.conversationId.toString(),
         },
         Date.now() + index,
       )
 
-      await LcmDb.insertCondensedSummary({
+      await LcmDb.insertBindleSummary({
         summaryId: archiveStub.summaryId,
         conversationId: input.conversationId,
         content: archiveStub.content,
@@ -447,7 +517,7 @@ export namespace LcmContext {
    * Implements the algorithm from prompt.md:
    * 1. Find existing summaries in context
    * 2. Find messages in context
-   * 3. Summarize messages into a leaf summary
+   * 3. Summarize messages into a sprig summary
    * 4. Replace messages with summary in context
    * 5. If still over threshold, condense all summaries
    *
@@ -505,6 +575,8 @@ export namespace LcmContext {
       lanePolicy: thresholdCheck.lanePolicy,
       laneTokens: thresholdCheck.laneTokens,
       laneDecisions: thresholdCheck.laneDecisions,
+      model: input.model,
+      abort: input.abort,
     })
     if (bindleEvictionResult.evictedBindleIds.length > 0) {
       evictedBindleIds.push(...bindleEvictionResult.evictedBindleIds)
@@ -529,9 +601,11 @@ export namespace LcmContext {
       }
     }
 
+    const sprigsOverTarget = thresholdCheck.laneTokens.sprigs > thresholdCheck.lanePolicy.sprigs.target
     if (
-      !thresholdCheck.laneDecisions.turns.shouldCompact &&
       !thresholdCheck.laneDecisions.leaves.shouldCompact &&
+      !thresholdCheck.laneDecisions.sprigs.shouldCompact &&
+      !sprigsOverTarget &&
       !input.force
     ) {
       return {
@@ -556,6 +630,28 @@ export namespace LcmContext {
       messageCount: messagesInContext.length,
     })
 
+    const activeSprigSummaries = existingSummaries.filter((summary) => summary.kind === "sprig")
+    if (sprigsOverTarget && activeSprigSummaries.length > 0) {
+      log.info("sprig lane over target, compacting all active sprigs into bindle lane", {
+        conversationId: input.conversationId,
+        sprigSummaryCount: activeSprigSummaries.length,
+        sprigTokens: thresholdCheck.laneTokens.sprigs,
+        sprigSoft: thresholdCheck.lanePolicy.sprigs.soft,
+        sprigDelta: thresholdCheck.lanePolicy.sprigs.delta,
+        sprigTarget: thresholdCheck.lanePolicy.sprigs.target,
+        sprigShouldCompactByBand: thresholdCheck.laneDecisions.sprigs.shouldCompact,
+      })
+      const condensationResult = await attemptCondensation(input, existingSummaries)
+      return {
+        ...condensationResult,
+        actionTaken: condensationResult.actionTaken || evictedBindleIds.length > 0,
+        ...baseResult,
+        messagesSummarized: 0,
+        evictedBindleIds,
+        archiveStubIds,
+      }
+    }
+
     // If there are no messages to summarize, we can only try condensing summaries
     if (messagesInContext.length === 0) {
       if (existingSummaries.length >= 1) {
@@ -566,6 +662,7 @@ export namespace LcmContext {
         const condensationResult = await attemptCondensation(input, existingSummaries)
         return {
           ...condensationResult,
+          actionTaken: condensationResult.actionTaken || evictedBindleIds.length > 0,
           ...baseResult,
           messagesSummarized: 0,
           evictedBindleIds,
@@ -587,27 +684,32 @@ export namespace LcmContext {
       }
     }
 
-    // Step 3: Summarize messages into a leaf summary
+    // Step 3: Summarize messages into a sprig summary
     // Limit messages to fit within the model's context window for the summarization call.
     // Use 75% of the model's context to leave room for the system prompt and output.
     const conversation = await LcmDb.getConversation(input.conversationId)
     const modelMaxTokens = conversation?.model_ctx_max_tokens ?? 128000
     const maxSummarizationInputTokens = Math.floor(modelMaxTokens * 0.75)
 
-    const turnsOverTarget = Math.max(1, thresholdCheck.laneTokens.turns - thresholdCheck.lanePolicy.turns.target)
-    const selectionTokenBudget = Math.min(turnsOverTarget, maxSummarizationInputTokens)
-    const protectedTailCount = thresholdCheck.lanePolicy.turns.freshTailFloor
-    const { selectedMessages, protectedTailMessages } = selectTurnsForLeafCompaction({
+    const leavesOverTarget = Math.max(1, thresholdCheck.laneTokens.leaves - thresholdCheck.lanePolicy.leaves.target)
+    const selectionTokenBudget = Math.min(leavesOverTarget, maxSummarizationInputTokens)
+    const protectedTailCount = thresholdCheck.lanePolicy.leaves.freshTailFloor
+    const { selectedMessages, protectedTailMessages, effectiveProtectedTailCount } = selectLeavesForSprigCompaction({
       messages: messagesInContext,
       tokenBudget: selectionTokenBudget,
       protectedTailCount,
+      minimumProtectedTailCount: MIN_PROTECTED_TAIL_LEAVES,
+      minimumSelectionCount: MIN_LEAVES_PER_SPRIG,
     })
 
     if (selectedMessages.length === 0) {
-      log.info("no eligible turns for leaf compaction after fresh-tail protection", {
+      log.info("no eligible leaves for sprig compaction after fresh-tail protection and minimum sprig size", {
         conversationId: input.conversationId,
         totalMessages: messagesInContext.length,
-        protectedTailCount,
+        preferredProtectedTailCount: protectedTailCount,
+        effectiveProtectedTailCount,
+        minimumProtectedTailCount: MIN_PROTECTED_TAIL_LEAVES,
+        minimumSelectionCount: MIN_LEAVES_PER_SPRIG,
       })
       return {
         actionTaken: evictedBindleIds.length > 0,
@@ -619,14 +721,15 @@ export namespace LcmContext {
       }
     }
 
-    log.info("selected turn window for leaf compaction", {
+    log.info("selected leaf window for sprig compaction", {
       conversationId: input.conversationId,
       totalMessages: messagesInContext.length,
       selectedMessages: selectedMessages.length,
       selectedTokens: selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0),
       tokenBudget: selectionTokenBudget,
-      turnsOverTarget,
-      protectedTailCount,
+      leavesOverTarget,
+      preferredProtectedTailCount: protectedTailCount,
+      effectiveProtectedTailCount,
       protectedTailMessages: protectedTailMessages.length,
       protectedTailPositions: protectedTailMessages.map((m) => m.position),
     })
@@ -637,7 +740,7 @@ export namespace LcmContext {
     // Extract numeric DB message IDs to pass to the summarizer for proper linking
     const dbMessageIds = selectedMessages.map((m) => m.messageId)
 
-    // Step 3: Summarize messages with two-level escalation
+    // Step 3: Summarize messages into a sprig summary.
     const inputTokens = selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0)
     const summarizeParams = {
       messages: messagesToSummarize,
@@ -649,43 +752,29 @@ export namespace LcmContext {
       abort: input.abort,
     }
 
-    // Level 1: Normal summarization
-    let leafSummary = await LcmSummarize.summarize(summarizeParams)
-    let summarizationLevel = "normal"
+    const sprigSummary = await LcmSummarize.summarize(summarizeParams)
 
-    // Convergence check: summary must be strictly smaller than input
-    if (leafSummary.tokenCount >= inputTokens) {
-      log.info("normal summary not smaller than input, escalating to aggressive", {
-        summaryTokens: leafSummary.tokenCount,
+    // Convergence check: summary should be strictly smaller than input.
+    if (sprigSummary.tokenCount >= inputTokens) {
+      log.warn("summary not smaller than input; skipping sprig compaction round", {
+        summaryTokens: sprigSummary.tokenCount,
         inputTokens,
+        conversationId: input.conversationId,
       })
-      // Level 2: Aggressive
-      leafSummary = await LcmSummarize.summarizeAggressive(summarizeParams)
-      summarizationLevel = "aggressive"
-
-      if (leafSummary.tokenCount >= inputTokens) {
-        log.warn("aggressive summary still not smaller than input; skipping leaf compaction round", {
-          summaryTokens: leafSummary.tokenCount,
-          inputTokens,
-          conversationId: input.conversationId,
-        })
-        return {
-          actionTaken: evictedBindleIds.length > 0,
-          condensed: false,
-          ...baseResult,
-          messagesSummarized: 0,
-          summarizationLevel,
-          evictedBindleIds,
-          archiveStubIds,
-        }
+      return {
+        actionTaken: evictedBindleIds.length > 0,
+        condensed: false,
+        ...baseResult,
+        messagesSummarized: 0,
+        evictedBindleIds,
+        archiveStubIds,
       }
     }
 
-    log.info("created leaf summary", {
-      summaryId: leafSummary.summaryId,
-      tokenCount: leafSummary.tokenCount,
+    log.info("created sprig summary", {
+      summaryId: sprigSummary.summaryId,
+      tokenCount: sprigSummary.tokenCount,
       messageCount: selectedMessages.length,
-      summarizationLevel,
     })
 
     // Step 4: Replace the snapshot messages with the summary in context
@@ -694,13 +783,13 @@ export namespace LcmContext {
     await LcmDb.replacePositionsWithSummary({
       conversationId: input.conversationId,
       positions,
-      summaryId: leafSummary.summaryId,
+      summaryId: sprigSummary.summaryId,
     })
 
     log.info("replaced messages with summary in context", {
       conversationId: input.conversationId,
       replacedCount: positions.length,
-      summaryId: leafSummary.summaryId,
+      summaryId: sprigSummary.summaryId,
     })
 
     // Step 5: Check if still over threshold
@@ -719,17 +808,16 @@ export namespace LcmContext {
       return {
         actionTaken: true,
         newTokenCount: newThresholdCheck.currentTokens,
-        createdSummary: leafSummary,
+        createdSummary: sprigSummary,
         condensed: false,
         messagesSummarized: selectedMessages.length,
-        summarizationLevel,
         evictedBindleIds,
         archiveStubIds,
         ...baseResult,
       }
     }
 
-    // Step 6: Still over threshold, condense eligible leaf summaries into a bindle
+    // Step 6: Still over threshold, condense eligible sprig summaries into a bindle
     const allSummaries = await getSummariesInContext(input.conversationId)
     if (allSummaries.length >= 1) {
       log.info("still over threshold, condensing summaries", {
@@ -741,11 +829,9 @@ export namespace LcmContext {
       return {
         actionTaken: true,
         newTokenCount: condensationResult.newTokenCount ?? newThresholdCheck.currentTokens,
-        createdSummary: condensationResult.createdSummary ?? leafSummary,
+        createdSummary: condensationResult.createdSummary ?? sprigSummary,
         condensed: condensationResult.condensed,
         messagesSummarized: selectedMessages.length,
-        summarizationLevel,
-        condensationLevel: condensationResult.condensationLevel,
         evictedBindleIds,
         archiveStubIds,
         ...baseResult,
@@ -761,10 +847,9 @@ export namespace LcmContext {
     return {
       actionTaken: true,
       newTokenCount: newThresholdCheck.currentTokens,
-      createdSummary: leafSummary,
+      createdSummary: sprigSummary,
       condensed: false,
       messagesSummarized: messagesInContext.length,
-      summarizationLevel,
       evictedBindleIds,
       archiveStubIds,
       ...baseResult,
@@ -772,9 +857,157 @@ export namespace LcmContext {
   }
 
   /**
-   * Attempt to condense leaf summaries into a bindle.
+   * Manual short-bindling flow used by `/compact`.
    *
-   * Dolt L2 bindles are only formed from L1 leaves. Existing bindles are never
+   * Steps:
+   * 1. If leaves exceed the protected live tail, summarize all oldest leaves
+   *    into one sprig (preserving the last N leaves in context).
+   * 2. Condense all active sprigs into one bindle (ignores sprig lane pressure).
+   * 3. If bindle lane is above target, evict exactly one oldest bindle and
+   *    generate/archive its ghost cue pointer.
+   */
+  export async function compactShortBindle(input: {
+    conversationId: number
+    sessionID: string
+    user: MessageV2.User
+    model: Provider.Model
+    abort?: AbortSignal
+    overhead: number
+    reserve: number
+    contextWindow: number
+    softThresholdOverride?: number
+  }): Promise<ContextHandlerResult> {
+    const initialThreshold = await isOverThreshold({
+      conversationId: input.conversationId,
+      overhead: input.overhead,
+      reserve: input.reserve,
+      contextWindow: input.contextWindow,
+      softThresholdOverride: input.softThresholdOverride,
+    })
+    const baseResult = {
+      beforeTokenCount: initialThreshold.currentTokens,
+      maxTokens: input.contextWindow,
+      threshold: initialThreshold.softThreshold / input.contextWindow,
+    }
+
+    let actionTaken = false
+    let condensed = false
+    let messagesSummarized = 0
+    let createdSummary: Summary.Info | undefined
+    const evictedBindleIds: string[] = []
+    const archiveStubIds: string[] = []
+    const noOpReasons: string[] = []
+
+    const protectedTailCount = Math.max(1, Math.floor(initialThreshold.lanePolicy.leaves.freshTailFloor))
+    const messagesInContext = await getMessagesInContext(input.conversationId)
+    const eligibleLeafCount = Math.max(0, messagesInContext.length - protectedTailCount)
+    if (eligibleLeafCount >= MIN_LEAVES_PER_SPRIG) {
+      const selectedMessages = messagesInContext.slice(0, eligibleLeafCount)
+      const inputTokens = selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0)
+      const messagesToSummarize = await convertToMessageV2(selectedMessages)
+      const dbMessageIds = selectedMessages.map((m) => m.messageId)
+      const sprigSummary = await LcmSummarize.summarize({
+        messages: messagesToSummarize,
+        conversationId: input.conversationId,
+        sessionID: input.sessionID,
+        user: input.user,
+        dbMessageIds,
+        model: input.model,
+        abort: input.abort,
+      })
+
+      if (sprigSummary.tokenCount < inputTokens) {
+        await LcmDb.replacePositionsWithSummary({
+          conversationId: input.conversationId,
+          positions: selectedMessages.map((m) => m.position),
+          summaryId: sprigSummary.summaryId,
+        })
+        actionTaken = true
+        messagesSummarized = selectedMessages.length
+        createdSummary = sprigSummary
+      } else {
+        log.warn("short-bindle leaf summarization was not smaller than input; skipping leaf replacement", {
+          conversationId: input.conversationId,
+          inputTokens,
+          summaryTokens: sprigSummary.tokenCount,
+        })
+        noOpReasons.push("leaf_summary_not_smaller_than_input")
+      }
+    } else {
+      log.info("short-bindle leaf step skipped: not enough leaves beyond protected tail", {
+        conversationId: input.conversationId,
+        totalLeaves: messagesInContext.length,
+        protectedTailCount,
+        eligibleLeafCount,
+        minimumLeavesPerSprig: MIN_LEAVES_PER_SPRIG,
+      })
+      noOpReasons.push("eligible_leaves_below_min")
+    }
+
+    const summariesAfterLeafStep = await getSummariesInContext(input.conversationId)
+    const sprigCount = summariesAfterLeafStep.filter((summary) => summary.kind === "sprig").length
+    if (sprigCount > 0) {
+      const condensationResult = await attemptCondensation(input, summariesAfterLeafStep)
+      if (condensationResult.actionTaken) {
+        actionTaken = true
+        condensed = condensationResult.condensed
+        if (condensationResult.createdSummary) {
+          createdSummary = condensationResult.createdSummary
+        }
+      }
+    } else {
+      noOpReasons.push("no_sprigs_to_bindle")
+    }
+
+    const postCondenseThreshold = await isOverThreshold({
+      conversationId: input.conversationId,
+      overhead: input.overhead,
+      reserve: input.reserve,
+      contextWindow: input.contextWindow,
+      softThresholdOverride: input.softThresholdOverride,
+    })
+    const bindleEvictionResult = await evictOverflowBindles({
+      conversationId: input.conversationId,
+      lanePolicy: postCondenseThreshold.lanePolicy,
+      laneTokens: postCondenseThreshold.laneTokens,
+      laneDecisions: postCondenseThreshold.laneDecisions,
+      model: input.model,
+      abort: input.abort,
+      maxEvictions: 1,
+      evictWhenOverTarget: true,
+    })
+    if (bindleEvictionResult.evictedBindleIds.length > 0) {
+      actionTaken = true
+      evictedBindleIds.push(...bindleEvictionResult.evictedBindleIds)
+      archiveStubIds.push(...bindleEvictionResult.archiveStubIds)
+    } else if (postCondenseThreshold.laneTokens.bindles > postCondenseThreshold.lanePolicy.bindles.target) {
+      noOpReasons.push("bindles_over_target_but_no_evictable_bindle")
+    } else {
+      noOpReasons.push("bindles_within_target")
+    }
+
+    const finalTokens =
+      bindleEvictionResult.evictedBindleIds.length > 0
+        ? bindleEvictionResult.newTokenCount
+        : await LcmDb.getContextTokenCount(input.conversationId)
+
+    return {
+      actionTaken,
+      condensed,
+      createdSummary,
+      messagesSummarized,
+      evictedBindleIds,
+      archiveStubIds,
+      newTokenCount: finalTokens,
+      noOpReasons: noOpReasons.length > 0 ? [...new Set(noOpReasons)] : [],
+      ...baseResult,
+    }
+  }
+
+  /**
+   * Attempt to condense sprig summaries into a bindle.
+   *
+   * L2 bindles are only formed from L1 sprigs. Existing bindles are never
    * aggregated again, preventing bindle->bindle compaction chains.
    *
    * @param input - The base input parameters
@@ -796,69 +1029,55 @@ export namespace LcmContext {
       return { actionTaken: false, condensed: false }
     }
 
-    const leafSummaries = summaries.filter((summary) => summary.kind === "leaf")
-    if (leafSummaries.length < 1) {
-      log.info("attemptCondensation: skipping, no leaf summaries available", {
+    const sprigSummaries = summaries.filter((summary) => summary.kind === "sprig")
+    if (sprigSummaries.length < 1) {
+      log.info("attemptCondensation: skipping, no sprig summaries available", {
         conversationId: input.conversationId,
         summaryCount: summaries.length,
       })
       return { actionTaken: false, condensed: false }
     }
 
-    const inputTokens = leafSummaries.reduce((sum, s) => sum + s.tokenCount, 0)
+    const inputTokens = sprigSummaries.reduce((sum, s) => sum + s.tokenCount, 0)
     log.debug("attemptCondensation", {
       conversationId: input.conversationId,
       summaryCount: summaries.length,
-      leafSummaryCount: leafSummaries.length,
+      sprigSummaryCount: sprigSummaries.length,
       inputTokens,
-      summaryIds: leafSummaries.map((s) => s.summaryId),
+      summaryIds: sprigSummaries.map((s) => s.summaryId),
     })
     const condenseParams = {
-      summaries: leafSummaries,
+      summaries: sprigSummaries,
       conversationId: input.conversationId.toString(),
       dbConversationId: input.conversationId,
       model: input.model,
       abort: input.abort,
     }
 
-    // Level 1: Normal condensation
-    let condensedSummary = await Condense.condenseSummaries(condenseParams)
-    let condensationLevel = "normal"
+    const bindleSummary = await Condense.condenseSummaries(condenseParams)
 
-    // Convergence check: condensed must be strictly smaller than input
-    if (condensedSummary.tokenCount >= inputTokens) {
-      log.info("normal condensation not smaller, escalating to aggressive", {
-        condensedTokens: condensedSummary.tokenCount,
+    // Convergence check: bindle summary should be strictly smaller than input.
+    if (bindleSummary.tokenCount >= inputTokens) {
+      log.warn("condensation not smaller than input; skipping condensation round", {
+        bindleTokens: bindleSummary.tokenCount,
         inputTokens,
+        conversationId: input.conversationId,
       })
-      // Level 2: Aggressive
-      condensedSummary = await Condense.condenseSummariesAggressive(condenseParams)
-      condensationLevel = "aggressive"
-
-      if (condensedSummary.tokenCount >= inputTokens) {
-        log.warn("aggressive condensation still not smaller than input; skipping condensation round", {
-          condensedTokens: condensedSummary.tokenCount,
-          inputTokens,
-          conversationId: input.conversationId,
-        })
-        return {
-          actionTaken: false,
-          condensed: false,
-          condensationLevel,
-        }
+      return {
+        actionTaken: false,
+        condensed: false,
       }
     }
 
-    log.info("created condensed summary", {
-      summaryId: condensedSummary.summaryId,
-      tokenCount: condensedSummary.tokenCount,
-      parentCount: leafSummaries.length,
-      condensationLevel,
+    log.info("created bindle summary", {
+      summaryId: bindleSummary.summaryId,
+      tokenCount: bindleSummary.tokenCount,
+      parentCount: sprigSummaries.length,
     })
 
-    // Find positions of all leaf summaries in context and replace with condensed
+    // Find positions of all sprig summaries in context and replace with bindle
     const context = await LcmDb.getCurrentContext(input.conversationId)
-    const summaryIds = new Set(leafSummaries.map((s) => s.summaryId))
+    const summaryIds = new Set(sprigSummaries.map((s) => s.summaryId))
     const positions: number[] = []
 
     for (const entry of context) {
@@ -876,13 +1095,13 @@ export namespace LcmContext {
       await LcmDb.replacePositionsWithSummary({
         conversationId: input.conversationId,
         positions,
-        summaryId: condensedSummary.summaryId,
+        summaryId: bindleSummary.summaryId,
       })
 
-      log.info("replaced summaries with condensed summary in context", {
+      log.info("replaced summaries with bindle summary in context", {
         conversationId: input.conversationId,
-        replacedCount: leafSummaries.length,
-        summaryId: condensedSummary.summaryId,
+        replacedCount: sprigSummaries.length,
+        summaryId: bindleSummary.summaryId,
       })
     }
 
@@ -890,9 +1109,8 @@ export namespace LcmContext {
     return {
       actionTaken: true,
       newTokenCount,
-      createdSummary: condensedSummary,
+      createdSummary: bindleSummary,
       condensed: true,
-      condensationLevel,
     }
   }
 
@@ -1002,7 +1220,7 @@ export namespace LcmContext {
    * Compact context until it is under the given hard limit.
    *
    * Runs up to MAX_COMPACTION_ROUNDS of compaction. Each round calls
-   * onContextThresholdReached() (which uses normal + aggressive escalation) and
+   * onContextThresholdReached() and
    * rechecks context size. Stops when:
    * - Context is under the hard limit
    * - Compaction made no progress (no token reduction)
@@ -1101,8 +1319,6 @@ export namespace LcmContext {
         afterTokens: recheck.currentTokens,
         hardLimit: recheck.hardLimit,
         actionTaken: result.actionTaken,
-        summarizationLevel: result.summarizationLevel,
-        condensationLevel: result.condensationLevel,
       })
 
       if (recheck.currentTokens <= recheck.hardLimit) {

@@ -19,6 +19,7 @@ import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 import { LcmIntegrity } from "../../session/lcm/integrity"
 import { LcmContext } from "../../session/lcm/context"
+import { LcmDb } from "../../session/lcm/db"
 import { Provider } from "../../provider/provider"
 
 const log = Log.create({ service: "server" })
@@ -1139,17 +1140,29 @@ export const SessionRoutes = lazy(() =>
             overhead = 0
             reserve = TokenBudget.outputReserve(model)
           }
-          const result = await LcmContext.onContextThresholdReached({
+          const beforeTokenCount = await LcmDb.getContextTokenCount(conversationId)
+          const compactResult = await LcmContext.compactShortBindle({
             conversationId,
             sessionID,
             user,
             model,
-            force: true,
             overhead,
             reserve,
             contextWindow: model.limit.context,
           })
-          return c.json(result)
+          return c.json({
+            mode: "short_bindle",
+            success: true,
+            beforeTokenCount,
+            newTokenCount: compactResult.newTokenCount ?? beforeTokenCount,
+            maxTokens: model.limit.context,
+            actionTaken: compactResult.actionTaken,
+            condensed: compactResult.condensed,
+            messagesSummarized: compactResult.messagesSummarized ?? 0,
+            evictedBindleIds: compactResult.evictedBindleIds ?? [],
+            archiveStubIds: compactResult.archiveStubIds ?? [],
+            noOpReasons: compactResult.noOpReasons ?? [],
+          })
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e)
           return c.json({ error: message }, 500)
