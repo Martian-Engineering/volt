@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../../src/session/lcm/config"
 import { createCondenseLlmRequest } from "../../../src/session/lcm/condense"
 import {
+  createLcmPromptRegistryKey,
   resolveLcmPrompt,
   setLcmPromptRegistryForTesting,
 } from "../../../src/session/lcm/prompt-registry"
@@ -55,6 +56,16 @@ describe("session.lcm.prompt-registry", () => {
         condensationOrder: 1,
       }),
     ).rejects.toThrow("Missing LCM prompt file")
+  })
+
+  test("rejects non-integer condensation order for prompt keys", () => {
+    expect(() =>
+      createLcmPromptRegistryKey({
+        mode: "dolt",
+        operation: "summarize",
+        condensationOrder: 2.5,
+      }),
+    ).toThrow("Invalid LCM condensation order")
   })
 
   test("summarize and condense requests apply maxOutputTokens from policy", () => {

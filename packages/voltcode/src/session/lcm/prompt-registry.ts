@@ -42,8 +42,8 @@ export function createLcmPromptRegistryKey(input: {
   operation: LcmPromptOperation
   condensationOrder: number
 }): LcmPromptRegistryKey {
-  const condensationOrder = Number.parseInt(String(input.condensationOrder), 10)
-  if (!Number.isInteger(condensationOrder) || condensationOrder < 1) {
+  const condensationOrder = Number(input.condensationOrder)
+  if (!Number.isFinite(condensationOrder) || !Number.isInteger(condensationOrder) || condensationOrder < 1) {
     throw new Error(`Invalid LCM condensation order: ${input.condensationOrder}. Expected integer >= 1`)
   }
   return `${input.mode}:${input.operation}:d${condensationOrder}` as LcmPromptRegistryKey
