@@ -61,12 +61,18 @@ import { ExploreDispatcher } from "./lcm/explore/dispatcher"
 import { LcmDb } from "./lcm/db"
 import { LcmContext } from "./lcm/context"
 import { LcmContextSnapshot } from "./lcm/context-snapshot"
-import { LcmRetrieval } from "./lcm/retrieval"
+import type { LcmRetrieval } from "./lcm/retrieval"
 import {
   LCM_PRE_RESPONSE_HOOK_MAX_DISTANCE,
   LCM_PRE_RESPONSE_HOOK_MIN_SCORE,
   LCM_PRE_RESPONSE_HOOK_TOP_K,
 } from "./lcm/config"
+import {
+  compactUntilUnderHardLimit,
+  getActiveLcmRuntimeStrategy,
+  isThresholdCompactionInFlight,
+  scheduleThresholdCompaction,
+} from "./lcm/strategy"
 import { LargeFile } from "./lcm/large-file"
 import { Token } from "@/util/token"
 import { TokenBudget } from "./token-budget"
@@ -877,6 +883,7 @@ export namespace SessionPrompt {
     toolTokenEstimate?: number
   }) {
     const conversationId = await getOrCreateLcmConversation(input.sessionID, input.model)
+    const strategy = getActiveLcmRuntimeStrategy()
     if (conversationId === null) {
       throw new Error("failed to get or create LCM conversation for session " + input.sessionID)
     }
@@ -915,7 +922,7 @@ export namespace SessionPrompt {
         contextWindow,
         softThresholdOverride,
       })
-      const compactionInFlight = LcmContext.isCompactionInFlight(conversationId)
+      const compactionInFlight = isThresholdCompactionInFlight(conversationId)
 
       log.info("building LCM context", {
         sessionID: input.sessionID,
@@ -930,6 +937,7 @@ export namespace SessionPrompt {
         toolTokens,
         overhead,
         reserve,
+        strategy: strategy.name,
       })
 
       // Publish LCM metrics so the TUI footer can display them.
@@ -953,12 +961,13 @@ export namespace SessionPrompt {
           systemPromptTokens,
           overhead,
           reserve,
+          strategy: strategy.name,
         })
 
         LcmContext.setCompactionState(input.sessionID, conversationId, true)
 
         try {
-          const compactResult = await LcmContext.compactUntilUnderLimit({
+          const compactResult = await compactUntilUnderHardLimit({
             conversationId,
             sessionID: input.sessionID,
             user: input.user,
@@ -977,6 +986,7 @@ export namespace SessionPrompt {
             rounds: compactResult.rounds,
             finalTokens: compactResult.finalTokens,
             hardLimit: compactResult.hardLimit,
+            strategy: strategy.name,
           })
           if (!compactResult.success) {
             log.error("hard-limit compaction failed, proceeding anyway", {
@@ -985,6 +995,7 @@ export namespace SessionPrompt {
               finalTokens: compactResult.finalTokens,
               hardLimit: compactResult.hardLimit,
               rounds: compactResult.rounds,
+              strategy: strategy.name,
             })
           }
 
@@ -998,7 +1009,7 @@ export namespace SessionPrompt {
         }
       } else if (thresholdCheck.overSoft) {
         // Tier 1 (soft threshold): schedule async compaction, proceed immediately
-        const job = LcmContext.scheduleCompaction({
+        const job = scheduleThresholdCompaction({
           conversationId,
           sessionID: input.sessionID,
           user: input.user,
@@ -1024,6 +1035,7 @@ export namespace SessionPrompt {
                     sessionID: input.sessionID,
                     conversationId,
                     actionTaken: result?.actionTaken,
+                    strategy: strategy.name,
                   })
                   return
                 }
@@ -1043,7 +1055,9 @@ export namespace SessionPrompt {
                 const messagesSummarized =
                   result.messagesSummarized ??
                   (summaryKind === "sprig" ? (await LcmDb.getSummaryMessageIds(summaryId)).length : 0)
-                const totalSummaries = (await LcmContext.getSummariesInContext(conversationId)).length
+                const totalSummaries = (await strategy.assembleContext(conversationId)).filter(
+                  (entry) => entry.item_type === "summary",
+                ).length
 
                 log.info("async compaction completed", {
                   sessionID: input.sessionID,
@@ -1055,6 +1069,7 @@ export namespace SessionPrompt {
                   beforeTokens,
                   afterTokens,
                   reductionTokens,
+                  strategy: strategy.name,
                 })
 
                 const event = buildLcmEventPart({
@@ -1080,6 +1095,7 @@ export namespace SessionPrompt {
                     afterPercent,
                     reductionTokens,
                     reductionPercent,
+                    strategy: strategy.name,
                   },
                 })
 
@@ -1104,6 +1120,7 @@ export namespace SessionPrompt {
                   sessionID: input.sessionID,
                   conversationId,
                   error,
+                  strategy: strategy.name,
                 })
               })
               .finally(clearCompacting)
@@ -1114,7 +1131,7 @@ export namespace SessionPrompt {
       }
 
       const contextStart = performance.now()
-      const context = await LcmDb.getCurrentContext(conversationId)
+      const context = await strategy.assembleContext(conversationId)
       log.trace("buildLcm.timing.getCurrentContext", {
         sessionID: input.sessionID,
         ms: Math.round(performance.now() - contextStart),
@@ -1145,7 +1162,7 @@ export namespace SessionPrompt {
       let preResponseCueBlock: string | null = null
       if (retrievalQuery) {
         try {
-          const retrieval = await LcmRetrieval.queryOffContextBindles({
+          const retrieval = await strategy.resolveRetrieval({
             conversationId,
             query: retrievalQuery,
             topK: LCM_PRE_RESPONSE_HOOK_TOP_K,
@@ -1162,6 +1179,7 @@ export namespace SessionPrompt {
               sessionID: input.sessionID,
               conversationId,
               cueCount: retrieval.hits.filter((hit) => !activeSummaryIds.has(hit.summaryId)).length,
+              strategy: strategy.name,
             })
           }
         } catch (error) {
@@ -1169,6 +1187,7 @@ export namespace SessionPrompt {
             sessionID: input.sessionID,
             conversationId,
             error,
+            strategy: strategy.name,
           })
         }
       }

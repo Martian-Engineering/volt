@@ -2,6 +2,7 @@ import { Log } from "@/util/log"
 import { LcmDb } from "./db"
 import { ensureEmbeddedPostgresRunning, isEmbeddedPostgresSupported } from "./embedded-postgres"
 import { LCM_EXTERNAL_DATABASE } from "./config"
+import { ensureLcmRuntimeStrategyConfigured } from "./strategy"
 
 const log = Log.create({ service: "lcm.runtime" })
 
@@ -16,6 +17,9 @@ export async function ensureLcmReady(): Promise<boolean> {
   if (ready) return true
   if (!initPromise) {
     initPromise = (async () => {
+      const strategy = ensureLcmRuntimeStrategyConfigured()
+      log.info("resolved LCM runtime strategy", { strategy: strategy.name })
+
       // When using external database, skip embedded postgres setup
       if (LCM_EXTERNAL_DATABASE) {
         log.info("using external database for LCM")

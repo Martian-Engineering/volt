@@ -18,8 +18,8 @@ import { PermissionNext } from "@/permission/next"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 import { LcmIntegrity } from "../../session/lcm/integrity"
-import { LcmContext } from "../../session/lcm/context"
 import { LcmDb } from "../../session/lcm/db"
+import { getActiveLcmRuntimeStrategy } from "../../session/lcm/strategy"
 import { Provider } from "../../provider/provider"
 
 const log = Log.create({ service: "server" })
@@ -1127,6 +1127,7 @@ export const SessionRoutes = lazy(() =>
         }
         const user = lastUser.info
         const model = await Provider.getModel(user.model.providerID, user.model.modelID)
+        const strategy = getActiveLcmRuntimeStrategy()
         try {
           // Use TokenBudget if available, otherwise use reasonable defaults
           const { TokenBudget } = await import("../../session/token-budget")
@@ -1141,7 +1142,7 @@ export const SessionRoutes = lazy(() =>
             reserve = TokenBudget.outputReserve(model)
           }
           const beforeTokenCount = await LcmDb.getContextTokenCount(conversationId)
-          const compactResult = await LcmContext.compactShortBindle({
+          const compactResult = await strategy.compactManual({
             conversationId,
             sessionID,
             user,
@@ -1152,6 +1153,7 @@ export const SessionRoutes = lazy(() =>
           })
           return c.json({
             mode: "short_bindle",
+            strategy: strategy.name,
             success: true,
             beforeTokenCount,
             newTokenCount: compactResult.newTokenCount ?? beforeTokenCount,
