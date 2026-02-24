@@ -1,51 +1,28 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { TokenBudget } from "../../src/session/token-budget"
-
-const DOLT_POLICY_ENV_KEYS = [
-  "VOLTCODE_LCM_DOLT_LEAVES_CAP",
-  "VOLTCODE_LCM_DOLT_LEAVES_SOFT",
-  "VOLTCODE_LCM_DOLT_LEAVES_DELTA",
-  "VOLTCODE_LCM_DOLT_LEAVES_TARGET",
-  "VOLTCODE_LCM_DOLT_LEAVES_FRESH_TAIL_FLOOR",
-  "VOLTCODE_LCM_DOLT_SPRIGS_SOFT",
-  "VOLTCODE_LCM_DOLT_SPRIGS_DELTA",
-  "VOLTCODE_LCM_DOLT_SPRIGS_TARGET",
-  "VOLTCODE_LCM_DOLT_BINDLES_SOFT",
-  "VOLTCODE_LCM_DOLT_BINDLES_DELTA",
-  "VOLTCODE_LCM_DOLT_BINDLES_TARGET",
-  "VOLTCODE_LCM_DOLT_HARD_LIMIT_RISK_BUFFER",
-] as const
-
-const originalEnv = new Map<string, string | undefined>()
-for (const key of DOLT_POLICY_ENV_KEYS) {
-  originalEnv.set(key, process.env[key])
-}
+import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../src/session/lcm/config"
 
 afterEach(() => {
-  for (const key of DOLT_POLICY_ENV_KEYS) {
-    const original = originalEnv.get(key)
-    if (original === undefined) {
-      delete process.env[key]
-      continue
-    }
-    process.env[key] = original
-  }
+  setLcmPolicyConfigForTesting(null)
 })
 
 describe("TokenBudget.computeDoltLanePolicy", () => {
   test("uses explicit Dolt defaults for leaves/sprigs/bindles", () => {
+    setLcmPolicyConfigForTesting(parseLcmPolicyConfig({}))
     const policy = TokenBudget.computeDoltLanePolicy({ hardLimit: 120000 })
 
-    expect(policy.bindles).toEqual({ soft: 10000, delta: 2000, target: 10000 })
-    expect(policy.sprigs).toEqual({ soft: 10000, delta: 2000, target: 10000 })
+    expect(policy.bindles).toEqual({ soft: 10000, delta: 2000, target: 10000, minFanout: 2 })
+    expect(policy.sprigs).toEqual({ soft: 10000, delta: 2000, target: 10000, minFanout: 2 })
     expect(policy.leaves.cap).toBe(50000)
     expect(policy.leaves.soft).toBe(50000)
     expect(policy.leaves.delta).toBe(5000)
     expect(policy.leaves.target).toBe(50000)
+    expect(policy.leaves.minFanout).toBe(2)
     expect(policy.leaves.freshTailFloor).toBe(4)
   })
 
   test("clamps explicit leaves defaults to hard limit", () => {
+    setLcmPolicyConfigForTesting(parseLcmPolicyConfig({}))
     const policy = TokenBudget.computeDoltLanePolicy({ hardLimit: 25000 })
 
     expect(policy.leaves.cap).toBe(25000)
@@ -54,18 +31,25 @@ describe("TokenBudget.computeDoltLanePolicy", () => {
   })
 
   test("supports env overrides and clamps leaves to cap", () => {
-    process.env.VOLTCODE_LCM_DOLT_LEAVES_CAP = "45000"
-    process.env.VOLTCODE_LCM_DOLT_LEAVES_SOFT = "50000"
-    process.env.VOLTCODE_LCM_DOLT_LEAVES_TARGET = "60000"
-    process.env.VOLTCODE_LCM_DOLT_LEAVES_DELTA = "1200"
-    process.env.VOLTCODE_LCM_DOLT_LEAVES_FRESH_TAIL_FLOOR = "6"
-    process.env.VOLTCODE_LCM_DOLT_SPRIGS_SOFT = "25000"
-    process.env.VOLTCODE_LCM_DOLT_SPRIGS_DELTA = "3000"
-    process.env.VOLTCODE_LCM_DOLT_SPRIGS_TARGET = "22000"
-    process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT = "14000"
-    process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA = "1500"
-    process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET = "12000"
-    process.env.VOLTCODE_LCM_DOLT_HARD_LIMIT_RISK_BUFFER = "500"
+    setLcmPolicyConfigForTesting(
+      parseLcmPolicyConfig({
+        VOLTCODE_LCM_DOLT_LEAVES_CAP: "45000",
+        VOLTCODE_LCM_DOLT_LEAVES_SOFT: "50000",
+        VOLTCODE_LCM_DOLT_LEAVES_TARGET: "60000",
+        VOLTCODE_LCM_DOLT_LEAVES_DELTA: "1200",
+        VOLTCODE_LCM_DOLT_LEAVES_MIN_FANOUT: "3",
+        VOLTCODE_LCM_DOLT_LEAVES_FRESH_TAIL_FLOOR: "6",
+        VOLTCODE_LCM_DOLT_SPRIGS_SOFT: "25000",
+        VOLTCODE_LCM_DOLT_SPRIGS_DELTA: "3000",
+        VOLTCODE_LCM_DOLT_SPRIGS_TARGET: "22000",
+        VOLTCODE_LCM_DOLT_SPRIGS_MIN_FANOUT: "4",
+        VOLTCODE_LCM_DOLT_BINDLES_SOFT: "14000",
+        VOLTCODE_LCM_DOLT_BINDLES_DELTA: "1500",
+        VOLTCODE_LCM_DOLT_BINDLES_TARGET: "12000",
+        VOLTCODE_LCM_DOLT_BINDLES_MIN_FANOUT: "5",
+        VOLTCODE_LCM_DOLT_HARD_LIMIT_RISK_BUFFER: "500",
+      }),
+    )
 
     const policy = TokenBudget.computeDoltLanePolicy({ hardLimit: 90000 })
 
@@ -73,18 +57,19 @@ describe("TokenBudget.computeDoltLanePolicy", () => {
     expect(policy.leaves.soft).toBe(45000)
     expect(policy.leaves.target).toBe(45000)
     expect(policy.leaves.delta).toBe(1200)
+    expect(policy.leaves.minFanout).toBe(3)
     expect(policy.leaves.freshTailFloor).toBe(6)
-    expect(policy.sprigs).toEqual({ soft: 25000, delta: 3000, target: 22000 })
-    expect(policy.bindles).toEqual({ soft: 14000, delta: 1500, target: 12000 })
+    expect(policy.sprigs).toEqual({ soft: 25000, delta: 3000, target: 22000, minFanout: 4 })
+    expect(policy.bindles).toEqual({ soft: 14000, delta: 1500, target: 12000, minFanout: 5 })
     expect(policy.hardLimitRiskBuffer).toBe(500)
   })
 })
 
 describe("TokenBudget.evaluateDoltLaneDecisions", () => {
   const policy: TokenBudget.DoltLanePolicy = {
-    leaves: { cap: 1000, soft: 800, delta: 100, target: 780, freshTailFloor: 4 },
-    sprigs: { soft: 200, delta: 20, target: 180 },
-    bindles: { soft: 100, delta: 10, target: 90 },
+    leaves: { cap: 1000, soft: 800, delta: 100, target: 780, minFanout: 2, freshTailFloor: 4 },
+    sprigs: { soft: 200, delta: 20, target: 180, minFanout: 2 },
+    bindles: { soft: 100, delta: 10, target: 90, minFanout: 2 },
     hardLimitRiskBuffer: 0,
   }
 

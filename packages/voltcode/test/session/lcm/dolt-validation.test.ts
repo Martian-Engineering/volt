@@ -65,9 +65,9 @@ describe("dolt v1 validation suite", () => {
 
   test("applies hysteresis bands (no-op at boundary, compacts above upper band)", () => {
     const policy: TokenBudget.DoltLanePolicy = {
-      leaves: { cap: 1000, soft: 800, delta: 100, target: 780, freshTailFloor: 4 },
-      sprigs: { soft: 200, delta: 20, target: 180 },
-      bindles: { soft: 100, delta: 10, target: 90 },
+      leaves: { cap: 1000, soft: 800, delta: 100, target: 780, minFanout: 2, freshTailFloor: 4 },
+      sprigs: { soft: 200, delta: 20, target: 180, minFanout: 2 },
+      bindles: { soft: 100, delta: 10, target: 90, minFanout: 2 },
       hardLimitRiskBuffer: 0,
     }
 

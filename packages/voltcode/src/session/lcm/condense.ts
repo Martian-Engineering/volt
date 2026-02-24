@@ -5,9 +5,8 @@ import { Token } from "@/util/token"
 import { Summary } from "./summary"
 import { LcmDb } from "./db"
 import { extractFileIds } from "./summarize"
+import { getLcmPolicyConfig } from "./config"
 import CONDENSE_PROMPT from "./prompts/condense.txt"
-
-const CONDENSE_MAX_OUTPUT_TOKENS = 2200
 
 /**
  * LCM Condense Module
@@ -107,7 +106,7 @@ ${formattedSummaries}
     const result = await generateText({
       model: language,
       abortSignal: input.abort,
-      maxOutputTokens: CONDENSE_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: getLcmPolicyConfig().runtime.condenseMaxOutputTokens,
       messages: [
         {
           role: "system",

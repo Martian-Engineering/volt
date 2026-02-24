@@ -3,6 +3,7 @@ import { LcmDb } from "../../../src/session/lcm/db"
 import { ensureLcmReady } from "../../../src/session/lcm/runtime"
 import { isEmbeddedPostgresSupported } from "../../../src/session/lcm/embedded-postgres"
 import { LcmContext } from "../../../src/session/lcm/context"
+import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../../src/session/lcm/config"
 import { Token } from "../../../src/util/token"
 
 const isLcmAvailable = isEmbeddedPostgresSupported() && (await ensureLcmReady().catch(() => false))
@@ -428,12 +429,13 @@ describe("session.lcm.context", () => {
     })
 
     test("evicts oldest active bindles on overflow with archive-stub lineage across repeated rounds", async () => {
-      const previousBindlesSoft = process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT
-      const previousBindlesDelta = process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA
-      const previousBindlesTarget = process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET
-      process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT = "20"
-      process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA = "0"
-      process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET = "15"
+      setLcmPolicyConfigForTesting(
+        parseLcmPolicyConfig({
+          VOLTCODE_LCM_DOLT_BINDLES_SOFT: "20",
+          VOLTCODE_LCM_DOLT_BINDLES_DELTA: "1",
+          VOLTCODE_LCM_DOLT_BINDLES_TARGET: "15",
+        }),
+      )
 
       let offset = 50
       const nextSummaryId = () => `sum_${(Date.now() + offset++).toString(16).padStart(16, "0")}`
@@ -578,12 +580,7 @@ describe("session.lcm.context", () => {
         `
         expect(bindleToBindleEdges[0]?.count ?? 0).toBe(0)
       } finally {
-        if (previousBindlesSoft === undefined) delete process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT
-        else process.env.VOLTCODE_LCM_DOLT_BINDLES_SOFT = previousBindlesSoft
-        if (previousBindlesDelta === undefined) delete process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA
-        else process.env.VOLTCODE_LCM_DOLT_BINDLES_DELTA = previousBindlesDelta
-        if (previousBindlesTarget === undefined) delete process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET
-        else process.env.VOLTCODE_LCM_DOLT_BINDLES_TARGET = previousBindlesTarget
+        setLcmPolicyConfigForTesting(null)
       }
     })
   })

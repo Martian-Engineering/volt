@@ -6,6 +6,7 @@ import { LcmSummarize } from "./summarize"
 import { Condense } from "./condense"
 import { Summary } from "./summary"
 import { LcmGhostCue } from "./ghost-cue"
+import { getLcmPolicyConfig } from "./config"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { TokenBudget } from "@/session/token-budget"
@@ -115,44 +116,44 @@ export namespace LcmContext {
   /**
    * Default context cutoff threshold (60% of context window)
    */
-  export const DEFAULT_CTX_CUTOFF_THRESHOLD = 0.6
+  export const DEFAULT_CTX_CUTOFF_THRESHOLD = getLcmPolicyConfig().runtime.defaultCtxCutoffThreshold
 
   /**
    * Target percentage of context to free up when summarizing (25%)
    * This determines the token budget for selecting messages to summarize.
    */
-  export const TARGET_FREE_PERCENTAGE = 0.25
+  export const TARGET_FREE_PERCENTAGE = getLcmPolicyConfig().runtime.targetFreePercentage
 
   /**
    * Minimum number of messages to summarize at once
    * (avoid summarizing too few messages which would be inefficient)
    */
-  export const MIN_MESSAGES_TO_SUMMARIZE = 3
+  export const MIN_MESSAGES_TO_SUMMARIZE = getLcmPolicyConfig().runtime.minMessagesToSummarize
 
   /**
    * Minimum leaves required to form a sprig summary.
    * Prevents one-leaf sprigs in high-pressure edge cases.
    */
-  export const MIN_LEAVES_PER_SPRIG = 2
+  export const MIN_LEAVES_PER_SPRIG = getLcmPolicyConfig().strategies.dolt.leaves.minFanout
 
   /**
    * Fresh-tail protection is preferred at lanePolicy.leaves.freshTailFloor.
    * Under sustained pressure we may relax down to this minimum.
    */
-  export const MIN_PROTECTED_TAIL_LEAVES = 2
+  export const MIN_PROTECTED_TAIL_LEAVES = getLcmPolicyConfig().runtime.minProtectedTailLeaves
 
   /**
    * Critical threshold multiplier - when context is this far over threshold,
    * we lower the minimum messages requirement to ensure progress is made.
    * At 1.2 = 20% over threshold, we'll summarize even 1-2 messages.
    */
-  export const CRITICAL_THRESHOLD_MULTIPLIER = 1.2
+  export const CRITICAL_THRESHOLD_MULTIPLIER = getLcmPolicyConfig().runtime.criticalThresholdMultiplier
 
   /**
    * Maximum number of compaction rounds before giving up.
    * Each round attempts to reduce context size via lane-aware compaction.
    */
-  export const MAX_COMPACTION_ROUNDS = 10
+  export const MAX_COMPACTION_ROUNDS = getLcmPolicyConfig().runtime.maxCompactionRounds
 
   /**
    * Result of the context threshold check and handling
@@ -221,9 +222,12 @@ export namespace LcmContext {
     const currentTokens = await LcmDb.getContextTokenCount(input.conversationId)
     const measuredLaneTokens = await LcmDb.getContextLaneTokenCounts(input.conversationId)
     const hardLimit = input.contextWindow - input.overhead - input.reserve
-    const softRaw = (input.softThresholdOverride ?? Math.floor(input.contextWindow * 0.6)) - input.overhead
+    const softRaw =
+      (input.softThresholdOverride ??
+        Math.floor(input.contextWindow * getLcmPolicyConfig().runtime.defaultCtxCutoffThreshold)) -
+      input.overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
-    const lanePolicy = TokenBudget.computeDoltLanePolicy({ hardLimit })
+    const lanePolicy = TokenBudget.computeLanePolicy({ hardLimit })
     const laneTokens: TokenBudget.LaneTokenCounts = {
       leaves: Math.max(0, Math.floor(input.laneTokens?.leaves ?? measuredLaneTokens.leaves)),
       sprigs: Math.max(0, Math.floor(input.laneTokens?.sprigs ?? measuredLaneTokens.sprigs)),
@@ -358,11 +362,20 @@ export namespace LcmContext {
   } {
     const tokenBudget = Math.max(1, Math.floor(input.tokenBudget))
     const preferredProtectedTailCount = Math.max(0, Math.floor(input.protectedTailCount))
+    const policyConfig = getLcmPolicyConfig()
+    const runtimePolicy = policyConfig.runtime
+    const activeModePolicy = policyConfig.strategies[policyConfig.mode]
     const minimumProtectedTailCount = Math.max(
       0,
-      Math.min(preferredProtectedTailCount, Math.floor(input.minimumProtectedTailCount ?? MIN_PROTECTED_TAIL_LEAVES)),
+      Math.min(
+        preferredProtectedTailCount,
+        Math.floor(input.minimumProtectedTailCount ?? runtimePolicy.minProtectedTailLeaves),
+      ),
     )
-    const minimumSelectionCount = Math.max(1, Math.floor(input.minimumSelectionCount ?? MIN_LEAVES_PER_SPRIG))
+    const minimumSelectionCount = Math.max(
+      1,
+      Math.floor(input.minimumSelectionCount ?? activeModePolicy.leaves.minFanout),
+    )
 
     function computeSelection(protectedTailCount: number): {
       selectedMessages: TurnMessageInContext[]
@@ -698,8 +711,8 @@ export namespace LcmContext {
       messages: messagesInContext,
       tokenBudget: selectionTokenBudget,
       protectedTailCount,
-      minimumProtectedTailCount: MIN_PROTECTED_TAIL_LEAVES,
-      minimumSelectionCount: MIN_LEAVES_PER_SPRIG,
+      minimumProtectedTailCount: getLcmPolicyConfig().runtime.minProtectedTailLeaves,
+      minimumSelectionCount: thresholdCheck.lanePolicy.leaves.minFanout,
     })
 
     if (selectedMessages.length === 0) {
@@ -708,8 +721,8 @@ export namespace LcmContext {
         totalMessages: messagesInContext.length,
         preferredProtectedTailCount: protectedTailCount,
         effectiveProtectedTailCount,
-        minimumProtectedTailCount: MIN_PROTECTED_TAIL_LEAVES,
-        minimumSelectionCount: MIN_LEAVES_PER_SPRIG,
+        minimumProtectedTailCount: getLcmPolicyConfig().runtime.minProtectedTailLeaves,
+        minimumSelectionCount: thresholdCheck.lanePolicy.leaves.minFanout,
       })
       return {
         actionTaken: evictedBindleIds.length > 0,
@@ -901,7 +914,7 @@ export namespace LcmContext {
     const protectedTailCount = Math.max(1, Math.floor(initialThreshold.lanePolicy.leaves.freshTailFloor))
     const messagesInContext = await getMessagesInContext(input.conversationId)
     const eligibleLeafCount = Math.max(0, messagesInContext.length - protectedTailCount)
-    if (eligibleLeafCount >= MIN_LEAVES_PER_SPRIG) {
+    if (eligibleLeafCount >= initialThreshold.lanePolicy.leaves.minFanout) {
       const selectedMessages = messagesInContext.slice(0, eligibleLeafCount)
       const inputTokens = selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0)
       const messagesToSummarize = await convertToMessageV2(selectedMessages)
@@ -939,7 +952,7 @@ export namespace LcmContext {
         totalLeaves: messagesInContext.length,
         protectedTailCount,
         eligibleLeafCount,
-        minimumLeavesPerSprig: MIN_LEAVES_PER_SPRIG,
+        minimumLeavesPerSprig: initialThreshold.lanePolicy.leaves.minFanout,
       })
       noOpReasons.push("eligible_leaves_below_min")
     }
@@ -1284,7 +1297,8 @@ export namespace LcmContext {
     })
 
     let lastTokenCount = initialCheck.currentTokens
-    for (let round = 1; round <= MAX_COMPACTION_ROUNDS; round++) {
+    const maxCompactionRounds = getLcmPolicyConfig().runtime.maxCompactionRounds
+    for (let round = 1; round <= maxCompactionRounds; round++) {
       log.debug("compactUntilUnderLimit: starting round", {
         conversationId: input.conversationId,
         round,
@@ -1362,12 +1376,12 @@ export namespace LcmContext {
       conversationId: input.conversationId,
       currentTokens: finalCheck.currentTokens,
       hardLimit: finalCheck.hardLimit,
-      maxRounds: MAX_COMPACTION_ROUNDS,
+      maxRounds: maxCompactionRounds,
     })
 
     return {
       success: false,
-      rounds: MAX_COMPACTION_ROUNDS,
+      rounds: maxCompactionRounds,
       finalTokens: finalCheck.currentTokens,
       hardLimit: finalCheck.hardLimit,
     }

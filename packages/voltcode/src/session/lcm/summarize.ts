@@ -5,9 +5,8 @@ import { Provider } from "@/provider/provider"
 import { MessageV2 } from "@/session/message-v2"
 import { Summary } from "./summary"
 import { LcmDb } from "./db"
+import { getLcmPolicyConfig } from "./config"
 import SUMMARIZE_PROMPT from "./prompts/summarize.txt"
-
-const SUMMARY_MAX_OUTPUT_TOKENS = 2200
 
 /**
  * LCM Summarize Module
@@ -84,7 +83,7 @@ export namespace LcmSummarize {
     const result = await generateText({
       model: language,
       abortSignal: input.abort,
-      maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: getLcmPolicyConfig().runtime.summaryMaxOutputTokens,
       messages: [
         {
           role: "system",

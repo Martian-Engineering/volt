@@ -4,22 +4,11 @@ import { SystemPrompt } from "./system"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import type { Tool } from "ai"
+import { getLcmPolicyConfig, type LcmMode, type LcmModePolicy } from "./lcm/config"
 
 const log = Log.create({ service: "token-budget" })
 
 const DEFAULT_OUTPUT_RESERVE = 20_000
-const DEFAULT_DOLT_BINDLES_SOFT = 10_000
-const DEFAULT_DOLT_BINDLES_DELTA = 2_000
-const DEFAULT_DOLT_BINDLES_TARGET = 10_000
-const DEFAULT_DOLT_SPRIGS_SOFT = 10_000
-const DEFAULT_DOLT_SPRIGS_DELTA = 2_000
-const DEFAULT_DOLT_SPRIGS_TARGET = 10_000
-const DEFAULT_DOLT_LEAVES_CAP = 50_000
-const DEFAULT_DOLT_LEAVES_SOFT = 50_000
-const DEFAULT_DOLT_LEAVES_DELTA = 5_000
-const DEFAULT_DOLT_LEAVES_TARGET = 50_000
-const DEFAULT_DOLT_LEAVES_FRESH_TAIL_FLOOR = 4
-const DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER = 0
 
 export namespace TokenBudget {
   export type LaneName = "leaves" | "sprigs" | "bindles"
@@ -28,6 +17,7 @@ export namespace TokenBudget {
     soft: number
     delta: number
     target: number
+    minFanout: number
   }
 
   export interface LeavesLaneThreshold extends LaneThreshold {
@@ -202,15 +192,20 @@ export namespace TokenBudget {
     toolTokens: number
     softThresholdOverride?: number
   }): Budget {
+    const policyConfig = getLcmPolicyConfig()
     const overhead = input.systemPromptTokens + input.toolTokens
     const reserve = outputReserve(input.model)
     const contextWindow = input.model.limit.context
     const hardLimit = contextWindow - overhead - reserve
-    const softRaw = (input.softThresholdOverride ?? Math.floor(contextWindow * 0.6)) - overhead
+    const softRaw =
+      (input.softThresholdOverride ??
+        Math.floor(contextWindow * policyConfig.runtime.defaultCtxCutoffThreshold)) -
+      overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
-    const lanePolicy = computeDoltLanePolicy({ hardLimit })
+    const lanePolicy = computeLanePolicy({ hardLimit, mode: policyConfig.mode })
 
     log.debug("computed budget", {
+      mode: policyConfig.mode,
       overhead,
       reserve,
       hardLimit,
@@ -219,13 +214,16 @@ export namespace TokenBudget {
       leavesSoft: lanePolicy.leaves.soft,
       leavesDelta: lanePolicy.leaves.delta,
       leavesTarget: lanePolicy.leaves.target,
+      leavesMinFanout: lanePolicy.leaves.minFanout,
       leavesFreshTailFloor: lanePolicy.leaves.freshTailFloor,
       sprigsSoft: lanePolicy.sprigs.soft,
       sprigsDelta: lanePolicy.sprigs.delta,
       sprigsTarget: lanePolicy.sprigs.target,
+      sprigsMinFanout: lanePolicy.sprigs.minFanout,
       bindlesSoft: lanePolicy.bindles.soft,
       bindlesDelta: lanePolicy.bindles.delta,
       bindlesTarget: lanePolicy.bindles.target,
+      bindlesMinFanout: lanePolicy.bindles.minFanout,
       hardLimitRiskBuffer: lanePolicy.hardLimitRiskBuffer,
       contextWindow,
       systemPromptTokens: input.systemPromptTokens,
@@ -255,24 +253,44 @@ export namespace TokenBudget {
    *   whenever laneTokens > target.
    */
   export function computeDoltLanePolicy(input: { hardLimit: number }): DoltLanePolicy {
+    return computeLanePolicy({
+      hardLimit: input.hardLimit,
+      mode: "dolt",
+    })
+  }
+
+  /**
+   * Build lane-policy thresholds for the active strategy mode.
+   */
+  export function computeLanePolicy(input: {
+    hardLimit: number
+    mode?: LcmMode
+    policy?: LcmModePolicy
+  }): DoltLanePolicy {
     const hardLimit = nonNegativeInteger(input.hardLimit)
-    const leavesCap = clampToCap(readInt("VOLTCODE_LCM_DOLT_LEAVES_CAP", DEFAULT_DOLT_LEAVES_CAP), hardLimit)
+    const policyConfig = getLcmPolicyConfig()
+    const mode = input.mode ?? policyConfig.mode
+    const modePolicy = input.policy ?? policyConfig.strategies[mode]
+    const leavesCap = clampToCap(modePolicy.leaves.cap, hardLimit)
     const leaves = clampLane({
-      soft: readInt("VOLTCODE_LCM_DOLT_LEAVES_SOFT", DEFAULT_DOLT_LEAVES_SOFT),
-      delta: readInt("VOLTCODE_LCM_DOLT_LEAVES_DELTA", DEFAULT_DOLT_LEAVES_DELTA),
-      target: readInt("VOLTCODE_LCM_DOLT_LEAVES_TARGET", DEFAULT_DOLT_LEAVES_TARGET),
+      soft: modePolicy.leaves.soft,
+      delta: modePolicy.leaves.delta,
+      target: modePolicy.leaves.target,
+      minFanout: modePolicy.leaves.minFanout,
       cap: leavesCap,
     })
     const sprigs = clampLane({
-      soft: readInt("VOLTCODE_LCM_DOLT_SPRIGS_SOFT", DEFAULT_DOLT_SPRIGS_SOFT),
-      delta: readInt("VOLTCODE_LCM_DOLT_SPRIGS_DELTA", DEFAULT_DOLT_SPRIGS_DELTA),
-      target: readInt("VOLTCODE_LCM_DOLT_SPRIGS_TARGET", DEFAULT_DOLT_SPRIGS_TARGET),
+      soft: modePolicy.sprigs.soft,
+      delta: modePolicy.sprigs.delta,
+      target: modePolicy.sprigs.target,
+      minFanout: modePolicy.sprigs.minFanout,
       cap: hardLimit,
     })
     const bindles = clampLane({
-      soft: readInt("VOLTCODE_LCM_DOLT_BINDLES_SOFT", DEFAULT_DOLT_BINDLES_SOFT),
-      delta: readInt("VOLTCODE_LCM_DOLT_BINDLES_DELTA", DEFAULT_DOLT_BINDLES_DELTA),
-      target: readInt("VOLTCODE_LCM_DOLT_BINDLES_TARGET", DEFAULT_DOLT_BINDLES_TARGET),
+      soft: modePolicy.bindles.soft,
+      delta: modePolicy.bindles.delta,
+      target: modePolicy.bindles.target,
+      minFanout: modePolicy.bindles.minFanout,
       cap: hardLimit,
     })
 
@@ -280,16 +298,13 @@ export namespace TokenBudget {
       leaves: {
         ...leaves,
         cap: leavesCap,
-        freshTailFloor: Math.max(
-          1,
-          readInt("VOLTCODE_LCM_DOLT_LEAVES_FRESH_TAIL_FLOOR", DEFAULT_DOLT_LEAVES_FRESH_TAIL_FLOOR),
-        ),
+        freshTailFloor: Math.max(1, nonNegativeInteger(modePolicy.leaves.freshTailFloor)),
       },
       sprigs,
       bindles,
       hardLimitRiskBuffer: Math.min(
         hardLimit,
-        nonNegativeInteger(readInt("VOLTCODE_LCM_DOLT_HARD_LIMIT_RISK_BUFFER", DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER)),
+        nonNegativeInteger(modePolicy.hardLimitRiskBuffer),
       ),
     }
   }
@@ -426,14 +441,6 @@ export namespace TokenBudget {
     log.debug("invalidated session cache", { sessionID })
   }
 
-  function readInt(key: string, fallback: number): number {
-    const value = process.env[key]
-    if (!value) return fallback
-    const parsed = Number(value)
-    if (!Number.isInteger(parsed) || parsed < 0) return fallback
-    return parsed
-  }
-
   function nonNegativeInteger(value: number): number {
     if (!Number.isFinite(value)) return 0
     const floored = Math.floor(value)
@@ -444,11 +451,12 @@ export namespace TokenBudget {
     return Math.min(nonNegativeInteger(cap), nonNegativeInteger(value))
   }
 
-  function clampLane(input: { soft: number; delta: number; target: number; cap: number }): LaneThreshold {
+  function clampLane(input: { soft: number; delta: number; target: number; minFanout: number; cap: number }): LaneThreshold {
     const cap = nonNegativeInteger(input.cap)
     const soft = Math.min(nonNegativeInteger(input.soft), cap)
     const delta = nonNegativeInteger(input.delta)
     const target = Math.min(soft, nonNegativeInteger(input.target))
-    return { soft, delta, target }
+    const minFanout = Math.max(2, nonNegativeInteger(input.minFanout))
+    return { soft, delta, target, minFanout }
   }
 }
