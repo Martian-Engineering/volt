@@ -5,6 +5,7 @@ import { getLcmPolicyConfig, type LcmMode } from "./config"
 import { LcmContext } from "./context"
 import { LcmDb } from "./db"
 import { LcmRetrieval } from "./retrieval"
+import { createDoltRuntimeStrategy } from "./strategy-dolt"
 
 const log = Log.create({ service: "lcm.strategy" })
 
@@ -13,7 +14,7 @@ type StrategyFactory = () => LcmRuntimeStrategy
 type StrategyFactories = Record<LcmMode, StrategyFactory>
 
 const defaultFactories: StrategyFactories = {
-  dolt: () => doltStrategy,
+  dolt: () => createDoltRuntimeStrategy(),
   upward: () => upwardStrategy,
 }
 
@@ -61,14 +62,6 @@ export interface LcmRuntimeStrategy {
   compactManual(input: ManualCompactionInput): Promise<LcmContext.ContextHandlerResult>
   assembleContext(conversationId: number): Promise<LcmDb.ContextEntry[]>
   resolveRetrieval(input: LcmRetrieval.QueryInput): Promise<LcmRetrieval.QueryResult>
-}
-
-const doltStrategy: LcmRuntimeStrategy = {
-  name: "dolt",
-  compactOnThreshold: (input) => LcmContext.onContextThresholdReached(input),
-  compactManual: (input) => LcmContext.compactShortBindle(input),
-  assembleContext: (conversationId) => LcmDb.getCurrentContext(conversationId),
-  resolveRetrieval: (input) => LcmRetrieval.queryOffContextBindles(input),
 }
 
 const upwardStrategy: LcmRuntimeStrategy = {
