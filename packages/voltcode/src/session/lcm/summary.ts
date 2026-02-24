@@ -7,8 +7,8 @@ import { Token } from "@/util/token"
  *
  * This module defines the Summary data model for LCM's high-fanout summary DAG.
  * Summaries come in two kinds:
- * - 'leaf': Summarizes a set of raw messages
- * - 'condensed': Summarizes a set of other summaries (for recursive compression)
+ * - 'sprig': Summarizes a set of raw messages
+ * - 'bindle': Summarizes a set of other summaries (for recursive compression)
  *
  * Summary IDs are deterministic, based on content hash + timestamp, ensuring
  * reproducibility and deduplication.
@@ -16,27 +16,27 @@ import { Token } from "@/util/token"
 export namespace Summary {
   /**
    * Summary kind discriminator
-   * - 'leaf': Direct summary of messages
-   * - 'condensed': Summary of other summaries (high-fanout DAG node)
+   * - 'sprig': Direct summary of messages
+   * - 'bindle': Summary of other summaries (high-fanout DAG node)
    */
-  export const Kind = z.enum(["leaf", "condensed"])
+  export const Kind = z.enum(["sprig", "bindle"])
   export type Kind = z.infer<typeof Kind>
 
   /**
    * Dolt lane level for summaries.
-   * - leaf: L1 summaries over turns/messages
-   * - bindle: L2 summaries over leaves
+   * - sprig: L1 summaries over leaves/messages
+   * - bindle: L2 summaries over sprigs
    */
-  export const Level = z.enum(["leaf", "bindle"])
+  export const Level = z.enum(["sprig", "bindle"])
   export type Level = z.infer<typeof Level>
 
   /**
    * Dolt summary node type.
-   * - leaf: standard leaf summary
-   * - bindle: aggregated summary over leaves
+   * - sprig: standard sprig summary
+   * - bindle: aggregated summary over sprigs
    * - archive_stub: off-context pointer node for evicted bindles
    */
-  export const Type = z.enum(["leaf", "bindle", "archive_stub"])
+  export const Type = z.enum(["sprig", "bindle", "archive_stub"])
   export type Type = z.infer<typeof Type>
 
   /**
@@ -48,9 +48,9 @@ export namespace Summary {
       summaryId: z.string().startsWith("sum_"),
       /** The summary text content */
       content: z.string(),
-      /** Whether this is a leaf (message summary) or condensed (summary of summaries) */
+      /** Whether this is a sprig (message summary) or bindle (summary of summaries) */
       kind: Kind,
-      /** Explicit Dolt lane level for leaf vs bindle semantics */
+      /** Explicit Dolt lane level for sprig vs bindle semantics */
       level: Level.optional(),
       /** Explicit Dolt summary node type */
       summaryType: Type.optional(),
@@ -58,7 +58,7 @@ export namespace Summary {
       tokenCount: z.number().int().nonnegative(),
       /** Reference to the conversation/session this summary belongs to */
       conversationId: z.string(),
-      /** Parent summary IDs for condensed summaries; empty array for leaf summaries */
+      /** Parent summary IDs for bindle summaries; empty array for sprig summaries */
       parents: z.array(z.string().startsWith("sum_")),
       /** LCM file IDs referenced by the summarized messages/summaries */
       fileIds: z.array(z.string()).default([]),
@@ -72,42 +72,42 @@ export namespace Summary {
   export type Info = z.infer<typeof Schema>
 
   /**
-   * Schema for creating a new leaf summary (summarizes messages)
+   * Schema for creating a new sprig summary (summarizes messages)
    */
-  export const CreateLeafInput = z
+  export const CreateSprigInput = z
     .object({
       content: z.string().min(1),
       tokenCount: z.number().int().nonnegative(),
       conversationId: z.string(),
-      /** Message IDs that this summary covers (for leaf summaries) */
+      /** Message IDs that this summary covers (for sprig summaries) */
       messageIds: z.array(z.string()),
       /** LCM file IDs referenced by the summarized messages */
       fileIds: z.array(z.string()).optional(),
     })
     .meta({
-      ref: "CreateLeafSummaryInput",
+      ref: "CreateSprigSummaryInput",
     })
 
-  export type CreateLeafInput = z.infer<typeof CreateLeafInput>
+  export type CreateSprigInput = z.infer<typeof CreateSprigInput>
 
   /**
-   * Schema for creating a new condensed summary (summarizes other summaries)
+   * Schema for creating a new bindle summary (summarizes other summaries)
    */
-  export const CreateCondensedInput = z
+  export const CreateBindleInput = z
     .object({
       content: z.string().min(1),
       tokenCount: z.number().int().nonnegative(),
       conversationId: z.string(),
-      /** Parent summary IDs being condensed */
+      /** Parent summary IDs being grouped into a bindle */
       parents: z.array(z.string().startsWith("sum_")).min(1),
       /** LCM file IDs propagated from child summaries */
       fileIds: z.array(z.string()).optional(),
     })
     .meta({
-      ref: "CreateCondensedSummaryInput",
+      ref: "CreateBindleSummaryInput",
     })
 
-  export type CreateCondensedInput = z.infer<typeof CreateCondensedInput>
+  export type CreateBindleInput = z.infer<typeof CreateBindleInput>
 
   /**
    * Schema for creating an archival stub for an evicted bindle.
@@ -118,7 +118,8 @@ export namespace Summary {
   export const CreateArchiveStubInput = z
     .object({
       archivedSummaryId: z.string().startsWith("sum_"),
-      archivedSummaryContent: z.string(),
+      archivedSummaryContent: z.string().optional(),
+      ghostCueContent: z.string().optional(),
       conversationId: z.string(),
     })
     .meta({
@@ -128,10 +129,10 @@ export namespace Summary {
   export type CreateArchiveStubInput = z.infer<typeof CreateArchiveStubInput>
 
   /**
-   * Schema for summary with linked message IDs (for leaf summaries)
+   * Schema for summary with linked message IDs (for sprig summaries)
    */
   export const WithMessages = Schema.extend({
-    /** Message IDs that this leaf summary covers (only for leaf kind) */
+    /** Message IDs that this sprig summary covers (only for sprig kind) */
     messageIds: z.array(z.string()),
   }).meta({
     ref: "SummaryWithMessages",
@@ -164,20 +165,20 @@ export namespace Summary {
   }
 
   /**
-   * Create a new leaf summary info object.
+   * Create a new sprig summary info object.
    *
    * @param input - Input data for creating the summary
    * @param timestamp - Optional timestamp (defaults to Date.now())
    * @returns Complete Summary.Info object with generated ID
    */
-  export function createLeaf(input: CreateLeafInput, timestamp?: number): Info {
+  export function createSprig(input: CreateSprigInput, timestamp?: number): Info {
     const ts = timestamp ?? Date.now()
     return {
       summaryId: generateId(input.content, ts),
       content: input.content,
-      kind: "leaf",
-      level: "leaf",
-      summaryType: "leaf",
+      kind: "sprig",
+      level: "sprig",
+      summaryType: "sprig",
       tokenCount: input.tokenCount,
       conversationId: input.conversationId,
       parents: [],
@@ -187,21 +188,21 @@ export namespace Summary {
   }
 
   /**
-   * Create a new condensed summary info object.
+   * Create a new bindle summary info object.
    *
-   * A condensed summary is a summary of other summaries, creating
+   * A bindle summary is a summary of other summaries, creating
    * a high-fanout DAG structure for efficient retrieval.
    *
-   * @param input - Input data for creating the condensed summary
+   * @param input - Input data for creating the bindle summary
    * @param timestamp - Optional timestamp (defaults to Date.now())
    * @returns Complete Summary.Info object with generated ID and parent references
    */
-  export function createCondensed(input: CreateCondensedInput, timestamp?: number): Info {
+  export function createBindle(input: CreateBindleInput, timestamp?: number): Info {
     const ts = timestamp ?? Date.now()
     return {
       summaryId: generateId(input.content, ts),
       content: input.content,
-      kind: "condensed",
+      kind: "bindle",
       level: "bindle",
       summaryType: "bindle",
       tokenCount: input.tokenCount,
@@ -216,7 +217,7 @@ export namespace Summary {
    * Create a short archival stub for an evicted bindle.
    *
    * The stub carries a compact textual cue for retrieval and keeps the full
-   * lineage in DB pointer tables (stub -> full bindle -> leaves/messages).
+   * lineage in DB pointer tables (stub -> full bindle -> sprigs/messages).
    *
    * @param input - Input data for creating the archive stub
    * @param timestamp - Optional timestamp (defaults to Date.now())
@@ -224,16 +225,22 @@ export namespace Summary {
    */
   export function createArchiveStub(input: CreateArchiveStubInput, timestamp?: number): Info {
     const ts = timestamp ?? Date.now()
-    const normalizedContent = input.archivedSummaryContent.replace(/\s+/g, " ").trim()
-    const excerptLimit = 160
-    const excerpt = normalizedContent.slice(0, excerptLimit).trimEnd()
-    const suffix = normalizedContent.length > excerptLimit ? "..." : ""
-    const content = `[Archive Stub for ${input.archivedSummaryId}] ${excerpt}${suffix}`
+    const ghostCue = input.ghostCueContent?.trim()
+    const content =
+      ghostCue && ghostCue.length > 0
+        ? ghostCue
+        : (() => {
+            const normalizedContent = (input.archivedSummaryContent ?? "").replace(/\s+/g, " ").trim()
+            const excerptLimit = 160
+            const excerpt = normalizedContent.slice(0, excerptLimit).trimEnd()
+            const suffix = normalizedContent.length > excerptLimit ? "..." : ""
+            return `[Archive Stub for ${input.archivedSummaryId}] ${excerpt}${suffix}`
+          })()
 
     return {
       summaryId: generateId(`archive_stub:${input.archivedSummaryId}:${content}`, ts),
       content,
-      kind: "condensed",
+      kind: "bindle",
       level: "bindle",
       summaryType: "archive_stub",
       tokenCount: Token.estimate(content),
@@ -269,14 +276,14 @@ export namespace Summary {
    * Backwards-compatible mapping from legacy kind values to Dolt level.
    */
   export function levelFromKind(kind: Kind): Level {
-    return kind === "condensed" ? "bindle" : "leaf"
+    return kind === "bindle" ? "bindle" : "sprig"
   }
 
   /**
    * Backwards-compatible mapping from legacy kind values to Dolt summary type.
    */
   export function typeFromKind(kind: Kind): Type {
-    return kind === "condensed" ? "bindle" : "leaf"
+    return kind === "bindle" ? "bindle" : "sprig"
   }
 
   /**

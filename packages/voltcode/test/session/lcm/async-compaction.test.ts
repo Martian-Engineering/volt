@@ -53,9 +53,9 @@ if (!isLcmAvailable) {
 
   describe("session.lcm.async-compaction", () => {
     test("scheduleCompaction dedupes in-flight job and respects fresh-tail floor", async () => {
-      // Keep message count below freshTailFloor (default 4) so no turns are
-      // eligible for compaction. This validates in-flight dedupe behavior
-      // without requiring LLM summarization.
+      // Keep message count at 3 so the selector cannot form a 2-leaf sprig
+      // while still honoring minimum protected tail (2). This validates
+      // in-flight dedupe behavior without requiring LLM summarization.
       for (let i = 0; i < 3; i++) {
         await LcmDb.appendMessage({
           conversationId: testConversationId,

@@ -59,30 +59,30 @@ describe("session.lcm.summary", () => {
   })
 
   describe("createLeaf", () => {
-    test("creates a leaf summary with correct properties", () => {
+    test("creates a sprig summary with correct properties", () => {
       const timestamp = 1700000000000
-      const input: Summary.CreateLeafInput = {
+      const input: Summary.CreateSprigInput = {
         content: "This summarizes messages 1-5",
         tokenCount: 50,
         conversationId: "ses_test123",
         messageIds: ["msg_1", "msg_2", "msg_3"],
       }
 
-      const summary = Summary.createLeaf(input, timestamp)
+      const summary = Summary.createSprig(input, timestamp)
 
-      expect(summary.kind).toBe("leaf")
+      expect(summary.kind).toBe("sprig")
       expect(summary.content).toBe(input.content)
       expect(summary.tokenCount).toBe(input.tokenCount)
       expect(summary.conversationId).toBe(input.conversationId)
-      expect(summary.level).toBe("leaf")
-      expect(summary.summaryType).toBe("leaf")
+      expect(summary.level).toBe("sprig")
+      expect(summary.summaryType).toBe("sprig")
       expect(summary.parents).toEqual([])
       expect(summary.createdAt).toBe(timestamp)
       expect(Summary.isValidId(summary.summaryId)).toBe(true)
     })
 
-    test("leaf summaries have empty parents array", () => {
-      const summary = Summary.createLeaf({
+    test("sprig summaries have empty parents array", () => {
+      const summary = Summary.createSprig({
         content: "test",
         tokenCount: 10,
         conversationId: "ses_test",
@@ -94,7 +94,7 @@ describe("session.lcm.summary", () => {
   })
 
   describe("createCondensed", () => {
-    test("creates a condensed summary with parent references", () => {
+    test("creates a bindle summary with parent references", () => {
       const timestamp = 1700000000000
       const parentIds = [
         Summary.generateId("parent1", timestamp - 1000),
@@ -102,16 +102,16 @@ describe("session.lcm.summary", () => {
         Summary.generateId("parent3", timestamp - 3000),
       ]
 
-      const input: Summary.CreateCondensedInput = {
+      const input: Summary.CreateBindleInput = {
         content: "This condenses multiple summaries",
         tokenCount: 100,
         conversationId: "ses_test123",
         parents: parentIds,
       }
 
-      const summary = Summary.createCondensed(input, timestamp)
+      const summary = Summary.createBindle(input, timestamp)
 
-      expect(summary.kind).toBe("condensed")
+      expect(summary.kind).toBe("bindle")
       expect(summary.content).toBe(input.content)
       expect(summary.tokenCount).toBe(input.tokenCount)
       expect(summary.conversationId).toBe(input.conversationId)
@@ -137,7 +137,7 @@ describe("session.lcm.summary", () => {
         timestamp,
       )
 
-      expect(summary.kind).toBe("condensed")
+      expect(summary.kind).toBe("bindle")
       expect(summary.level).toBe("bindle")
       expect(summary.summaryType).toBe("archive_stub")
       expect(summary.parents).toEqual([])
@@ -150,8 +150,8 @@ describe("session.lcm.summary", () => {
   })
 
   describe("formatForContext", () => {
-    test("formats leaf summary without parents", () => {
-      const summary = Summary.createLeaf(
+    test("formats sprig summary without parents", () => {
+      const summary = Summary.createSprig(
         {
           content: "The user asked about TypeScript types",
           tokenCount: 20,
@@ -168,10 +168,10 @@ describe("session.lcm.summary", () => {
       expect(formatted).toContain("The user asked about TypeScript types")
     })
 
-    test("formats condensed summary with parent IDs", () => {
+    test("formats bindle summary with parent IDs", () => {
       const parentIds = [Summary.generateId("p1", 1700000000000), Summary.generateId("p2", 1700000001000)]
 
-      const summary = Summary.createCondensed(
+      const summary = Summary.createBindle(
         {
           content: "Combined summary of previous discussions",
           tokenCount: 40,
@@ -231,7 +231,7 @@ describe("session.lcm.summary", () => {
 
   describe("Schema validation", () => {
     test("validates correct summary info", () => {
-      const summary = Summary.createLeaf(
+      const summary = Summary.createSprig(
         {
           content: "test",
           tokenCount: 10,
@@ -249,7 +249,7 @@ describe("session.lcm.summary", () => {
       const result = Summary.Schema.safeParse({
         summaryId: "invalid_abc123def456",
         content: "test",
-        kind: "leaf",
+        kind: "sprig",
         tokenCount: 10,
         conversationId: "ses_test",
         parents: [],
@@ -277,7 +277,7 @@ describe("session.lcm.summary", () => {
       const result = Summary.Schema.safeParse({
         summaryId: "sum_abc123def4567890",
         content: "test",
-        kind: "leaf",
+        kind: "sprig",
         tokenCount: -5,
         conversationId: "ses_test",
         parents: [],
@@ -288,9 +288,9 @@ describe("session.lcm.summary", () => {
     })
   })
 
-  describe("CreateLeafInput validation", () => {
-    test("validates correct leaf input", () => {
-      const result = Summary.CreateLeafInput.safeParse({
+  describe("CreateSprigInput validation", () => {
+    test("validates correct sprig input", () => {
+      const result = Summary.CreateSprigInput.safeParse({
         content: "test summary",
         tokenCount: 10,
         conversationId: "ses_test",
@@ -301,7 +301,7 @@ describe("session.lcm.summary", () => {
     })
 
     test("rejects empty content", () => {
-      const result = Summary.CreateLeafInput.safeParse({
+      const result = Summary.CreateSprigInput.safeParse({
         content: "",
         tokenCount: 10,
         conversationId: "ses_test",
@@ -312,10 +312,10 @@ describe("session.lcm.summary", () => {
     })
   })
 
-  describe("CreateCondensedInput validation", () => {
-    test("validates correct condensed input", () => {
-      const result = Summary.CreateCondensedInput.safeParse({
-        content: "condensed summary",
+  describe("CreateBindleInput validation", () => {
+    test("validates correct bindle input", () => {
+      const result = Summary.CreateBindleInput.safeParse({
+        content: "bindle summary",
         tokenCount: 20,
         conversationId: "ses_test",
         parents: ["sum_abc123def4567890"],
@@ -325,8 +325,8 @@ describe("session.lcm.summary", () => {
     })
 
     test("rejects empty parents array", () => {
-      const result = Summary.CreateCondensedInput.safeParse({
-        content: "condensed summary",
+      const result = Summary.CreateBindleInput.safeParse({
+        content: "bindle summary",
         tokenCount: 20,
         conversationId: "ses_test",
         parents: [],
@@ -336,8 +336,8 @@ describe("session.lcm.summary", () => {
     })
 
     test("rejects parents with invalid prefix", () => {
-      const result = Summary.CreateCondensedInput.safeParse({
-        content: "condensed summary",
+      const result = Summary.CreateBindleInput.safeParse({
+        content: "bindle summary",
         tokenCount: 20,
         conversationId: "ses_test",
         parents: ["msg_abc123def4567890"],
@@ -370,14 +370,14 @@ describe("session.lcm.summary", () => {
   })
 
   describe("legacy kind mapping", () => {
-    test("maps leaf kind to leaf level/type", () => {
-      expect(Summary.levelFromKind("leaf")).toBe("leaf")
-      expect(Summary.typeFromKind("leaf")).toBe("leaf")
+    test("maps sprig kind to sprig level/type", () => {
+      expect(Summary.levelFromKind("sprig")).toBe("sprig")
+      expect(Summary.typeFromKind("sprig")).toBe("sprig")
     })
 
-    test("maps condensed kind to bindle level/type", () => {
-      expect(Summary.levelFromKind("condensed")).toBe("bindle")
-      expect(Summary.typeFromKind("condensed")).toBe("bindle")
+    test("maps bindle kind to bindle level/type", () => {
+      expect(Summary.levelFromKind("bindle")).toBe("bindle")
+      expect(Summary.typeFromKind("bindle")).toBe("bindle")
     })
   })
 })

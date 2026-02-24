@@ -1,0 +1,6 @@
+- Answer a focused question using delegated LCM expansion
+- Accepts either summary IDs, a text query, or both
+- Resolves candidate summaries from the current conversation scope
+- Spawns a sub-agent that calls lcm_expand and returns a concise prompt-focused answer
+- Keeps expansion details out of the main context by delegating traversal
+- Returns cited summary IDs and expansion metadata for traceability

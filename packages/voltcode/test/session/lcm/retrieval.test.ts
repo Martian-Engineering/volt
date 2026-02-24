@@ -19,7 +19,7 @@ function makeSummary(input: {
   return {
     summary_id: input.summaryId,
     conversation_id: 101,
-    kind: input.summaryLevel === "leaf" ? "leaf" : "condensed",
+    kind: input.summaryLevel === "sprig" ? "sprig" : "bindle",
     summary_level: input.summaryLevel ?? "bindle",
     summary_type: input.summaryType ?? "bindle",
     content: input.content ?? `content for ${input.summaryId}`,
@@ -108,7 +108,7 @@ describe("session.lcm.retrieval", () => {
         makeSummary({ summaryId: bindleB, summaryType: "bindle", summaryLevel: "bindle", isOffContext: true }),
         makeSummary({ summaryId: bindleC, summaryType: "archive_stub", summaryLevel: "bindle", isOffContext: true }),
         makeSummary({ summaryId: activeBindle, summaryType: "bindle", summaryLevel: "bindle", isOffContext: true }),
-        makeSummary({ summaryId: offContextLeaf, summaryType: "leaf", summaryLevel: "leaf", isOffContext: true }),
+        makeSummary({ summaryId: offContextLeaf, summaryType: "sprig", summaryLevel: "sprig", isOffContext: true }),
       ],
       activeSummaryIds: [activeBindle],
       parentsBySummaryId: {

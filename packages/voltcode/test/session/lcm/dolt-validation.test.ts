@@ -22,7 +22,7 @@ function makeSummary(input: {
   return {
     summary_id: input.summaryId,
     conversation_id: 1001,
-    kind: input.summaryLevel === "leaf" ? "leaf" : "condensed",
+    kind: input.summaryLevel === "sprig" ? "sprig" : "bindle",
     summary_level: input.summaryLevel ?? "bindle",
     summary_type: input.summaryType ?? "bindle",
     content: `summary content for ${input.summaryId}`,
@@ -36,18 +36,18 @@ function makeSummary(input: {
 }
 
 describe("dolt v1 validation suite", () => {
-  test("preserves level/type invariants for leaf, bindle, and archive-stub summaries", () => {
-    const leaf = Summary.createLeaf({
-      content: "leaf body",
+  test("preserves level/type invariants for sprig, bindle, and archive-stub summaries", () => {
+    const sprig = Summary.createSprig({
+      content: "sprig body",
       tokenCount: 10,
       conversationId: "conv-1",
       messageIds: ["m1", "m2"],
     })
-    const bindle = Summary.createCondensed({
+    const bindle = Summary.createBindle({
       content: "bindle body",
       tokenCount: 8,
       conversationId: "conv-1",
-      parents: [leaf.summaryId],
+      parents: [sprig.summaryId],
     })
     const stub = Summary.createArchiveStub({
       archivedSummaryId: bindle.summaryId,
@@ -55,8 +55,8 @@ describe("dolt v1 validation suite", () => {
       conversationId: "conv-1",
     })
 
-    expect(leaf.level).toBe("leaf")
-    expect(leaf.summaryType).toBe("leaf")
+    expect(sprig.level).toBe("sprig")
+    expect(sprig.summaryType).toBe("sprig")
     expect(bindle.level).toBe("bindle")
     expect(bindle.summaryType).toBe("bindle")
     expect(stub.level).toBe("bindle")
@@ -65,30 +65,30 @@ describe("dolt v1 validation suite", () => {
 
   test("applies hysteresis bands (no-op at boundary, compacts above upper band)", () => {
     const policy: TokenBudget.DoltLanePolicy = {
-      turns: { cap: 1000, soft: 800, delta: 100, target: 780, freshTailFloor: 4 },
-      leaves: { soft: 200, delta: 20, target: 180 },
+      leaves: { cap: 1000, soft: 800, delta: 100, target: 780, freshTailFloor: 4 },
+      sprigs: { soft: 200, delta: 20, target: 180 },
       bindles: { soft: 100, delta: 10, target: 90 },
       hardLimitRiskBuffer: 0,
     }
 
     const atBoundary = TokenBudget.evaluateDoltLaneDecisions({
-      laneTokens: { turns: 900, leaves: 220, bindles: 110, total: 900 },
+      laneTokens: { leaves: 900, sprigs: 220, bindles: 110, total: 900 },
       policy,
       hardLimit: 1000,
     })
     expect(atBoundary.compactAny).toBe(false)
 
     const aboveUpperBand = TokenBudget.evaluateDoltLaneDecisions({
-      laneTokens: { turns: 901, leaves: 221, bindles: 111, total: 901 },
+      laneTokens: { leaves: 901, sprigs: 221, bindles: 111, total: 901 },
       policy,
       hardLimit: 1000,
     })
-    expect(aboveUpperBand.turns.shouldCompact).toBe(true)
     expect(aboveUpperBand.leaves.shouldCompact).toBe(true)
+    expect(aboveUpperBand.sprigs.shouldCompact).toBe(true)
     expect(aboveUpperBand.bindles.shouldCompact).toBe(true)
   })
 
-  test("keeps fresh tail turns live during L0->L1 selection", () => {
+  test("keeps fresh tail leaves live during L0->L1 selection", () => {
     const messages = Array.from({ length: 7 }, (_, index) => ({
       position: index,
       messageId: index + 1,
@@ -97,7 +97,7 @@ describe("dolt v1 validation suite", () => {
       tokenCount: 100,
     }))
 
-    const selection = LcmContext.selectTurnsForLeafCompaction({
+    const selection = LcmContext.selectLeavesForSprigCompaction({
       messages,
       tokenBudget: 10_000,
       protectedTailCount: 2,
@@ -149,7 +149,7 @@ describe("dolt v1 validation suite", () => {
       makeSummary({ summaryId: bindleA, summaryLevel: "bindle", summaryType: "bindle", isOffContext: true }),
       makeSummary({ summaryId: bindleB, summaryLevel: "bindle", summaryType: "bindle", isOffContext: true }),
       makeSummary({ summaryId: bindleLive, summaryLevel: "bindle", summaryType: "bindle", isOffContext: false }),
-      makeSummary({ summaryId: leafOffContext, summaryLevel: "leaf", summaryType: "leaf", isOffContext: true }),
+      makeSummary({ summaryId: leafOffContext, summaryLevel: "sprig", summaryType: "sprig", isOffContext: true }),
     ]
 
     let requestedSummaryLevel: LcmDb.SummaryLevel | undefined
@@ -185,7 +185,7 @@ describe("dolt v1 validation suite", () => {
         return [
           { docid: "#b", score: 0.8, file: "qmd://off-context-bindles/b.md", title: bindleB },
           { docid: "#a", score: 0.8, file: "qmd://off-context-bindles/a.md", title: bindleA },
-          { docid: "#leaf", score: 0.99, file: "qmd://off-context-bindles/leaf.md", title: leafOffContext },
+          { docid: "#sprig", score: 0.99, file: "qmd://off-context-bindles/sprig.md", title: leafOffContext },
           { docid: "#live", score: 0.95, file: "qmd://off-context-bindles/live.md", title: bindleLive },
         ]
       },

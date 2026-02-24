@@ -201,7 +201,7 @@ describe("session.lcm.tools", () => {
 
       // Create a summary that covers messages 0-2
       const summaryId = `sum_${Date.now().toString(16).padStart(16, "0")}`
-      await LcmDb.insertLeafSummary({
+      await LcmDb.insertSprigSummary({
         summaryId,
         conversationId: testConversationId,
         content: "Summary of algorithm discussion",
@@ -223,8 +223,8 @@ describe("session.lcm.tools", () => {
       expect(result.metadata.matchCount).toBeGreaterThan(0)
       // Results should show grouping by summary
       expect(result.output).toContain("Covered by:")
-      expect(result.output).toContain("type=leaf")
-      expect(result.output).toContain("level=leaf")
+      expect(result.output).toContain("type=sprig")
+      expect(result.output).toContain("level=sprig")
       expect(result.output).toContain("archived_pointer=false")
       expect(result.metadata.archivedCoveringSummaryIds).toEqual([])
     })
@@ -294,7 +294,7 @@ describe("session.lcm.tools", () => {
         })
 
         const summaryId = `sum_${Date.now().toString(16).padStart(16, "0")}`
-        await LcmDb.insertLeafSummary({
+        await LcmDb.insertSprigSummary({
           summaryId,
           conversationId: testConversationId,
           content: "Summary of original message",
@@ -343,7 +343,7 @@ describe("session.lcm.tools", () => {
         }
 
         const summaryId = `sum_${Date.now().toString(16).padStart(16, "0")}`
-        await LcmDb.insertLeafSummary({
+        await LcmDb.insertSprigSummary({
           summaryId,
           conversationId: testConversationId,
           content: "Summary covering 3 messages about various topics",
@@ -358,8 +358,8 @@ describe("session.lcm.tools", () => {
 
         // Should successfully expand
         expect(result.metadata.messageCount).toBe(3)
-        expect(result.metadata.summaryLevel).toBe("leaf")
-        expect(result.metadata.summaryType).toBe("leaf")
+        expect(result.metadata.summaryLevel).toBe("sprig")
+        expect(result.metadata.summaryType).toBe("sprig")
         expect(result.metadata.archivedPointer).toBe(false)
         expect(result.output).toContain("Original message 0")
         expect(result.output).toContain("Original message 1")
@@ -405,7 +405,7 @@ describe("session.lcm.tools", () => {
       })
 
       const leafSummaryId = `sum_${Date.now().toString(16).padStart(16, "0")}`
-      await LcmDb.insertLeafSummary({
+      await LcmDb.insertSprigSummary({
         summaryId: leafSummaryId,
         conversationId: testConversationId,
         content: "Leaf summary for archive lineage test",
@@ -414,7 +414,7 @@ describe("session.lcm.tools", () => {
       })
 
       const bindleSummaryId = `sum_${(Date.now() + 1).toString(16).padStart(16, "0")}`
-      await LcmDb.insertCondensedSummary({
+      await LcmDb.insertBindleSummary({
         summaryId: bindleSummaryId,
         conversationId: testConversationId,
         content: "Bindle summary for archive lineage test",
@@ -423,7 +423,7 @@ describe("session.lcm.tools", () => {
       })
 
       const archiveStubId = `sum_${(Date.now() + 2).toString(16).padStart(16, "0")}`
-      await LcmDb.insertCondensedSummary({
+      await LcmDb.insertBindleSummary({
         summaryId: archiveStubId,
         conversationId: testConversationId,
         content: "[Archive Stub for test]",
@@ -456,7 +456,7 @@ describe("session.lcm.tools", () => {
      * This test creates a realistic scenario where:
      * 1. Many messages are added to fill context
      * 2. Multiple summaries are created
-     * 3. Summaries are condensed
+     * 3. Summaries are bindle
      * 4. A sub-agent expands a summary and retrieves the original data
      */
     test("creates multiple summaries and expands to retrieve original data", async () => {
@@ -487,12 +487,12 @@ describe("session.lcm.tools", () => {
           allMessageIds.push(messageId)
         }
 
-        // Phase 2: Create leaf summaries for message groups
-        console.log("Creating leaf summaries...")
+        // Phase 2: Create sprig summaries for message groups
+        console.log("Creating sprig summaries...")
 
         // Summary 1: messages 0-9
         const summary1Id = `sum_${Date.now().toString(16).padStart(16, "0")}`
-        await LcmDb.insertLeafSummary({
+        await LcmDb.insertSprigSummary({
           summaryId: summary1Id,
           conversationId: testConversationId,
           content: "Summary of messages 0-9: Initial discussion covering UNIQUE_ID_000 through UNIQUE_ID_009",
@@ -502,7 +502,7 @@ describe("session.lcm.tools", () => {
 
         // Summary 2: messages 10-19
         const summary2Id = `sum_${(Date.now() + 1).toString(16).padStart(16, "0")}`
-        await LcmDb.insertLeafSummary({
+        await LcmDb.insertSprigSummary({
           summaryId: summary2Id,
           conversationId: testConversationId,
           content: "Summary of messages 10-19: Continued discussion covering UNIQUE_ID_010 through UNIQUE_ID_019",
@@ -512,7 +512,7 @@ describe("session.lcm.tools", () => {
 
         // Summary 3: messages 20-29
         const summary3Id = `sum_${(Date.now() + 2).toString(16).padStart(16, "0")}`
-        await LcmDb.insertLeafSummary({
+        await LcmDb.insertSprigSummary({
           summaryId: summary3Id,
           conversationId: testConversationId,
           content: "Summary of messages 20-29: Final discussion covering UNIQUE_ID_020 through UNIQUE_ID_029",
@@ -520,10 +520,10 @@ describe("session.lcm.tools", () => {
           messageIds: allMessageIds.slice(20, 30),
         })
 
-        // Phase 3: Create a condensed summary combining all three
-        console.log("Creating condensed summary...")
+        // Phase 3: Create a bindle summary combining all three
+        console.log("Creating bindle summary...")
         const condensedId = `sum_${(Date.now() + 3).toString(16).padStart(16, "0")}`
-        await LcmDb.insertCondensedSummary({
+        await LcmDb.insertBindleSummary({
           summaryId: condensedId,
           conversationId: testConversationId,
           content: `Condensed summary combining: ${summary1Id}, ${summary2Id}, ${summary3Id}. This meta-summary covers all 30 messages discussing topics 0-4 with unique identifiers.`,
@@ -557,8 +557,8 @@ describe("session.lcm.tools", () => {
         expect(grepResult.metadata.matchCount).toBeGreaterThan(0)
         expect(grepResult.output).toContain("UNIQUE_ID_005")
 
-        // Phase 5: Use lcm_expand to retrieve original messages from a leaf summary
-        console.log("Testing lcm_expand on leaf summary...")
+        // Phase 5: Use lcm_expand to retrieve original messages from a sprig summary
+        console.log("Testing lcm_expand on sprig summary...")
         const expandTool = await LcmExpandTool.init()
         const expandCtx = createMockContext("session_subagent_multi")
 
@@ -569,8 +569,8 @@ describe("session.lcm.tools", () => {
         expect(expandResult.output).toContain("UNIQUE_ID_005")
         expect(expandResult.output).toContain("UNIQUE_ID_009")
 
-        // Phase 6: Expand the condensed summary to get all 30 messages
-        console.log("Testing lcm_expand on condensed summary...")
+        // Phase 6: Expand the bindle summary to get all 30 messages
+        console.log("Testing lcm_expand on bindle summary...")
         const expandCondensedResult = await expandTool.execute({ summary_id: condensedId }, expandCtx)
 
         // Condensed summary should expand to all 30 original messages
@@ -583,7 +583,7 @@ describe("session.lcm.tools", () => {
 
         console.log("Multi-summary scenario completed successfully!")
         console.log(`  - Created ${allMessageIds.length} messages`)
-        console.log(`  - Created 3 leaf summaries + 1 condensed summary`)
+        console.log(`  - Created 3 sprig summaries + 1 bindle summary`)
         console.log(`  - Grep found ${grepResult.metadata.matchCount} matches`)
         console.log(`  - Leaf expand returned ${expandResult.metadata.messageCount} messages`)
         console.log(`  - Condensed expand returned ${expandCondensedResult.metadata.messageCount} messages`)
@@ -624,7 +624,7 @@ describe("session.lcm.tools", () => {
 
       // Create summary only for group 1
       const summary1Id = `sum_${Date.now().toString(16).padStart(16, "0")}`
-      await LcmDb.insertLeafSummary({
+      await LcmDb.insertSprigSummary({
         summaryId: summary1Id,
         conversationId: testConversationId,
         content: "Summary of group 1",

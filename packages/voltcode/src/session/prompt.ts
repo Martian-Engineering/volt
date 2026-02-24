@@ -60,6 +60,7 @@ import { LargeFileThreshold } from "./lcm/large-file-threshold"
 import { ExploreDispatcher } from "./lcm/explore/dispatcher"
 import { LcmDb } from "./lcm/db"
 import { LcmContext } from "./lcm/context"
+import { LcmContextSnapshot } from "./lcm/context-snapshot"
 import { LcmRetrieval } from "./lcm/retrieval"
 import {
   LCM_PRE_RESPONSE_HOOK_MAX_DISTANCE,
@@ -84,6 +85,25 @@ export namespace SessionPrompt {
   const TOOL_EXECUTE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 
   const lcmSyncState = new Map<string, string>()
+
+  async function writeLcmContextSnapshotBestEffort(input: {
+    conversationId: number
+    sessionID: string
+    reason: string
+    triggerMessageId?: number
+  }) {
+    try {
+      await LcmContextSnapshot.write(input)
+    } catch (error) {
+      log.warn("failed to write lcm context snapshot", {
+        sessionID: input.sessionID,
+        conversationId: input.conversationId,
+        reason: input.reason,
+        triggerMessageId: input.triggerMessageId,
+        error,
+      })
+    }
+  }
 
   const state = Instance.state(
     () => {
@@ -483,6 +503,12 @@ export namespace SessionPrompt {
               tokenCount: formatted.tokenCount,
             })
             await LcmDb.insertMessageParts(messageId, formatted.parts)
+            await writeLcmContextSnapshotBestEffort({
+              conversationId,
+              sessionID,
+              reason: "leaf_appended",
+              triggerMessageId: messageId,
+            })
           }
           const lastMsg = sessionMessages.at(-1)
           if (lastMsg) {
@@ -512,6 +538,12 @@ export namespace SessionPrompt {
               tokenCount: formatted.tokenCount,
             })
             await LcmDb.insertMessageParts(messageId, formatted.parts)
+            await writeLcmContextSnapshotBestEffort({
+              conversationId,
+              sessionID,
+              reason: "leaf_appended",
+              triggerMessageId: messageId,
+            })
           }
           if (newMessages.length > 0) {
             lcmSyncState.set(sessionID, newMessages[newMessages.length - 1].info.id)
@@ -539,6 +571,12 @@ export namespace SessionPrompt {
         tokenCount: formatted.tokenCount,
       })
       await LcmDb.insertMessageParts(messageId, formatted.parts)
+      await writeLcmContextSnapshotBestEffort({
+        conversationId,
+        sessionID,
+        reason: "leaf_appended",
+        triggerMessageId: messageId,
+      })
     }
     const lastMsg = allMessages.at(-1)
     if (lastMsg) {
@@ -949,6 +987,12 @@ export namespace SessionPrompt {
               rounds: compactResult.rounds,
             })
           }
+
+          await writeLcmContextSnapshotBestEffort({
+            conversationId,
+            sessionID: input.sessionID,
+            reason: "compaction_hard_limit",
+          })
         } finally {
           LcmContext.clearCompactionState(input.sessionID)
         }
@@ -998,7 +1042,7 @@ export namespace SessionPrompt {
                 const summaryText = result.createdSummary.content
                 const messagesSummarized =
                   result.messagesSummarized ??
-                  (summaryKind === "leaf" ? (await LcmDb.getSummaryMessageIds(summaryId)).length : 0)
+                  (summaryKind === "sprig" ? (await LcmDb.getSummaryMessageIds(summaryId)).length : 0)
                 const totalSummaries = (await LcmContext.getSummariesInContext(conversationId)).length
 
                 log.info("async compaction completed", {
@@ -1011,8 +1055,6 @@ export namespace SessionPrompt {
                   beforeTokens,
                   afterTokens,
                   reductionTokens,
-                  summarizationLevel: result.summarizationLevel,
-                  condensationLevel: result.condensationLevel,
                 })
 
                 const event = buildLcmEventPart({
@@ -1027,7 +1069,7 @@ export namespace SessionPrompt {
                     summaryText,
                     messagesSummarized,
                     condensed: result.condensed,
-                    condensedSummaryCount: summaryKind === "condensed" ? result.createdSummary.parents.length : 0,
+                    bindleParentSummaryCount: summaryKind === "bindle" ? result.createdSummary.parents.length : 0,
                     totalSummaries,
                     thresholdConstant: LcmContext.DEFAULT_CTX_CUTOFF_THRESHOLD,
                     threshold,
@@ -1049,6 +1091,12 @@ export namespace SessionPrompt {
                     inputTokens: afterTokens + overhead,
                     threshold: flagThreshold,
                   }
+                })
+
+                await writeLcmContextSnapshotBestEffort({
+                  conversationId,
+                  sessionID: input.sessionID,
+                  reason: "compaction_async_complete",
                 })
               })
               .catch((error: unknown) => {

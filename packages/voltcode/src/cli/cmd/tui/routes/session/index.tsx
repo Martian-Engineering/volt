@@ -88,7 +88,7 @@ import "opentui-spinner/solid"
 
 addDefaultParsers(parsers.parsers)
 
-const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_grep", "lcm_read"]
+const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_expand_query", "lcm_grep", "lcm_read"]
 
 class CustomSpeedScroll implements ScrollAcceleration {
   constructor(private speed: number) {}
@@ -1559,7 +1559,6 @@ function UserMessage(props: {
 function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
   const { theme } = useTheme()
   const ctx = use()
-
   // Check if there are hidden tools with no visible content
   const hasHiddenToolsOnly = createMemo(() => {
     // Check if there are any tool parts
@@ -1835,9 +1834,8 @@ function LcmFileEventDetails(props: { event: any }) {
 function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMessage }) {
   const ctx = use()
   const sync = useSync()
-
   // Hide tool if showDetails is false and tool completed successfully
-  // Hide internal LCM tools (lcm_expand, lcm_grep) when not in dev mode
+  // Hide internal LCM tools when not in dev mode
   const shouldHide = createMemo(() => {
     // See LCM_INTERNAL_TOOLS definition above
     // Hide internal LCM tools when not in dev mode

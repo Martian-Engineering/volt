@@ -168,7 +168,7 @@ test("MAX_COMPACTION_ROUNDS is 10", () => {
 // 5. L0->L1 turn window selection
 // ---------------------------------------------------------------------------
 
-describe("selectTurnsForLeafCompaction", () => {
+describe("selectLeavesForSprigCompaction", () => {
   const baseMessages = Array.from({ length: 8 }, (_, i) => ({
     position: i,
     messageId: i + 1,
@@ -178,7 +178,7 @@ describe("selectTurnsForLeafCompaction", () => {
   }))
 
   test("never selects turns from the protected fresh tail", () => {
-    const result = LcmContext.selectTurnsForLeafCompaction({
+    const result = LcmContext.selectLeavesForSprigCompaction({
       messages: baseMessages,
       tokenBudget: 10_000,
       protectedTailCount: 3,
@@ -189,7 +189,7 @@ describe("selectTurnsForLeafCompaction", () => {
   })
 
   test("returns no selection when all turns are inside protected tail", () => {
-    const result = LcmContext.selectTurnsForLeafCompaction({
+    const result = LcmContext.selectLeavesForSprigCompaction({
       messages: baseMessages.slice(0, 3),
       tokenBudget: 200,
       protectedTailCount: 3,
@@ -200,7 +200,7 @@ describe("selectTurnsForLeafCompaction", () => {
   })
 
   test("caps selected turns by token budget within the eligible prefix", () => {
-    const result = LcmContext.selectTurnsForLeafCompaction({
+    const result = LcmContext.selectLeavesForSprigCompaction({
       messages: baseMessages,
       tokenBudget: 250,
       protectedTailCount: 2,
@@ -209,6 +209,34 @@ describe("selectTurnsForLeafCompaction", () => {
     expect(result.selectedMessages.map((msg) => msg.position)).toEqual([0, 1])
     expect(result.selectedMessages.reduce((sum, msg) => sum + msg.tokenCount, 0)).toBe(200)
     expect(result.protectedTailMessages.map((msg) => msg.position)).toEqual([6, 7])
+  })
+
+  test("relaxes fresh-tail protection down to minimum to avoid leaves stall", () => {
+    const result = LcmContext.selectLeavesForSprigCompaction({
+      messages: baseMessages.slice(0, 4),
+      tokenBudget: 1_000,
+      protectedTailCount: 4,
+      minimumProtectedTailCount: 2,
+      minimumSelectionCount: 2,
+    })
+
+    expect(result.effectiveProtectedTailCount).toBe(2)
+    expect(result.selectedMessages.map((msg) => msg.position)).toEqual([0, 1])
+    expect(result.protectedTailMessages.map((msg) => msg.position)).toEqual([2, 3])
+  })
+
+  test("does not produce one-leaf sprigs when only one leaf is eligible", () => {
+    const result = LcmContext.selectLeavesForSprigCompaction({
+      messages: baseMessages.slice(0, 3),
+      tokenBudget: 10_000,
+      protectedTailCount: 2,
+      minimumProtectedTailCount: 2,
+      minimumSelectionCount: 2,
+    })
+
+    expect(result.selectedMessages).toEqual([])
+    expect(result.protectedTailMessages.map((msg) => msg.position)).toEqual([1, 2])
+    expect(result.effectiveProtectedTailCount).toBe(2)
   })
 })
 
@@ -225,17 +253,9 @@ LCM File ID: file_def456abc789012b`
     expect(ids).toEqual(["file_abc123def456789a", "file_def456abc789012b"])
   })
 
-  // NOTE: The extractFileIds regex matches "LCM File ID:" (singular) but the
-  // blocks appended by summarize/condense use "[LCM File IDs: ...]" (plural
-  // with square brackets and comma-separated list). The regex "LCM File ID:"
-  // does NOT match "LCM File IDs:" because the 's' precedes the colon.
-  //
-  // This means file IDs in the appended block format [LCM File IDs: file_xxx,
-  // file_yyy] are NOT re-extracted by extractFileIds in subsequent condensation
-  // rounds. This is acceptable because:
-  //   1. File IDs are stored structurally in the fileIds field of Summary.Info
-  //   2. The condense functions collect both extracted AND structural file IDs
-  //      (via summary.fileIds), so propagation is handled structurally.
+  // NOTE: extractFileIds intentionally matches the singular pattern
+  // "LCM File ID: <id>". It does not match the plural list form
+  // "[LCM File IDs: ...]".
   test("does NOT extract from [LCM File IDs: ...] block (plural with 's')", () => {
     const content = `Summary of work done.
 [LCM File IDs: file_abc123def456789a, file_def456abc789012b]`
@@ -246,7 +266,7 @@ LCM File ID: file_def456abc789012b`
 
   test("file IDs survive through mixed content with singular pattern", () => {
     // In practice, if a summary contains the singular pattern, IDs are extracted
-    const content = `[Condensed from: sum_aaaaaaaaaaaaaaaa, sum_bbbbbbbbbbbbbbbb]
+    const content = `[Narrative summary header]
 User implemented feature X in src/foo.ts.
 LCM File ID: file_1111111111111111
 Modified src/bar.ts for tests.

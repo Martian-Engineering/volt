@@ -11,7 +11,7 @@ function makeHit(input: {
   cueText: string
   score: number
   distance: number
-  summaryType?: "bindle" | "archive_stub" | "leaf"
+  summaryType?: "bindle" | "archive_stub" | "sprig"
   pointerSummaryIds?: string[]
   lineageSummaryIds?: string[]
 }): LcmRetrieval.QueryHit {

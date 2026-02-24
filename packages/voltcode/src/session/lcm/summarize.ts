@@ -7,24 +7,12 @@ import { Summary } from "./summary"
 import { LcmDb } from "./db"
 import SUMMARIZE_PROMPT from "./prompts/summarize.txt"
 
-// Try to import the aggressive prompt; use fallback if the file doesn't exist yet
-let SUMMARIZE_AGGRESSIVE_PROMPT: string
-try {
-  SUMMARIZE_AGGRESSIVE_PROMPT =
-    require("./prompts/summarize-aggressive.txt").default ?? require("./prompts/summarize-aggressive.txt")
-} catch {
-  SUMMARIZE_AGGRESSIVE_PROMPT = [
-    "You are a context management assistant. Summarize the provided messages with MAXIMUM brevity.",
-    "Keep ONLY: decisions made, artifacts created/modified (with file paths), key conclusions, and all LCM file IDs (file_xxx) and summary IDs (sum_xxx).",
-    "Drop: timestamps, intermediate steps, tool input/output details, debugging iterations, verbose explanations.",
-    "Target the absolute minimum token count while preserving critical information for conversation continuity.",
-  ].join("\n")
-}
+const SUMMARY_MAX_OUTPUT_TOKENS = 2200
 
 /**
  * LCM Summarize Module
  *
- * Provides the summarize function for creating leaf summaries of conversation
+ * Provides the summarize function for creating sprig summaries of conversation
  * messages as part of the Lossless Context Management system.
  */
 export namespace LcmSummarize {
@@ -43,13 +31,13 @@ export namespace LcmSummarize {
   }
 
   /**
-   * Summarize a list of messages into a leaf summary.
+   * Summarize a list of messages into a sprig summary.
    *
    * This function:
    * 1. Reads the summarize prompt from prompts/summarize.md
    * 2. Calls the LLM (using the same model as the main conversation)
    * 3. Creates a Summary object with a deterministic ID
-   * 4. Stores the summary using LCMDB.insertLeafSummary()
+   * 4. Stores the summary using LCMDB.insertSprigSummary()
    * 5. Returns the Summary object
    *
    * @param input - The summarization input
@@ -96,6 +84,7 @@ export namespace LcmSummarize {
     const result = await generateText({
       model: language,
       abortSignal: input.abort,
+      maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
       messages: [
         {
           role: "system",
@@ -110,10 +99,10 @@ export namespace LcmSummarize {
 
     const summaryContent = result.text.trim()
 
-    // Extract file IDs from the input messages and append structured block
+    // Extract file IDs from input messages for structured DB metadata only.
+    // We do not append programmatic metadata to summary text.
     const fileIds = extractFileIds(formattedMessages)
-    const finalContent =
-      fileIds.length > 0 ? summaryContent + `\n[LCM File IDs: ${fileIds.join(", ")}]` : summaryContent
+    const finalContent = summaryContent
 
     log.info("summary generated", {
       conversationId: input.conversationId,
@@ -135,8 +124,8 @@ export namespace LcmSummarize {
     // Generate deterministic summary ID
     const summaryId = Summary.generateId(finalContent, timestamp)
 
-    // Create the leaf summary info object
-    const summaryInfo = Summary.createLeaf(
+    // Create the sprig summary info object
+    const summaryInfo = Summary.createSprig(
       {
         content: finalContent,
         tokenCount,
@@ -151,7 +140,7 @@ export namespace LcmSummarize {
 
     // Store the summary in the database with linked message IDs.
     // If numeric IDs were not provided, recover them from lcm_msg_<id> placeholders.
-    await LcmDb.insertLeafSummary({
+    await LcmDb.insertSprigSummary({
       summaryId: summaryInfo.summaryId,
       conversationId: input.conversationId,
       content: summaryInfo.content,
@@ -266,130 +255,7 @@ export namespace LcmSummarize {
     }
     return [...ids].sort()
   }
-
-  // ---------------------------------------------------------------------------
-  // bd-38z: summarizeAggressive
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Summarize a list of messages into a leaf summary using an aggressive prompt.
-   *
-   * Works identically to `summarize()` but uses a maximally terse prompt that
-   * instructs the LLM to minimize output length while preserving only critical
-   * information: decisions, artifacts, conclusions, and all LCM file/summary IDs.
-   *
-   * @param input - Same parameters as `summarize()`
-   * @returns The created Summary.WithMessages object
-   */
-  export async function summarizeAggressive(input: {
-    messages: MessageV2.WithParts[]
-    conversationId: number
-    sessionID: string
-    user: MessageV2.User
-    /** Numeric DB message IDs to link in summary_messages table */
-    dbMessageIds?: number[]
-    /** Model to use for summarization (if not provided, uses compaction agent or user model) */
-    model?: Provider.Model
-    /** Abort signal for cancellation */
-    abort?: AbortSignal
-  }): Promise<Summary.WithMessages> {
-    const inputTokens = input.messages.reduce(
-      (sum, m) => sum + m.parts.reduce((ps, p) => ps + (p.type === "text" ? Token.estimate(p.text) : 0), 0),
-      0,
-    )
-    log.info("summarizing messages (aggressive)", {
-      conversationId: input.conversationId,
-      messageCount: input.messages.length,
-      inputTokens,
-    })
-
-    // Format messages for the LLM
-    const formattedMessages = formatMessagesForSummary(input.messages)
-
-    // Get the model - use provided model, or fall back to user model
-    const model = input.model
-      ? input.model
-      : await Provider.getModel(input.user.model.providerID, input.user.model.modelID)
-
-    const language = await Provider.getLanguage(model)
-
-    // Call the LLM with the aggressive prompt
-    const result = await generateText({
-      model: language,
-      abortSignal: input.abort,
-      messages: [
-        {
-          role: "system",
-          content: SUMMARIZE_AGGRESSIVE_PROMPT,
-        },
-        {
-          role: "user",
-          content: `<messages>\n${formattedMessages}\n</messages>`,
-        },
-      ],
-    })
-
-    const summaryContent = result.text.trim()
-
-    // Extract file IDs from the input messages and append structured block
-    const fileIds = extractFileIds(formattedMessages)
-    const finalContent =
-      fileIds.length > 0 ? summaryContent + `\n[LCM File IDs: ${fileIds.join(", ")}]` : summaryContent
-
-    log.info("aggressive summary generated", {
-      conversationId: input.conversationId,
-      contentLength: finalContent.length,
-      fileIdCount: fileIds.length,
-    })
-
-    // Calculate token count for the summary
-    const tokenCount = Token.estimate(finalContent)
-
-    // Extract message IDs from the input messages
-    const messageIds = input.messages.map((m) => m.info.id)
-
-    // Create the timestamp for deterministic ID generation
-    const timestamp = Date.now()
-
-    // Create the leaf summary info object
-    const summaryInfo = Summary.createLeaf(
-      {
-        content: finalContent,
-        tokenCount,
-        conversationId: input.conversationId.toString(),
-        messageIds,
-        fileIds,
-      },
-      timestamp,
-    )
-
-    const linkedDbMessageIds = resolveDbMessageIds(input.messages, input.dbMessageIds)
-
-    // Store the summary in the database with linked message IDs
-    await LcmDb.insertLeafSummary({
-      summaryId: summaryInfo.summaryId,
-      conversationId: input.conversationId,
-      content: summaryInfo.content,
-      tokenCount: summaryInfo.tokenCount,
-      messageIds: linkedDbMessageIds,
-      fileIds,
-    })
-
-    log.info("aggressive summary stored", {
-      summaryId: summaryInfo.summaryId,
-      conversationId: input.conversationId,
-      linkedMessageCount: linkedDbMessageIds.length,
-    })
-
-    // Return the summary with linked message IDs
-    return {
-      ...summaryInfo,
-      messageIds,
-    } satisfies Summary.WithMessages
-  }
-
 }
 
 // Re-export individual functions for direct named imports
 export const extractFileIds = LcmSummarize.extractFileIds
-export const summarizeAggressive = LcmSummarize.summarizeAggressive

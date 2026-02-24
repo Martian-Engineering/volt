@@ -34,6 +34,7 @@ import { LcmGrepTool } from "./lcm-grep"
 import { LcmExpandTool } from "./lcm-expand"
 import { LcmDescribeTool } from "./lcm-describe"
 import { LcmReadTool } from "./lcm-read"
+import { LcmExpandQueryTool } from "./lcm-expand-query"
 import { AgenticMapTool } from "./agentic-map"
 import { LlmMapTool } from "./llm-map"
 
@@ -144,6 +145,7 @@ export namespace ToolRegistry {
       LcmExpandTool,
       LcmDescribeTool,
       LcmReadTool,
+      LcmExpandQueryTool,
       AgenticMapTool,
       LlmMapTool,
       ...custom,

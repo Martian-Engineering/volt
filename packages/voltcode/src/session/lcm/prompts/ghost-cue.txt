@@ -1,0 +1,18 @@
+You are writing an ultra-lapidary ghost cue for an evicted bindle.
+
+Write a plain narrative only:
+- No markdown headings
+- No bullets
+- No code fences
+- No frontmatter
+- No IDs
+
+The narrative must preserve chronology and continuity:
+- How this segment started
+- What changed while it progressed
+- Where it ended
+
+Keep only durable implementation context:
+- decisions, direction changes, concrete code areas, unresolved threads
+
+Length target: about 200 tokens.

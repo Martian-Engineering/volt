@@ -121,8 +121,22 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
     DO $$ BEGIN
-      CREATE TYPE summary_kind AS ENUM ('leaf','condensed');
+      CREATE TYPE summary_kind AS ENUM ('sprig','bindle');
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+    DO $$ BEGIN
+      ALTER TYPE summary_kind RENAME VALUE 'leaf' TO 'sprig';
+    EXCEPTION
+      WHEN undefined_object THEN NULL;
+      WHEN invalid_parameter_value THEN NULL;
+    END $$;
+
+    DO $$ BEGIN
+      ALTER TYPE summary_kind RENAME VALUE 'condensed' TO 'bindle';
+    EXCEPTION
+      WHEN undefined_object THEN NULL;
+      WHEN invalid_parameter_value THEN NULL;
+    END $$;
 
     DO $$ BEGIN
       CREATE TYPE context_item_type AS ENUM ('message','summary');
@@ -162,8 +176,8 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       summary_id      text PRIMARY KEY,
       conversation_id bigint NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
       kind            public.summary_kind NOT NULL,
-      summary_level   text NOT NULL DEFAULT 'leaf',
-      summary_type    text NOT NULL DEFAULT 'leaf',
+      summary_level   text NOT NULL DEFAULT 'sprig',
+      summary_type    text NOT NULL DEFAULT 'sprig',
       content         text NOT NULL,
       token_count     integer NOT NULL,
       file_ids        jsonb NOT NULL DEFAULT '[]',
@@ -172,18 +186,18 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       is_off_context  boolean NOT NULL DEFAULT false,
       created_at      timestamptz NOT NULL DEFAULT now(),
       content_tsv     tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
-      CONSTRAINT summaries_summary_level_check CHECK (summary_level IN ('leaf', 'bindle')),
-      CONSTRAINT summaries_summary_type_check CHECK (summary_type IN ('leaf', 'bindle', 'archive_stub')),
+      CONSTRAINT summaries_summary_level_check CHECK (summary_level IN ('sprig', 'bindle')),
+      CONSTRAINT summaries_summary_type_check CHECK (summary_type IN ('sprig', 'bindle', 'archive_stub')),
       CONSTRAINT summaries_qmd_doc_version_nonnegative_check CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0)
     );
 
     CREATE INDEX IF NOT EXISTS summaries_conv_created_idx ON summaries(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS summaries_tsv_gin_idx ON summaries USING GIN (content_tsv);
     DO $$ BEGIN
-      ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'leaf';
+      ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'sprig';
     EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     DO $$ BEGIN
-      ALTER TABLE summaries ADD COLUMN summary_type text NOT NULL DEFAULT 'leaf';
+      ALTER TABLE summaries ADD COLUMN summary_type text NOT NULL DEFAULT 'sprig';
     EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     DO $$ BEGIN
       ALTER TABLE summaries ADD COLUMN qmd_doc_id text;
@@ -195,14 +209,14 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       ALTER TABLE summaries ADD COLUMN is_off_context boolean NOT NULL DEFAULT false;
     EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     DO $$ BEGIN
-      ALTER TABLE summaries
+        ALTER TABLE summaries
         ADD CONSTRAINT summaries_summary_level_check
-        CHECK (summary_level IN ('leaf', 'bindle'));
+        CHECK (summary_level IN ('sprig', 'bindle'));
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     DO $$ BEGIN
-      ALTER TABLE summaries
+        ALTER TABLE summaries
         ADD CONSTRAINT summaries_summary_type_check
-        CHECK (summary_type IN ('leaf', 'bindle', 'archive_stub'));
+        CHECK (summary_type IN ('sprig', 'bindle', 'archive_stub'));
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     DO $$ BEGIN
       ALTER TABLE summaries
@@ -210,18 +224,18 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
         CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0);
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     UPDATE summaries
-    SET summary_level = CASE WHEN kind = 'condensed'::public.summary_kind THEN 'bindle' ELSE 'leaf' END,
-        summary_type = CASE WHEN kind = 'condensed'::public.summary_kind THEN 'bindle' ELSE 'leaf' END
+    SET summary_level = CASE WHEN kind = 'bindle'::public.summary_kind THEN 'bindle' ELSE 'sprig' END,
+        summary_type = CASE WHEN kind = 'bindle'::public.summary_kind THEN 'bindle' ELSE 'sprig' END
     WHERE summary_level IS NULL
        OR summary_type IS NULL
-       OR summary_level NOT IN ('leaf', 'bindle')
-       OR summary_type NOT IN ('leaf', 'bindle', 'archive_stub')
-       OR (kind = 'condensed'::public.summary_kind AND (summary_level <> 'bindle' OR summary_type <> 'bindle'))
-       OR (kind = 'leaf'::public.summary_kind AND (summary_level <> 'leaf' OR summary_type <> 'leaf'));
+       OR summary_level NOT IN ('sprig', 'bindle')
+       OR summary_type NOT IN ('sprig', 'bindle', 'archive_stub')
+       OR (kind = 'bindle'::public.summary_kind AND (summary_level <> 'bindle' OR summary_type <> 'bindle'))
+       OR (kind = 'sprig'::public.summary_kind AND (summary_level <> 'sprig' OR summary_type <> 'sprig'));
     CREATE INDEX IF NOT EXISTS summaries_off_context_idx ON summaries (is_off_context, summary_level, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS summaries_qmd_doc_id_uq ON summaries (qmd_doc_id) WHERE qmd_doc_id IS NOT NULL;
 
-    -- 4) Leaf summaries -> messages (ordered)
+    -- 4) Sprig summaries -> messages (ordered)
     CREATE TABLE IF NOT EXISTS summary_messages (
       summary_id text   NOT NULL REFERENCES summaries(summary_id) ON DELETE CASCADE,
       message_id bigint NOT NULL REFERENCES messages(message_id) ON DELETE RESTRICT,
@@ -232,7 +246,7 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
 
     CREATE INDEX IF NOT EXISTS summary_messages_message_idx ON summary_messages(message_id);
 
-    -- 5) Condensed summaries -> parent summaries (ordered, high fan-out DAG)
+    -- 5) Bindle summaries -> parent summaries (ordered, high fan-out DAG)
     CREATE TABLE IF NOT EXISTS summary_parents (
       summary_id        text NOT NULL REFERENCES summaries(summary_id) ON DELETE CASCADE,
       parent_summary_id text NOT NULL REFERENCES summaries(summary_id) ON DELETE RESTRICT,

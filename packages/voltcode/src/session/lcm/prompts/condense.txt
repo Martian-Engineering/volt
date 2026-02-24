@@ -1,104 +1,34 @@
-# Condense Summaries Prompt
+# Summary Condensation Prompt
 
-You are condensing multiple conversation summaries into a single higher-level summary. This is part of a Lossless Context Management (LCM) system that maintains the ability to retrieve any earlier context.
+You are condensing multiple chronological summaries into one higher-level narrative summary.
 
-## Task
+## Goal
 
-Condense the following summaries into ONE comprehensive summary that captures the essential information from all of them.
+Merge the input summaries into a single summary that preserves continuity and can be used to keep working without re-reading all source summaries.
 
-## Critical Requirements
+Treat the input as a time-ordered sequence and produce a unified story:
+- How the overall effort began
+- How the work evolved across the grouped summaries
+- Where the effort stands at the end
 
-### 1. Parent Summary ID Preservation (MANDATORY)
+## Required Content
 
-You MUST include all parent summary IDs at the very start of your output in this exact format:
+Include:
+- Major decisions and how they shifted the implementation path
+- Important code changes and touched areas of the codebase
+- Key discoveries from tools/tests/errors that changed outcomes
+- Explicit transitions: what was pursued, what was dropped, what replaced it
+- Final state: completed work, open threads, and next likely actions
 
-```
-[Condensed from: sum_abc123, sum_def456, sum_ghi789]
-```
+## Style
 
-This is non-negotiable. These IDs enable retrieval of the full original content. Missing any ID means losing access to that context forever.
+- Preserve chronology across the merged summaries
+- Resolve repetition by merging overlapping points cleanly
+- Keep language precise and implementation-oriented
+- Use structured headings and concise bullets where useful
 
-### 2. Chronological Ordering
+## Output Guidance
 
-Maintain chronological ordering of events across the summaries:
-
-- Earlier events from earlier summaries should appear first
-- Preserve the temporal flow of the conversation
-- Use time markers when relevant (e.g., "Initially...", "Later...", "Subsequently...")
-
-### 3. Information Preservation
-
-Preserve key information that may be needed later:
-
-- **Key decisions** and the reasoning behind them
-- **Code changes** including file paths and what was modified
-- **User preferences** and constraints they've expressed
-- **Technical context** like architecture decisions, dependencies, configurations
-- **Unresolved items** like pending tasks, open questions, or blocked work
-- **Tool outputs** that informed decisions
-
-## What to Merge
-
-Consolidate related content across summaries:
-
-1. **Related Topics**: Combine discussions of the same feature, file, or concept
-2. **Sequential Debugging**: Merge multi-step debugging sessions into a coherent narrative
-3. **Related Code Changes**: Group modifications to related files or systems
-4. **Evolving Requirements**: Show how understanding developed over time
-
-## What NOT to Lose
-
-Even when condensing, preserve:
-
-- Exact file paths that were modified
-- Specific error messages that guided debugging
-- User's stated preferences or constraints
-- Key technical decisions and their rationale
-- Any unfinished work or next steps
-
-## Output Format
-
-Structure your condensed summary as follows:
-
-```
-[Condensed from: <comma-separated list of ALL parent summary IDs>]
-
-## Context
-Brief overview of what this conversation segment covers.
-
-## Key Decisions
-- Decision 1: rationale
-- Decision 2: rationale
-
-## Changes Made
-- File/component: what was done and why
-
-## Technical Notes
-Important technical context, configurations, patterns established.
-
-## Current State
-What was accomplished, what's working.
-
-## Open Items
-- Pending tasks
-- Unresolved questions
-- Known issues
-```
-
-## Token Budget
-
-Target approximately 800-1500 tokens for your condensed summary. This should be enough to:
-
-- Capture all essential information
-- Enable efficient retrieval of details via summary IDs
-- Maintain useful context for continuing the conversation
-
-## Remember
-
-The model can always retrieve the full content of any summary by its ID. Your job is to:
-
-1. Preserve ALL parent IDs for retrieval
-2. Capture what's most important for continuing the conversation
-3. Enable quick understanding of what happened without needing to retrieve everything
-
-Focus on information that would be needed to continue working effectively, not on recreating every detail.
+- Target length: 1800-2000 tokens
+- Do not add synthetic metadata headers, frontmatter, IDs, token estimates, or placeholder fields
+- Prioritize context that enables accurate continuation of work

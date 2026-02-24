@@ -9,20 +9,20 @@ const log = Log.create({ service: "token-budget" })
 
 const DEFAULT_OUTPUT_RESERVE = 20_000
 const DEFAULT_DOLT_BINDLES_SOFT = 10_000
-const DEFAULT_DOLT_BINDLES_DELTA = 1_000
-const DEFAULT_DOLT_BINDLES_TARGET = 9_000
-const DEFAULT_DOLT_LEAVES_SOFT = 20_000
-const DEFAULT_DOLT_LEAVES_DELTA = 2_000
-const DEFAULT_DOLT_LEAVES_TARGET = 18_000
-const DEFAULT_DOLT_TURNS_CAP = 30_000
-const DEFAULT_DOLT_TURNS_SOFT = 30_000
-const DEFAULT_DOLT_TURNS_DELTA = 0
-const DEFAULT_DOLT_TURNS_TARGET = 30_000
-const DEFAULT_DOLT_TURNS_FRESH_TAIL_FLOOR = 4
+const DEFAULT_DOLT_BINDLES_DELTA = 2_000
+const DEFAULT_DOLT_BINDLES_TARGET = 10_000
+const DEFAULT_DOLT_SPRIGS_SOFT = 10_000
+const DEFAULT_DOLT_SPRIGS_DELTA = 2_000
+const DEFAULT_DOLT_SPRIGS_TARGET = 10_000
+const DEFAULT_DOLT_LEAVES_CAP = 50_000
+const DEFAULT_DOLT_LEAVES_SOFT = 50_000
+const DEFAULT_DOLT_LEAVES_DELTA = 5_000
+const DEFAULT_DOLT_LEAVES_TARGET = 50_000
+const DEFAULT_DOLT_LEAVES_FRESH_TAIL_FLOOR = 4
 const DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER = 0
 
 export namespace TokenBudget {
-  export type LaneName = "turns" | "leaves" | "bindles"
+  export type LaneName = "leaves" | "sprigs" | "bindles"
 
   export interface LaneThreshold {
     soft: number
@@ -30,21 +30,21 @@ export namespace TokenBudget {
     target: number
   }
 
-  export interface TurnsLaneThreshold extends LaneThreshold {
+  export interface LeavesLaneThreshold extends LaneThreshold {
     cap: number
     freshTailFloor: number
   }
 
   export interface DoltLanePolicy {
-    turns: TurnsLaneThreshold
-    leaves: LaneThreshold
+    leaves: LeavesLaneThreshold
+    sprigs: LaneThreshold
     bindles: LaneThreshold
     hardLimitRiskBuffer: number
   }
 
   export interface LaneTokenCounts {
-    turns: number
     leaves: number
+    sprigs: number
     bindles: number
     total: number
   }
@@ -64,8 +64,8 @@ export namespace TokenBudget {
 
   export interface DoltLaneDecisions {
     hardLimitRisk: boolean
-    turns: LaneDecision
     leaves: LaneDecision
+    sprigs: LaneDecision
     bindles: LaneDecision
     currentlyCompacting: Record<LaneName, boolean>
     nextCompacting: Record<LaneName, boolean>
@@ -215,14 +215,14 @@ export namespace TokenBudget {
       reserve,
       hardLimit,
       softThreshold,
-      turnsCap: lanePolicy.turns.cap,
-      turnsSoft: lanePolicy.turns.soft,
-      turnsDelta: lanePolicy.turns.delta,
-      turnsTarget: lanePolicy.turns.target,
-      turnsFreshTailFloor: lanePolicy.turns.freshTailFloor,
+      leavesCap: lanePolicy.leaves.cap,
       leavesSoft: lanePolicy.leaves.soft,
       leavesDelta: lanePolicy.leaves.delta,
       leavesTarget: lanePolicy.leaves.target,
+      leavesFreshTailFloor: lanePolicy.leaves.freshTailFloor,
+      sprigsSoft: lanePolicy.sprigs.soft,
+      sprigsDelta: lanePolicy.sprigs.delta,
+      sprigsTarget: lanePolicy.sprigs.target,
       bindlesSoft: lanePolicy.bindles.soft,
       bindlesDelta: lanePolicy.bindles.delta,
       bindlesTarget: lanePolicy.bindles.target,
@@ -256,17 +256,17 @@ export namespace TokenBudget {
    */
   export function computeDoltLanePolicy(input: { hardLimit: number }): DoltLanePolicy {
     const hardLimit = nonNegativeInteger(input.hardLimit)
-    const turnsCap = clampToCap(readInt("VOLTCODE_LCM_DOLT_TURNS_CAP", DEFAULT_DOLT_TURNS_CAP), hardLimit)
-    const turns = clampLane({
-      soft: readInt("VOLTCODE_LCM_DOLT_TURNS_SOFT", DEFAULT_DOLT_TURNS_SOFT),
-      delta: readInt("VOLTCODE_LCM_DOLT_TURNS_DELTA", DEFAULT_DOLT_TURNS_DELTA),
-      target: readInt("VOLTCODE_LCM_DOLT_TURNS_TARGET", DEFAULT_DOLT_TURNS_TARGET),
-      cap: turnsCap,
-    })
+    const leavesCap = clampToCap(readInt("VOLTCODE_LCM_DOLT_LEAVES_CAP", DEFAULT_DOLT_LEAVES_CAP), hardLimit)
     const leaves = clampLane({
       soft: readInt("VOLTCODE_LCM_DOLT_LEAVES_SOFT", DEFAULT_DOLT_LEAVES_SOFT),
       delta: readInt("VOLTCODE_LCM_DOLT_LEAVES_DELTA", DEFAULT_DOLT_LEAVES_DELTA),
       target: readInt("VOLTCODE_LCM_DOLT_LEAVES_TARGET", DEFAULT_DOLT_LEAVES_TARGET),
+      cap: leavesCap,
+    })
+    const sprigs = clampLane({
+      soft: readInt("VOLTCODE_LCM_DOLT_SPRIGS_SOFT", DEFAULT_DOLT_SPRIGS_SOFT),
+      delta: readInt("VOLTCODE_LCM_DOLT_SPRIGS_DELTA", DEFAULT_DOLT_SPRIGS_DELTA),
+      target: readInt("VOLTCODE_LCM_DOLT_SPRIGS_TARGET", DEFAULT_DOLT_SPRIGS_TARGET),
       cap: hardLimit,
     })
     const bindles = clampLane({
@@ -277,15 +277,15 @@ export namespace TokenBudget {
     })
 
     return {
-      turns: {
-        ...turns,
-        cap: turnsCap,
+      leaves: {
+        ...leaves,
+        cap: leavesCap,
         freshTailFloor: Math.max(
           1,
-          readInt("VOLTCODE_LCM_DOLT_TURNS_FRESH_TAIL_FLOOR", DEFAULT_DOLT_TURNS_FRESH_TAIL_FLOOR),
+          readInt("VOLTCODE_LCM_DOLT_LEAVES_FRESH_TAIL_FLOOR", DEFAULT_DOLT_LEAVES_FRESH_TAIL_FLOOR),
         ),
       },
-      leaves,
+      sprigs,
       bindles,
       hardLimitRiskBuffer: Math.min(
         hardLimit,
@@ -305,31 +305,31 @@ export namespace TokenBudget {
   }): DoltLaneDecisions {
     const hardLimit = nonNegativeInteger(input.hardLimit)
     const currentlyCompacting: Record<LaneName, boolean> = {
-      turns: Boolean(input.currentlyCompacting?.turns),
       leaves: Boolean(input.currentlyCompacting?.leaves),
+      sprigs: Boolean(input.currentlyCompacting?.sprigs),
       bindles: Boolean(input.currentlyCompacting?.bindles),
     }
     const laneTokens = {
-      turns: nonNegativeInteger(input.laneTokens.turns),
       leaves: nonNegativeInteger(input.laneTokens.leaves),
+      sprigs: nonNegativeInteger(input.laneTokens.sprigs),
       bindles: nonNegativeInteger(input.laneTokens.bindles),
       total: nonNegativeInteger(input.laneTokens.total),
     }
     const riskThreshold = Math.max(0, hardLimit - input.policy.hardLimitRiskBuffer)
     const hardLimitRisk = laneTokens.total >= riskThreshold
 
-    const turns = evaluateLaneDecision({
-      lane: "turns",
-      laneTokens: laneTokens.turns,
-      threshold: input.policy.turns,
-      currentlyCompacting: currentlyCompacting.turns,
-      hardLimitRisk,
-    })
     const leaves = evaluateLaneDecision({
       lane: "leaves",
       laneTokens: laneTokens.leaves,
       threshold: input.policy.leaves,
       currentlyCompacting: currentlyCompacting.leaves,
+      hardLimitRisk,
+    })
+    const sprigs = evaluateLaneDecision({
+      lane: "sprigs",
+      laneTokens: laneTokens.sprigs,
+      threshold: input.policy.sprigs,
+      currentlyCompacting: currentlyCompacting.sprigs,
       hardLimitRisk,
     })
     const bindles = evaluateLaneDecision({
@@ -342,16 +342,16 @@ export namespace TokenBudget {
 
     return {
       hardLimitRisk,
-      turns,
       leaves,
+      sprigs,
       bindles,
       currentlyCompacting,
       nextCompacting: {
-        turns: turns.shouldCompact,
         leaves: leaves.shouldCompact,
+        sprigs: sprigs.shouldCompact,
         bindles: bindles.shouldCompact,
       },
-      compactAny: turns.shouldCompact || leaves.shouldCompact || bindles.shouldCompact,
+      compactAny: leaves.shouldCompact || sprigs.shouldCompact || bindles.shouldCompact,
     }
   }
 

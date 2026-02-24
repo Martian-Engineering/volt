@@ -57,23 +57,22 @@ export namespace LcmDb {
   export const MessageRole = z.enum(["system", "user", "assistant", "tool"])
   export type MessageRole = z.infer<typeof MessageRole>
 
-  export const SummaryKind = z.enum(["leaf", "condensed"])
+  export const SummaryKind = z.enum(["sprig", "bindle"])
   export type SummaryKind = z.infer<typeof SummaryKind>
 
   /**
-   * Dolt summary lane. L1 = leaf summaries (turn compaction), L2 = bindles.
-   * Legacy rows map via `kind`: leaf -> leaf, condensed -> bindle.
+   * Summary lane. L1 = sprig summaries (leaf-lane compaction), L2 = bindles.
    */
-  export const SummaryLevel = z.enum(["leaf", "bindle"])
+  export const SummaryLevel = z.enum(["sprig", "bindle"])
   export type SummaryLevel = z.infer<typeof SummaryLevel>
 
   /**
-   * Dolt summary node type.
-   * - leaf: L1 summary over turns/messages
-   * - bindle: L2 summary over leaves
+   * Summary node type.
+   * - sprig: L1 summary over leaves/messages
+   * - bindle: L2 summary over sprigs
    * - archive_stub: short off-context pointer node for evicted bindles
    */
-  export const SummaryType = z.enum(["leaf", "bindle", "archive_stub"])
+  export const SummaryType = z.enum(["sprig", "bindle", "archive_stub"])
   export type SummaryType = z.infer<typeof SummaryType>
 
   /**
@@ -229,6 +228,14 @@ export namespace LcmDb {
   })
   export type ContextEntry = z.infer<typeof ContextEntry>
 
+  export const ContextEntryWithRefs = ContextEntry.extend({
+    summary_id: z.string().nullable(),
+    summary_level: SummaryLevel.nullable(),
+    summary_type: SummaryType.nullable(),
+    created_at: z.date(),
+  })
+  export type ContextEntryWithRefs = z.infer<typeof ContextEntryWithRefs>
+
   export const MessageSearchResult = z.object({
     message_id: z.number(),
     seq: z.number(),
@@ -242,9 +249,16 @@ export namespace LcmDb {
   })
   export type SummarySearchResult = z.infer<typeof SummarySearchResult>
 
+  export const SummaryLineageSearchResult = z.object({
+    summary_id: z.string(),
+    conversation_id: z.number(),
+    kind: SummaryKind,
+  })
+  export type SummaryLineageSearchResult = z.infer<typeof SummaryLineageSearchResult>
+
   export const ContextLaneTokenCounts = z.object({
-    turns: z.number(),
     leaves: z.number(),
+    sprigs: z.number(),
     bindles: z.number(),
   })
   export type ContextLaneTokenCounts = z.infer<typeof ContextLaneTokenCounts>
@@ -419,8 +433,22 @@ export namespace LcmDb {
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
       DO $$ BEGIN
-        CREATE TYPE summary_kind AS ENUM ('leaf','condensed');
+        CREATE TYPE summary_kind AS ENUM ('sprig','bindle');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$ BEGIN
+        ALTER TYPE summary_kind RENAME VALUE 'leaf' TO 'sprig';
+      EXCEPTION
+        WHEN undefined_object THEN NULL;
+        WHEN invalid_parameter_value THEN NULL;
+      END $$;
+
+      DO $$ BEGIN
+        ALTER TYPE summary_kind RENAME VALUE 'condensed' TO 'bindle';
+      EXCEPTION
+        WHEN undefined_object THEN NULL;
+        WHEN invalid_parameter_value THEN NULL;
+      END $$;
 
       DO $$ BEGIN
         CREATE TYPE context_item_type AS ENUM ('message','summary');
@@ -492,22 +520,22 @@ export namespace LcmDb {
         ALTER TABLE summaries ADD COLUMN file_ids jsonb NOT NULL DEFAULT '[]';
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
-      -- Dolt migration: add explicit level/type metadata for leaf vs bindle semantics
+      -- Migration: add explicit level/type metadata for sprig vs bindle semantics
       DO $$ BEGIN
-        ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'leaf';
+        ALTER TABLE summaries ADD COLUMN summary_level text NOT NULL DEFAULT 'sprig';
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
       DO $$ BEGIN
-        ALTER TABLE summaries ADD COLUMN summary_type text NOT NULL DEFAULT 'leaf';
+        ALTER TABLE summaries ADD COLUMN summary_type text NOT NULL DEFAULT 'sprig';
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
       DO $$ BEGIN
         ALTER TABLE summaries
           ADD CONSTRAINT summaries_summary_level_check
-          CHECK (summary_level IN ('leaf', 'bindle'));
+          CHECK (summary_level IN ('sprig', 'bindle'));
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
       DO $$ BEGIN
         ALTER TABLE summaries
           ADD CONSTRAINT summaries_summary_type_check
-          CHECK (summary_type IN ('leaf', 'bindle', 'archive_stub'));
+          CHECK (summary_type IN ('sprig', 'bindle', 'archive_stub'));
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
       -- Dolt migration: retrieval metadata for qmd mapping + off-context exclusion
@@ -526,16 +554,16 @@ export namespace LcmDb {
           CHECK (qmd_doc_version IS NULL OR qmd_doc_version >= 0);
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-      -- Backfill legacy rows so existing leaf/condensed data remains readable.
+      -- Backfill rows so existing summary data remains readable.
       UPDATE summaries
-      SET summary_level = CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END,
-          summary_type = CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END
+      SET summary_level = CASE WHEN kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END,
+          summary_type = CASE WHEN kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END
       WHERE summary_level IS NULL
          OR summary_type IS NULL
-         OR summary_level NOT IN ('leaf', 'bindle')
-         OR summary_type NOT IN ('leaf', 'bindle', 'archive_stub')
-         OR (kind = 'condensed'::summary_kind AND (summary_level <> 'bindle' OR summary_type <> 'bindle'))
-         OR (kind = 'leaf'::summary_kind AND (summary_level <> 'leaf' OR summary_type <> 'leaf'));
+         OR summary_level NOT IN ('sprig', 'bindle')
+         OR summary_type NOT IN ('sprig', 'bindle', 'archive_stub')
+         OR (kind = 'bindle'::summary_kind AND (summary_level <> 'bindle' OR summary_type <> 'bindle'))
+         OR (kind = 'sprig'::summary_kind AND (summary_level <> 'sprig' OR summary_type <> 'sprig'));
 
       CREATE INDEX IF NOT EXISTS summaries_off_context_idx
         ON summaries (is_off_context, summary_level, created_at DESC);
@@ -1123,8 +1151,8 @@ export namespace LcmDb {
     const result: ContextEntry[] = []
     for (const row of rows) {
       if (row.item_type === "summary" && row.summary_id) {
-        // Get parent summary IDs for condensed summaries
-        const parents = row.summary_kind === "condensed" ? await getSummaryParentIds(row.summary_id) : []
+        // Get parent summary IDs for bindles.
+        const parents = row.summary_kind === "bindle" ? await getSummaryParentIds(row.summary_id) : []
 
         // Format content with ID injection
         const formattedContent = formatSummaryContentForContext(row.summary_id, row.content, parents)
@@ -1154,6 +1182,34 @@ export namespace LcmDb {
   }
 
   /**
+   * Get current context with raw summary references and lane metadata.
+   *
+   * Unlike getCurrentContext(), this does not inject summary IDs into content.
+   * It is intended for diagnostics and observer UIs that need explicit IDs/types.
+   */
+  export async function getCurrentContextWithRefs(conversationId: number): Promise<ContextEntryWithRefs[]> {
+    const conn = sql()
+    return conn<ContextEntryWithRefs[]>`
+      SELECT
+        ci.position,
+        ci.item_type,
+        ci.message_id,
+        ci.summary_id,
+        COALESCE(m.role::text, 'summary') AS role,
+        COALESCE(m.content, s.content) AS content,
+        COALESCE(m.token_count, s.token_count, 0) AS token_count,
+        COALESCE(s.summary_level, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_level,
+        COALESCE(s.summary_type, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_type,
+        COALESCE(m.created_at, s.created_at) AS created_at
+      FROM context_items ci
+      LEFT JOIN messages  m ON m.message_id = ci.message_id
+      LEFT JOIN summaries s ON s.summary_id = ci.summary_id
+      WHERE ci.conversation_id = ${conversationId}
+      ORDER BY ci.position
+    `
+  }
+
+  /**
    * Format summary content with ID injection for context.
    *
    * This deterministically includes the summary ID and parent IDs at the beginning
@@ -1161,7 +1217,7 @@ export namespace LcmDb {
    *
    * @param summaryId - The summary's ID
    * @param content - The raw summary content
-   * @param parents - Parent summary IDs (for condensed summaries)
+   * @param parents - Parent summary IDs (for bindles)
    * @returns Formatted string for context injection
    */
   function formatSummaryContentForContext(summaryId: string, content: string, parents: string[]): string {
@@ -1182,7 +1238,7 @@ export namespace LcmDb {
    * and optionally the `[Parent Summaries: ...]` header, plus newlines.
    *
    * @param summaryId - The summary's ID
-   * @param parents - Parent summary IDs (for condensed summaries)
+   * @param parents - Parent summary IDs (for bindles)
    * @returns Estimated token count for the formatting overhead
    */
   function getSummaryFormattingOverhead(summaryId: string, parents: string[]): number {
@@ -1233,7 +1289,7 @@ export namespace LcmDb {
 
       // Add formatting overhead for summary entries
       if (row.item_type === "summary" && row.summary_id) {
-        const parents = row.summary_kind === "condensed" ? await getSummaryParentIds(row.summary_id) : []
+        const parents = row.summary_kind === "bindle" ? await getSummaryParentIds(row.summary_id) : []
         total += getSummaryFormattingOverhead(row.summary_id, parents)
       }
     }
@@ -1245,8 +1301,8 @@ export namespace LcmDb {
    * Compute lane token totals for active context items.
    *
    * Lane semantics:
-   * - turns: raw message tokens in context
-   * - leaves: L1 leaf summary tokens in context
+   * - leaves: raw message tokens in context
+   * - sprigs: L1 sprig summary tokens in context
    * - bindles: active L2 bindle summary tokens in context (archive stubs excluded)
    */
   export async function getContextLaneTokenCounts(conversationId: number): Promise<ContextLaneTokenCounts> {
@@ -1257,26 +1313,26 @@ export namespace LcmDb {
       SELECT
         ci.item_type,
         COALESCE(m.token_count, s.token_count, 0) AS token_count,
-        COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
-        COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type
+        COALESCE(s.summary_level, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_level,
+        COALESCE(s.summary_type, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_type
       FROM context_items ci
       LEFT JOIN messages  m ON m.message_id = ci.message_id
       LEFT JOIN summaries s ON s.summary_id = ci.summary_id
       WHERE ci.conversation_id = ${conversationId}
     `
 
-    let turns = 0
     let leaves = 0
+    let sprigs = 0
     let bindles = 0
 
     for (const row of rows) {
       const tokens = Math.max(0, row.token_count)
       if (row.item_type === "message") {
-        turns += tokens
+        leaves += tokens
         continue
       }
-      if (row.summary_level === "leaf" && row.summary_type === "leaf") {
-        leaves += tokens
+      if (row.summary_level === "sprig" && row.summary_type === "sprig") {
+        sprigs += tokens
         continue
       }
       if (row.summary_level === "bindle" && row.summary_type === "bindle") {
@@ -1284,7 +1340,7 @@ export namespace LcmDb {
       }
     }
 
-    return { turns, leaves, bindles }
+    return { leaves, sprigs, bindles }
   }
 
   /**
@@ -1343,9 +1399,9 @@ export namespace LcmDb {
   }
 
   /**
-   * Insert a new leaf summary and link it to messages
+   * Insert a new sprig summary and link it to messages
    */
-  export async function insertLeafSummary(input: {
+  export async function insertSprigSummary(input: {
     summaryId: string
     conversationId: number
     content: string
@@ -1371,9 +1427,9 @@ export namespace LcmDb {
         VALUES (
           ${input.summaryId},
           ${input.conversationId},
-          'leaf',
-          'leaf',
-          'leaf',
+          'sprig',
+          'sprig',
+          'sprig',
           ${escNull(input.content)},
           ${input.tokenCount},
           ${fileIds}::jsonb,
@@ -1387,13 +1443,13 @@ export namespace LcmDb {
         `
       }
     })
-    log.debug("inserted leaf summary", { summaryId: input.summaryId, messageCount: input.messageIds.length })
+    log.debug("inserted sprig summary", { summaryId: input.summaryId, messageCount: input.messageIds.length })
   }
 
   /**
-   * Insert a new condensed summary and link it to parent summaries
+   * Insert a new bindle summary and link it to parent summaries
    */
-  export async function insertCondensedSummary(input: {
+  export async function insertBindleSummary(input: {
     summaryId: string
     conversationId: number
     content: string
@@ -1408,8 +1464,8 @@ export namespace LcmDb {
         const parentRows = await tx<{ summary_id: string; summary_level: SummaryLevel; summary_type: SummaryType }[]>`
           SELECT
             s.summary_id,
-            COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
-            COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type
+            COALESCE(s.summary_level, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_level,
+            COALESCE(s.summary_type, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_type
           FROM summaries s
           WHERE s.summary_id = ANY(${input.parentSummaryIds})
         `
@@ -1423,13 +1479,13 @@ export namespace LcmDb {
           })
         }
 
-        const nonLeafParentIds = parentRows
-          .filter((row) => row.summary_level !== "leaf" || row.summary_type !== "leaf")
+        const nonSprigParentIds = parentRows
+          .filter((row) => row.summary_level !== "sprig" || row.summary_type !== "sprig")
           .map((row) => row.summary_id)
-        if (nonLeafParentIds.length > 0) {
+        if (nonSprigParentIds.length > 0) {
           throw new InvariantError({
-            message: "Cannot aggregate bindle summaries; bindles may only be created from leaf summaries",
-            summaryIds: nonLeafParentIds,
+            message: "Cannot aggregate bindle summaries; bindles may only be created from sprig summaries",
+            summaryIds: nonSprigParentIds,
           })
         }
       }
@@ -1449,7 +1505,7 @@ export namespace LcmDb {
         VALUES (
           ${input.summaryId},
           ${input.conversationId},
-          'condensed',
+          'bindle',
           'bindle',
           'bindle',
           ${escNull(input.content)},
@@ -1469,7 +1525,74 @@ export namespace LcmDb {
         `
       }
     })
-    log.debug("inserted condensed summary", { summaryId: input.summaryId, parentCount: input.parentSummaryIds.length })
+    log.debug("inserted bindle summary", { summaryId: input.summaryId, parentCount: input.parentSummaryIds.length })
+  }
+
+  /**
+   * Normalize active context order to lane order:
+   * bindles -> sprigs -> leaves.
+   *
+   * Within each lane, relative order is preserved from current positions.
+   */
+  export async function normalizeContextLaneOrder(conversationId: number): Promise<void> {
+    const conn = sql()
+    await conn.begin(async (tx) => {
+      const rows = await tx<
+        {
+          position: number
+          item_type: ContextItemType
+          message_id: number | null
+          summary_id: string | null
+          summary_level: SummaryLevel | null
+          summary_type: SummaryType | null
+        }[]
+      >`
+        SELECT
+          ci.position,
+          ci.item_type,
+          ci.message_id,
+          ci.summary_id,
+          COALESCE(s.summary_level, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_level,
+          COALESCE(s.summary_type, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_type
+        FROM context_items ci
+        LEFT JOIN summaries s ON s.summary_id = ci.summary_id
+        WHERE ci.conversation_id = ${conversationId}
+        ORDER BY ci.position
+      `
+      if (rows.length <= 1) return
+
+      const bindles = rows.filter((row) => row.item_type === "summary" && row.summary_level === "bindle")
+      const sprigs = rows.filter(
+        (row) => row.item_type === "summary" && row.summary_level === "sprig" && row.summary_type === "sprig",
+      )
+      const leaves = rows.filter((row) => row.item_type === "message")
+      const otherSummaries = rows.filter(
+        (row) =>
+          row.item_type === "summary" &&
+          !(
+            row.summary_level === "bindle" ||
+            (row.summary_level === "sprig" && row.summary_type === "sprig")
+          ),
+      )
+      const normalized = [...bindles, ...otherSummaries, ...sprigs, ...leaves]
+      let changed = false
+      for (let i = 0; i < normalized.length; i++) {
+        if (normalized[i]?.position !== i) {
+          changed = true
+          break
+        }
+      }
+      if (!changed) return
+
+      await tx`DELETE FROM context_items WHERE conversation_id = ${conversationId}`
+      for (let i = 0; i < normalized.length; i++) {
+        const row = normalized[i]
+        await tx`
+          INSERT INTO context_items (conversation_id, position, item_type, message_id, summary_id)
+          VALUES (${conversationId}, ${i}, ${row.item_type}::context_item_type, ${row.message_id}, ${row.summary_id})
+        `
+      }
+    })
   }
 
   /**
@@ -1532,6 +1655,7 @@ export namespace LcmDb {
         `
       }
     })
+    await normalizeContextLaneOrder(input.conversationId)
     log.debug("replaced context with summary", {
       conversationId: input.conversationId,
       startPosition: input.startPosition,
@@ -1638,6 +1762,7 @@ export namespace LcmDb {
         `
       }
     })
+    await normalizeContextLaneOrder(input.conversationId)
     log.debug("replaced positions with summary", {
       conversationId: input.conversationId,
       positions,
@@ -1682,6 +1807,7 @@ export namespace LcmDb {
         `
       }
     })
+    await normalizeContextLaneOrder(input.conversationId)
 
     log.debug("removed context positions", {
       conversationId: input.conversationId,
@@ -1705,8 +1831,8 @@ export namespace LcmDb {
           summary_id,
           conversation_id,
           kind,
-          COALESCE(summary_level, CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
-          COALESCE(summary_type, CASE WHEN kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type,
+          COALESCE(summary_level, CASE WHEN kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_level,
+          COALESCE(summary_type, CASE WHEN kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_type,
           content,
           token_count,
           file_ids,
@@ -1735,8 +1861,8 @@ export namespace LcmDb {
         s.summary_id,
         s.conversation_id,
         s.kind,
-        COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
-        COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type,
+        COALESCE(s.summary_level, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_level,
+        COALESCE(s.summary_type, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_type,
         s.content,
         s.token_count,
         s.file_ids,
@@ -1832,6 +1958,37 @@ export namespace LcmDb {
   }
 
   /**
+   * Search summaries using full-text search across a conversation and its ancestors.
+   */
+  export async function searchSummariesInLineage(
+    conversationId: number,
+    query: string,
+    limit = 50,
+  ): Promise<SummaryLineageSearchResult[]> {
+    const conn = sql()
+    const rows = await conn<SummaryLineageSearchResult[]>`
+      WITH RECURSIVE ancestors AS (
+        SELECT conversation_id, parent_conversation_id
+        FROM conversations
+        WHERE conversation_id = ${conversationId}
+        UNION ALL
+        SELECT c.conversation_id, c.parent_conversation_id
+        FROM conversations c
+        JOIN ancestors a ON c.conversation_id = a.parent_conversation_id
+      )
+      SELECT s.summary_id, s.conversation_id, s.kind
+      FROM summaries s
+      JOIN ancestors a ON s.conversation_id = a.conversation_id
+      WHERE s.content_tsv @@ plainto_tsquery('english', ${query})
+      ORDER BY
+        ts_rank_cd(s.content_tsv, plainto_tsquery('english', ${query})) DESC,
+        s.created_at DESC
+      LIMIT ${limit}
+    `
+    return rows
+  }
+
+  /**
    * Get a conversation by ID
    */
   export async function getConversation(conversationId: number): Promise<Conversation | null> {
@@ -1872,7 +2029,7 @@ export namespace LcmDb {
   }
 
   /**
-   * Get message IDs linked to a leaf summary
+   * Get message IDs linked to a sprig summary
    */
   export async function getSummaryMessageIds(summaryId: string): Promise<number[]> {
     const conn = sql()
@@ -1886,7 +2043,7 @@ export namespace LcmDb {
   }
 
   /**
-   * Get parent summary IDs for a condensed summary
+   * Get parent summary IDs for a bindle summary
    */
   export async function getSummaryParentIds(summaryId: string): Promise<string[]> {
     const conn = sql()
@@ -1918,8 +2075,8 @@ export namespace LcmDb {
       JOIN summaries s ON s.summary_id = ci.summary_id
       WHERE ci.conversation_id = ${conversationId}
         AND ci.item_type = 'summary'::context_item_type
-        AND COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) = 'bindle'
-        AND COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) = 'bindle'
+        AND COALESCE(s.summary_level, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) = 'bindle'
+        AND COALESCE(s.summary_type, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) = 'bindle'
         AND COALESCE(s.is_off_context, false) = false
       ORDER BY ci.position
     `
@@ -1952,7 +2109,7 @@ export namespace LcmDb {
 
   /**
    * Get child summary IDs that have this summary as a parent.
-   * This returns summaries that were condensed from this summary.
+   * This returns summaries that were aggregated from this summary.
    */
   export async function getChildSummaryIds(summaryId: string): Promise<string[]> {
     const conn = sql()
@@ -2094,8 +2251,8 @@ export namespace LcmDb {
         s.summary_id,
         s.conversation_id,
         s.kind,
-        COALESCE(s.summary_level, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_level,
-        COALESCE(s.summary_type, CASE WHEN s.kind = 'condensed'::summary_kind THEN 'bindle' ELSE 'leaf' END) AS summary_type,
+        COALESCE(s.summary_level, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_level,
+        COALESCE(s.summary_type, CASE WHEN s.kind = 'bindle'::summary_kind THEN 'bindle' ELSE 'sprig' END) AS summary_type,
         s.content,
         s.token_count,
         s.file_ids,
@@ -2121,7 +2278,7 @@ export namespace LcmDb {
    */
   export async function getCoveringSummary(messageId: number): Promise<string | null> {
     const conn = sql()
-    // Find the leaf summary that directly contains this message
+    // Find the sprig summary that directly contains this message
     const rows = await conn<{ summary_id: string }[]>`
       SELECT sm.summary_id
       FROM summary_messages sm

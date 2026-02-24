@@ -93,6 +93,7 @@ export const LCM_RETRIEVAL_MAX_DISTANCE = readNonNegativeFloatOrUndefined("VOLTC
  * Filesystem root for generated qmd recall artifacts.
  */
 export const LCM_RETRIEVAL_ROOT = path.join(Global.Path.data, "lcm", "retrieval")
+export const LCM_CONTEXT_SNAPSHOT_PATH = path.join(Global.Path.data, "lcm", "context.json")
 
 /**
  * Top-K injected pre-response memory cues from off-context retrieval.
