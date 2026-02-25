@@ -145,14 +145,14 @@ describe("session.lcm.strategy.upward-manual", () => {
       summaryId: sprigA,
       conversationId,
       content: "sprig A",
-      tokenCount: 6,
+      tokenCount: 1_200,
       messageIds: [],
     })
     await LcmDb.insertSprigSummary({
       summaryId: sprigB,
       conversationId,
       content: "sprig B",
-      tokenCount: 6,
+      tokenCount: 1_200,
       messageIds: [],
     })
     await placeSummaryInContext({ conversationId, summaryId: sprigA })
@@ -164,7 +164,7 @@ describe("session.lcm.strategy.upward-manual", () => {
       summaryId: d2a,
       conversationId,
       content: "existing d2 A",
-      tokenCount: 8,
+      tokenCount: 1_300,
       parentSummaryIds: [sprigA, sprigB],
       condensationOrder: 2,
     })
@@ -172,7 +172,7 @@ describe("session.lcm.strategy.upward-manual", () => {
       summaryId: d2b,
       conversationId,
       content: "existing d2 B",
-      tokenCount: 8,
+      tokenCount: 1_300,
       parentSummaryIds: [sprigA, sprigB],
       condensationOrder: 2,
     })

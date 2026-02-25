@@ -165,6 +165,9 @@ export namespace LcmContext {
    */
   export const MAX_COMPACTION_ROUNDS = getLcmPolicyConfig().runtime.maxCompactionRounds
   export const DEFAULT_UPWARD_LEAF_CHUNK_TOKENS = 20_000
+  export const DEFAULT_UPWARD_CONDENSED_TARGET_TOKENS = 900
+  const DEFAULT_UPWARD_CONDENSED_MIN_FANOUT_HARD = 2
+  const UPWARD_CONDENSED_MIN_INPUT_RATIO = 0.1
 
   /**
    * Result of the context threshold check and handling
@@ -213,6 +216,11 @@ export namespace LcmContext {
     position: number
     condensationOrder: number
     summaryType: Summary.Type
+  }
+
+  interface UpwardCondensedPhaseCandidate {
+    targetOrder: number
+    parentSummaries: ActiveSummaryForCompaction[]
   }
 
   function normalizeLaneCompactionState(
@@ -1337,55 +1345,48 @@ export namespace LcmContext {
       noOpReasons.push("eligible_leaves_below_min")
     }
 
-    const minimumFanoutForOrder = (order: number) =>
-      order === 1 ? initialThreshold.lanePolicy.sprigs.minFanout : initialThreshold.lanePolicy.bindles.minFanout
-
     const fanoutNoOpReasonForOrder = (order: number) => (order === 1 ? "sprigs_below_min_fanout" : `d${order}_below_min_fanout`)
-
-    const messagesInContext = await getMessagesInContext(input.conversationId)
-    const freshTailStartPosition = resolveFreshTailStartPosition(messagesInContext, protectedTailCount)
+    const chunkTokenFloorNoOpReasonForOrder = (order: number) =>
+      order === 1 ? "sprigs_below_min_chunk_tokens" : `d${order}_below_min_chunk_tokens`
+    const hardTrigger = initialThreshold.overHard
 
     for (;;) {
+      const messagesInContext = await getMessagesInContext(input.conversationId)
+      const freshTailStartPosition = resolveFreshTailStartPosition(messagesInContext, protectedTailCount)
       const activeOrders = await LcmDb.getDistinctActiveCondensationOrdersInContext({
         conversationId: input.conversationId,
         maxPositionExclusive: freshTailStartPosition,
       })
 
-      let selectedOrder: number | null = null
-      let selectedChunk: LcmDb.UpwardSummaryChunkEntry[] = []
-      for (const order of activeOrders) {
-        const candidateChunk = await LcmDb.getOldestContiguousSummaryChunkAtCondensationOrder({
-          conversationId: input.conversationId,
-          condensationOrder: order,
-          maxPositionExclusive: freshTailStartPosition,
-        })
-        if (candidateChunk.length < minimumFanoutForOrder(order)) {
-          continue
-        }
-        selectedOrder = order
-        selectedChunk = candidateChunk
-        break
-      }
-
-      if (selectedOrder == null) {
-        const lowestOrder = activeOrders[0]
-        if (lowestOrder != null) {
-          noOpReasons.push(fanoutNoOpReasonForOrder(lowestOrder))
+      const candidateSelection = await selectShallowestCondensationCandidate({
+        conversationId: input.conversationId,
+        activeOrders,
+        maxPositionExclusive: freshTailStartPosition,
+        leafChunkTokens,
+        lanePolicy: initialThreshold.lanePolicy,
+        hardTrigger,
+        fanoutNoOpReasonForOrder,
+        chunkTokenFloorNoOpReasonForOrder,
+      })
+      const candidate = candidateSelection.candidate
+      if (!candidate) {
+        if (candidateSelection.noOpReason) {
+          noOpReasons.push(candidateSelection.noOpReason)
         }
         break
       }
 
-      const candidates = await getActiveSummariesForCompaction(input.conversationId, selectedChunk)
+      const tokensBeforeCondensedPass = await LcmDb.getContextTokenCount(input.conversationId)
 
       const condensationResult = await attemptCondensationForOrder({
         input,
-        parentSummaries: candidates,
+        parentSummaries: candidate.parentSummaries,
       })
       if (!condensationResult.actionTaken) {
         noOpReasons.push(
-          selectedOrder === 1
+          candidate.targetOrder === 1
             ? "sprig_condensation_not_smaller_than_input"
-            : `d${selectedOrder}_condensation_not_smaller_than_input`,
+            : `d${candidate.targetOrder}_condensation_not_smaller_than_input`,
         )
         break
       }
@@ -1395,6 +1396,13 @@ export namespace LcmContext {
       if (condensationResult.createdSummary) {
         createdSummary = condensationResult.createdSummary
       }
+
+      const tokensAfterCondensedPass =
+        condensationResult.newTokenCount ?? (await LcmDb.getContextTokenCount(input.conversationId))
+      if (tokensAfterCondensedPass >= tokensBeforeCondensedPass || tokensAfterCondensedPass >= previousTokens) {
+        break
+      }
+      previousTokens = tokensAfterCondensedPass
     }
 
     if (!actionTaken) {
@@ -1490,6 +1498,100 @@ export namespace LcmContext {
       })
     }
     return summaries
+  }
+
+  function resolveUpwardCondensedTargetTokens(): number {
+    return DEFAULT_UPWARD_CONDENSED_TARGET_TOKENS
+  }
+
+  function resolveUpwardCondensedMinFanoutHard(): number {
+    return DEFAULT_UPWARD_CONDENSED_MIN_FANOUT_HARD
+  }
+
+  function resolveUpwardFanoutForDepth(input: {
+    condensationOrder: number
+    lanePolicy: TokenBudget.DoltLanePolicy
+    hardTrigger: boolean
+  }): number {
+    if (input.hardTrigger) {
+      return resolveUpwardCondensedMinFanoutHard()
+    }
+    if (input.condensationOrder === 1) {
+      return input.lanePolicy.sprigs.minFanout
+    }
+    return input.lanePolicy.bindles.minFanout
+  }
+
+  function resolveUpwardCondensedMinChunkTokens(leafChunkTokens: number): number {
+    const ratioFloor = Math.floor(leafChunkTokens * UPWARD_CONDENSED_MIN_INPUT_RATIO)
+    return Math.max(resolveUpwardCondensedTargetTokens(), ratioFloor)
+  }
+
+  async function selectShallowestCondensationCandidate(input: {
+    conversationId: number
+    activeOrders: number[]
+    maxPositionExclusive: number
+    leafChunkTokens: number
+    lanePolicy: TokenBudget.DoltLanePolicy
+    hardTrigger: boolean
+    fanoutNoOpReasonForOrder: (order: number) => string
+    chunkTokenFloorNoOpReasonForOrder: (order: number) => string
+  }): Promise<{ candidate: UpwardCondensedPhaseCandidate | null; noOpReason?: string }> {
+    const minChunkTokens = resolveUpwardCondensedMinChunkTokens(input.leafChunkTokens)
+    let noOpReason: string | undefined
+
+    for (const order of input.activeOrders) {
+      const contiguousChunk = await LcmDb.getOldestContiguousSummaryChunkAtCondensationOrder({
+        conversationId: input.conversationId,
+        condensationOrder: order,
+        maxPositionExclusive: input.maxPositionExclusive,
+      })
+      if (contiguousChunk.length < 1) {
+        continue
+      }
+
+      const parentSummaries = await getActiveSummariesForCompaction(input.conversationId, contiguousChunk)
+      if (parentSummaries.length < 1) {
+        continue
+      }
+
+      const cappedSummaries: ActiveSummaryForCompaction[] = []
+      let summaryTokens = 0
+      for (const summary of parentSummaries) {
+        const tokenCount = Math.max(0, Math.floor(summary.tokenCount))
+        if (cappedSummaries.length > 0 && summaryTokens + tokenCount > input.leafChunkTokens) {
+          break
+        }
+        cappedSummaries.push(summary)
+        summaryTokens += tokenCount
+        if (summaryTokens >= input.leafChunkTokens) {
+          break
+        }
+      }
+
+      const fanout = resolveUpwardFanoutForDepth({
+        condensationOrder: order,
+        lanePolicy: input.lanePolicy,
+        hardTrigger: input.hardTrigger,
+      })
+      if (cappedSummaries.length < fanout) {
+        noOpReason ??= input.fanoutNoOpReasonForOrder(order)
+        continue
+      }
+      if (summaryTokens < minChunkTokens) {
+        noOpReason ??= input.chunkTokenFloorNoOpReasonForOrder(order)
+        continue
+      }
+
+      return {
+        candidate: {
+          targetOrder: order,
+          parentSummaries: cappedSummaries,
+        },
+      }
+    }
+
+    return { candidate: null, noOpReason }
   }
 
   async function attemptCondensationForOrder(input: {
