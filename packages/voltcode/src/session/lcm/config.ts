@@ -324,6 +324,15 @@ function parseModePolicy(
   modePrefix: "DOLT" | "UPWARD",
   defaults: LcmModePolicy,
 ): LcmModePolicy {
+  const ghostCueArchiveEnabled =
+    modePrefix === "UPWARD"
+      ? DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED
+      : readEnvBoolean(
+          env,
+          `VOLTCODE_LCM_${modePrefix}_GHOST_CUE_ARCHIVE_ENABLED`,
+          defaults.ghostCueArchiveEnabled,
+        )
+
   return {
     leaves: {
       soft: readEnvNonNegativeInteger(env, `VOLTCODE_LCM_${modePrefix}_LEAVES_SOFT`, defaults.leaves.soft),
@@ -355,11 +364,7 @@ function parseModePolicy(
       `VOLTCODE_LCM_${modePrefix}_HARD_LIMIT_RISK_BUFFER`,
       defaults.hardLimitRiskBuffer,
     ),
-    ghostCueArchiveEnabled: readEnvBoolean(
-      env,
-      `VOLTCODE_LCM_${modePrefix}_GHOST_CUE_ARCHIVE_ENABLED`,
-      defaults.ghostCueArchiveEnabled,
-    ),
+    ghostCueArchiveEnabled,
   }
 }
 

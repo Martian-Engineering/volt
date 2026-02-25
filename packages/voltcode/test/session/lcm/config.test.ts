@@ -69,14 +69,14 @@ describe("parseLcmPolicyConfig", () => {
     expect(config.strategies.upward.ghostCueArchiveEnabled).toBe(false)
   })
 
-  test("supports mode-specific ghost cue archive toggle overrides", () => {
+  test("supports dolt ghost cue toggle while keeping upward ghost cue archival disabled", () => {
     const config = parseLcmPolicyConfig({
       VOLTCODE_LCM_DOLT_GHOST_CUE_ARCHIVE_ENABLED: "false",
       VOLTCODE_LCM_UPWARD_GHOST_CUE_ARCHIVE_ENABLED: "true",
     })
 
     expect(config.strategies.dolt.ghostCueArchiveEnabled).toBe(false)
-    expect(config.strategies.upward.ghostCueArchiveEnabled).toBe(true)
+    expect(config.strategies.upward.ghostCueArchiveEnabled).toBe(false)
   })
 
   test("fails fast on invalid mode", () => {
