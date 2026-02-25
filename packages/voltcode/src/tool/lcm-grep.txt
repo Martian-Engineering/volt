@@ -1,8 +1,8 @@
 - Fast regex search through earlier conversation history
 - Searches messages that have been summarized and are no longer in current context
 - Supports full regex syntax (PostgreSQL regex ~)
-- Results are grouped by their covering summary ID with Dolt level/type/off-context lineage metadata
-- Archive-stub groups are explicitly flagged and include lineage/archive pointer targets
+- Results are grouped by their covering summary ID with lineage metadata (level/type/off-context)
+- Dolt mode includes archive-stub pointer metadata when present
 - Returns matching messages with seq number, role, and content snippet
 - Paginated at ~40KB per page for large result sets
 - Use this when you need to find specific content from earlier in the conversation

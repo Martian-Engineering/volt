@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { LcmDb } from "../session/lcm/db"
+import { LcmRetrievalFacade } from "../session/lcm/retrieval-facade"
+import type { LcmRetrieval } from "../session/lcm/retrieval"
 import { SessionPrompt } from "../session/prompt"
 import { Config } from "../config/config"
 import { executeTask } from "./task"
@@ -26,6 +27,7 @@ interface LcmExpandQueryMetadata {
   conversationId: number
   sourceSummaryCount: number
   sourceSummaryIds: string[]
+  diagnostics: LcmRetrieval.QueryDiagnostic[]
   citedSummaryIds: string[]
   expandedSummaryCount: number
   truncated: boolean
@@ -36,11 +38,6 @@ interface ExpandQueryReply {
   citedSummaryIds: string[]
   expandedSummaryCount: number
   truncated: boolean
-}
-
-type SummaryCandidate = {
-  summaryId: string
-  conversationId: number
 }
 
 export const LcmExpandQueryTool = Tool.define<typeof parameters, LcmExpandQueryMetadata>("lcm_expand_query", {
@@ -79,11 +76,12 @@ export const LcmExpandQueryTool = Tool.define<typeof parameters, LcmExpandQueryM
           conversationId: resolved.conversationId,
           sourceSummaryCount: 0,
           sourceSummaryIds: [],
+          diagnostics: resolved.diagnostics,
           citedSummaryIds: [],
           expandedSummaryCount: 0,
           truncated: false,
         },
-        output: "No matching summaries were found for this query scope.",
+        output: buildNoMatchOutput(resolved.diagnostics),
       }
     }
 
@@ -120,6 +118,7 @@ export const LcmExpandQueryTool = Tool.define<typeof parameters, LcmExpandQueryM
         conversationId: resolved.conversationId,
         sourceSummaryCount: resolved.summaryIds.length,
         sourceSummaryIds: resolved.summaryIds,
+        diagnostics: resolved.diagnostics,
         citedSummaryIds: parsed.citedSummaryIds,
         expandedSummaryCount: parsed.expandedSummaryCount,
         truncated: parsed.truncated,
@@ -145,89 +144,26 @@ async function resolveSummaryCandidates(input: {
   query?: string
   requestedConversationId?: number
   sessionConversationId: number | null
-}): Promise<{ conversationId: number; summaryIds: string[] }> {
-  const candidates = new Map<string, SummaryCandidate>()
+}): Promise<{
+  conversationId: number
+  summaryIds: string[]
+  diagnostics: LcmRetrieval.QueryDiagnostic[]
+}> {
+  return LcmRetrievalFacade.resolveExpandQueryCandidates({
+    ...input,
+    queryLimit: DEFAULT_QUERY_LIMIT,
+  })
+}
 
-  if (input.requestedConversationId != null) {
-    for (const summaryId of input.explicitSummaryIds) {
-      const summary = await LcmDb.getSummaryById(summaryId, input.requestedConversationId)
-      if (!summary) {
-        throw new Error(
-          `Summary \"${summaryId}\" was not found in conversation ${input.requestedConversationId} or its ancestors.`,
-        )
-      }
-      candidates.set(summary.summary_id, {
-        summaryId: summary.summary_id,
-        conversationId: summary.conversation_id,
-      })
-    }
-  } else {
-    for (const summaryId of input.explicitSummaryIds) {
-      const summary = await LcmDb.getSummaryById(summaryId)
-      if (!summary) {
-        throw new Error(`Summary \"${summaryId}\" was not found.`)
-      }
-      candidates.set(summary.summary_id, {
-        summaryId: summary.summary_id,
-        conversationId: summary.conversation_id,
-      })
-    }
-  }
+function buildNoMatchOutput(diagnostics: LcmRetrieval.QueryDiagnostic[]): string {
+  if (diagnostics.length === 0) return "No matching summaries were found for this query scope."
 
-  if (input.query) {
-    if (input.requestedConversationId == null) {
-      throw new Error(
-        "A conversation scope is required for query-based expansion. Provide conversation_id or run this from a conversation session.",
-      )
-    }
-
-    const queryResults = await LcmDb.searchSummariesInLineage(
-      input.requestedConversationId,
-      input.query,
-      DEFAULT_QUERY_LIMIT,
-    )
-
-    for (const match of queryResults) {
-      candidates.set(match.summary_id, {
-        summaryId: match.summary_id,
-        conversationId: match.conversation_id,
-      })
-    }
-  }
-
-  if (candidates.size === 0) {
-    const conversationId = input.requestedConversationId ?? input.sessionConversationId
-    if (conversationId == null) {
-      throw new Error("Unable to resolve conversation scope for summary expansion.")
-    }
-    return {
-      conversationId,
-      summaryIds: [],
-    }
-  }
-
-  if (input.requestedConversationId != null) {
-    return {
-      conversationId: input.requestedConversationId,
-      summaryIds: Array.from(candidates.values())
-        .map((candidate) => candidate.summaryId)
-        .sort(),
-    }
-  }
-
-  const conversationIds = Array.from(new Set(Array.from(candidates.values()).map((candidate) => candidate.conversationId)))
-  if (conversationIds.length !== 1) {
-    throw new Error(
-      "Matched summaries span multiple conversations. Provide conversation_id to disambiguate expansion scope.",
-    )
-  }
-
-  return {
-    conversationId: conversationIds[0],
-    summaryIds: Array.from(candidates.values())
-      .map((candidate) => candidate.summaryId)
-      .sort(),
-  }
+  return [
+    "No matching summaries were found for this query scope.",
+    "",
+    "Diagnostics:",
+    ...diagnostics.map((diagnostic) => `- [${diagnostic.code}] ${diagnostic.message}`),
+  ].join("\n")
 }
 
 function buildDelegatedPrompt(input: { summaryIds: string[]; prompt: string; maxTokens: number }): string {

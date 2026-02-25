@@ -1,6 +1,8 @@
 - Answer a focused question using delegated LCM expansion
 - Accepts either summary IDs, a text query, or both
-- Resolves candidate summaries from the current conversation scope
+- Resolves candidate summaries through the active retrieval mode adapter
+- Dolt mode supports archive lineage traversal and off-context bindle recall
+- Upward mode is active-DAG only; off-context-only matches return explicit diagnostics with no results
 - Spawns a sub-agent that calls lcm_expand and returns a concise prompt-focused answer
 - Keeps expansion details out of the main context by delegating traversal
-- Returns cited summary IDs and expansion metadata for traceability
+- Returns cited summary IDs, diagnostics, and expansion metadata for traceability

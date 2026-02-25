@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
 import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../../src/session/lcm/config"
+import type { LcmDb } from "../../../src/session/lcm/db"
+import type { LcmRetrieval } from "../../../src/session/lcm/retrieval"
 import {
   getActiveLcmRuntimeStrategy,
   isThresholdCompactionInFlight,
@@ -41,6 +46,7 @@ function makeStubStrategy(input: {
       maxDistance: request.maxDistance,
       candidatesConsidered: 0,
       hits: [],
+      diagnostics: [],
     }),
   }
 }
@@ -147,5 +153,88 @@ describe("LCM runtime strategy", () => {
     await first
 
     expect(isThresholdCompactionInFlight(42)).toBe(false)
+  })
+
+  test("routes Dolt retrieval through the shared strategy entrypoint", async () => {
+    setLcmPolicyConfigForTesting(makePolicy("dolt"))
+    const strategy = getActiveLcmRuntimeStrategy()
+
+    const summaryId = "sum_00000000000000aa"
+    const db: LcmRetrieval.RetrievalDb = {
+      async getActiveContextSummaryIds() {
+        return []
+      },
+      async getOffContextSummaries() {
+        return [
+          {
+            summary_id: summaryId,
+            conversation_id: 501,
+            kind: "bindle",
+            summary_level: "bindle",
+            condensation_order: 2,
+            summary_type: "bindle",
+            content: "archived memory payload",
+            token_count: 12,
+            file_ids: [],
+            qmd_doc_id: null,
+            qmd_doc_version: null,
+            is_off_context: true,
+            created_at: new Date("2026-02-24T00:00:00.000Z"),
+          } satisfies LcmDb.Summary,
+        ]
+      },
+      async getSummaryParentIds() {
+        return []
+      },
+      async getSummaryLineagePointers() {
+        return []
+      },
+      async getSummaryLineageIds() {
+        return [summaryId]
+      },
+      async setSummaryQmdDocMapping() {},
+    }
+
+    const artifactsRoot = await fs.mkdtemp(path.join(os.tmpdir(), "lcm-strategy-retrieval-"))
+    try {
+      const result = await strategy.resolveRetrieval({
+        conversationId: 501,
+        query: "archived memory",
+        topK: 3,
+        db,
+        artifactsRoot,
+        qmdClient: {
+          async ensureCollection() {},
+          async updateIndex() {},
+          async embedIndex() {},
+          async vectorSearch() {
+            return [{ docid: "#a1", score: 0.93, file: "qmd://off-context-bindles/a1.md", title: summaryId }]
+          },
+        },
+      })
+
+      expect(result.hits.map((hit) => hit.summaryId)).toEqual([summaryId])
+      expect(result.diagnostics).toEqual([])
+    } finally {
+      await fs.rm(artifactsRoot, { recursive: true, force: true })
+    }
+  })
+
+  test("returns explicit no-result diagnostics for Upward off-context retrieval", async () => {
+    setLcmPolicyConfigForTesting(makePolicy("upward"))
+    const strategy = getActiveLcmRuntimeStrategy()
+
+    const result = await strategy.resolveRetrieval({
+      conversationId: 777,
+      query: "old archived memory",
+    })
+
+    expect(result.hits).toEqual([])
+    expect(result.candidatesConsidered).toBe(0)
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "off_context_unavailable",
+      }),
+    ])
   })
 })

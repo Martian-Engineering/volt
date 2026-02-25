@@ -4,7 +4,8 @@ import { Log } from "@/util/log"
 import { getLcmPolicyConfig, type LcmMode } from "./config"
 import { LcmContext } from "./context"
 import { LcmDb } from "./db"
-import { LcmRetrieval } from "./retrieval"
+import { LcmRetrievalFacade } from "./retrieval-facade"
+import type { LcmRetrieval } from "./retrieval"
 import { createDoltRuntimeStrategy } from "./strategy-dolt"
 
 const log = Log.create({ service: "lcm.strategy" })
@@ -69,7 +70,7 @@ const upwardStrategy: LcmRuntimeStrategy = {
   compactOnThreshold: (input) => LcmContext.onContextThresholdReached(input),
   compactManual: (input) => LcmContext.compactShortBindle(input),
   assembleContext: (conversationId) => LcmDb.getCurrentContext(conversationId),
-  resolveRetrieval: (input) => LcmRetrieval.queryOffContextBindles(input),
+  resolveRetrieval: (input) => LcmRetrievalFacade.resolveOffContextRetrieval(input, "upward"),
 }
 
 /**

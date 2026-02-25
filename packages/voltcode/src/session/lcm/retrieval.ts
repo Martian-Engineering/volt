@@ -20,6 +20,17 @@ export namespace LcmRetrieval {
   const log = Log.create({ service: "lcm.retrieval" })
   const MAX_CUE_LENGTH = 140
 
+  export type QueryDiagnosticCode = "off_context_unavailable" | "active_context_only"
+
+  /**
+   * Retrieval diagnostic emitted when a mode cannot satisfy a retrieval path.
+   */
+  export interface QueryDiagnostic {
+    code: QueryDiagnosticCode
+    message: string
+    summaryIds?: string[]
+  }
+
   /**
    * Query input for Dolt off-context bindle recall.
    */
@@ -58,6 +69,7 @@ export namespace LcmRetrieval {
     maxDistance?: number
     candidatesConsidered: number
     hits: QueryHit[]
+    diagnostics: QueryDiagnostic[]
   }
 
   /**
@@ -116,21 +128,15 @@ export namespace LcmRetrieval {
   export async function queryOffContextBindles(input: QueryInput): Promise<QueryResult> {
     const qmdClient = input.qmdClient ?? defaultQmdClient
     const db = input.db ?? LcmDb
-    const query = input.query.trim()
-    const topK = toPositiveInt(input.topK, LCM_RETRIEVAL_TOP_K)
-    const minScore = toUnitFloat(input.minScore, LCM_RETRIEVAL_MIN_SCORE)
-    const maxDistance = toOptionalNonNegativeFloat(input.maxDistance, LCM_RETRIEVAL_MAX_DISTANCE)
+    const envelope = buildResultEnvelope(input)
+    const query = envelope.query
+    const topK = envelope.topK
+    const minScore = envelope.minScore
+    const maxDistance = envelope.maxDistance
     const searchLimit = Math.max(topK * 4, 20)
 
     if (!query) {
-      return {
-        query,
-        topK,
-        minScore,
-        maxDistance,
-        candidatesConsidered: 0,
-        hits: [],
-      }
+      return emptyQueryResult(input)
     }
 
     const activeSummaryIds = new Set(await db.getActiveContextSummaryIds(input.conversationId))
@@ -147,14 +153,7 @@ export namespace LcmRetrieval {
     )
 
     if (candidates.length === 0) {
-      return {
-        query,
-        topK,
-        minScore,
-        maxDistance,
-        candidatesConsidered: 0,
-        hits: [],
-      }
+      return emptyQueryResult(input)
     }
 
     const indexName = `${LCM_RETRIEVAL_QMD_INDEX_PREFIX}-${input.conversationId}`
@@ -243,7 +242,37 @@ export namespace LcmRetrieval {
       maxDistance,
       candidatesConsidered: candidates.length,
       hits,
+      diagnostics: [],
     }
+  }
+
+  /**
+   * Return an empty query result with normalized envelope values.
+   */
+  export function emptyQueryResult(input: QueryInput, diagnostics: QueryDiagnostic[] = []): QueryResult {
+    const envelope = buildResultEnvelope(input)
+    return {
+      ...envelope,
+      candidatesConsidered: 0,
+      hits: [],
+      diagnostics: diagnostics.map((diagnostic) => ({
+        ...diagnostic,
+        summaryIds: diagnostic.summaryIds ? [...diagnostic.summaryIds] : undefined,
+      })),
+    }
+  }
+
+  /**
+   * Build the explicit no-result contract for modes that do not support
+   * off-context recall.
+   */
+  export function offContextUnavailableResult(input: QueryInput, message: string): QueryResult {
+    return emptyQueryResult(input, [
+      {
+        code: "off_context_unavailable",
+        message,
+      },
+    ])
   }
 
   async function syncRecallArtifacts(input: {
@@ -488,5 +517,19 @@ export namespace LcmRetrieval {
     if (score < 0) return 0
     if (score > 1) return 1
     return score
+  }
+
+  function buildResultEnvelope(input: QueryInput): {
+    query: string
+    topK: number
+    minScore: number
+    maxDistance?: number
+  } {
+    return {
+      query: input.query.trim(),
+      topK: toPositiveInt(input.topK, LCM_RETRIEVAL_TOP_K),
+      minScore: toUnitFloat(input.minScore, LCM_RETRIEVAL_MIN_SCORE),
+      maxDistance: toOptionalNonNegativeFloat(input.maxDistance, LCM_RETRIEVAL_MAX_DISTANCE),
+    }
   }
 }

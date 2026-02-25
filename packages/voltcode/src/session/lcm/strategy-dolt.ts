@@ -1,6 +1,6 @@
 import { LcmContext } from "./context"
 import { LcmDb } from "./db"
-import { LcmRetrieval } from "./retrieval"
+import { LcmRetrievalFacade } from "./retrieval-facade"
 import type { LcmRuntimeStrategy } from "./strategy"
 
 /**
@@ -15,6 +15,6 @@ export function createDoltRuntimeStrategy(): LcmRuntimeStrategy {
     compactOnThreshold: (input) => LcmContext.onContextThresholdReached(input),
     compactManual: (input) => LcmContext.compactShortBindle(input),
     assembleContext: (conversationId) => LcmDb.getCurrentContext(conversationId),
-    resolveRetrieval: (input) => LcmRetrieval.queryOffContextBindles(input),
+    resolveRetrieval: (input) => LcmRetrievalFacade.resolveOffContextRetrieval(input, "dolt"),
   }
 }
