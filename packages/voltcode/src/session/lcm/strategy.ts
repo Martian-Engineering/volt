@@ -68,14 +68,20 @@ export interface LcmRuntimeStrategy {
 const upwardStrategy: LcmRuntimeStrategy = {
   name: "upward",
   compactOnThreshold: async (input) => {
-    const threshold = await LcmContext.isOverThreshold({
+    const policy = getLcmPolicyConfig()
+    const tokenBudget = Math.max(0, input.contextWindow - input.overhead - input.reserve)
+    const contextThreshold = policy.runtime.defaultCtxCutoffThreshold
+    const threshold = Math.floor(contextThreshold * tokenBudget)
+    const currentTokens = await LcmDb.getContextTokenCount(input.conversationId)
+    const rawTokensOutsideTail = await LcmContext.countRawTokensOutsideFreshTail({
       conversationId: input.conversationId,
-      overhead: input.overhead,
-      reserve: input.reserve,
-      contextWindow: input.contextWindow,
-      softThresholdOverride: input.softThresholdOverride,
+      freshTailCount: policy.strategies.upward.leaves.freshTailFloor,
     })
-    if (!threshold.overSoft && !input.force) {
+    const leafChunkTokens = LcmContext.resolveUpwardLeafChunkTokens()
+    const thresholdTriggered = currentTokens > threshold
+    const leafTriggered = rawTokensOutsideTail >= leafChunkTokens
+
+    if (!input.force && !thresholdTriggered && !leafTriggered) {
       return {
         actionTaken: false,
         condensed: false,

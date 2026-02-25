@@ -164,6 +164,7 @@ export namespace LcmContext {
    * Each round attempts to reduce context size via lane-aware compaction.
    */
   export const MAX_COMPACTION_ROUNDS = getLcmPolicyConfig().runtime.maxCompactionRounds
+  export const DEFAULT_UPWARD_LEAF_CHUNK_TOKENS = 20_000
 
   /**
    * Result of the context threshold check and handling
@@ -393,6 +394,32 @@ export namespace LcmContext {
     }
 
     return messages
+  }
+
+  /**
+   * Resolve the upward leaf-trigger chunk token threshold.
+   */
+  export function resolveUpwardLeafChunkTokens(): number {
+    return DEFAULT_UPWARD_LEAF_CHUNK_TOKENS
+  }
+
+  /**
+   * Sum raw message tokens before the fresh-tail boundary.
+   *
+   * The fresh-tail boundary is based on the last `freshTailCount` raw messages
+   * in the active context.
+   */
+  export async function countRawTokensOutsideFreshTail(input: {
+    conversationId: number
+    freshTailCount: number
+  }): Promise<number> {
+    const freshTailCount = Math.max(0, Math.floor(input.freshTailCount))
+    const messages = await getMessagesInContext(input.conversationId)
+    const freshTailStart = Math.max(0, messages.length - freshTailCount)
+
+    return messages
+      .slice(0, freshTailStart)
+      .reduce((sum, message) => sum + Math.max(0, Math.floor(message.tokenCount)), 0)
   }
 
   /**

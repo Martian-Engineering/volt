@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting, type LcmMode } from "../../../src/session/lcm/config"
 import { Condense } from "../../../src/session/lcm/condense"
+import { LcmContext } from "../../../src/session/lcm/context"
 import { LcmDb } from "../../../src/session/lcm/db"
 import { isEmbeddedPostgresSupported } from "../../../src/session/lcm/embedded-postgres"
 import { ensureLcmReady } from "../../../src/session/lcm/runtime"
@@ -13,6 +14,7 @@ const isLcmAvailable = isEmbeddedPostgresSupported() && (await ensureLcmReady().
 const MATRIX_BINDLE_SOFT = "15"
 const MATRIX_BINDLE_DELTA = "1"
 const MATRIX_BINDLE_TARGET = "12"
+const UPWARD_LEAF_CHUNK_TOKENS = 20_000
 
 let summaryIdCounter = 0
 
@@ -188,6 +190,17 @@ async function seedComparableFixture(input: { conversationId: number; bindleCoun
   return { bindleIds }
 }
 
+async function appendLeafMessages(input: { conversationId: number; tokenCounts: number[] }) {
+  for (const [index, tokenCount] of input.tokenCounts.entries()) {
+    await LcmDb.appendMessage({
+      conversationId: input.conversationId,
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `matrix leaf ${index + 1}`,
+      tokenCount,
+    })
+  }
+}
+
 describe("session.lcm.cross-mode-matrix", () => {
   if (!isLcmAvailable) {
     test.skip("Embedded PostgreSQL not available, skipping cross-mode matrix tests", () => {})
@@ -243,7 +256,7 @@ describe("session.lcm.cross-mode-matrix", () => {
     expect(upwardShape).toEqual(doltShape)
   })
 
-  test("pressure-triggered compaction enforces ordering/live-tail and mode-specific ghost cue behavior", async () => {
+  test("pressure-triggered compaction enforces ordering/live-tail and Dolt ghost cue behavior", async () => {
     const originalCondense = Condense.condenseSummaries
     let syntheticCounter = 0
     ;(Condense as any).condenseSummaries = async (input: any) => {
@@ -273,49 +286,152 @@ describe("session.lcm.cross-mode-matrix", () => {
     }
 
     try {
-      for (const mode of ["dolt", "upward"] as const) {
-        setLcmPolicyConfigForTesting(makeMatrixPolicy(mode))
-        const conversationId = await createConversation(`[Test] Matrix threshold ${mode}`)
-        const seeded = await seedComparableFixture({ conversationId, bindleCount: 3 })
+      setLcmPolicyConfigForTesting(makeMatrixPolicy("dolt"))
+      const conversationId = await createConversation("[Test] Matrix threshold dolt")
+      const seeded = await seedComparableFixture({ conversationId, bindleCount: 3 })
+      const strategy = getActiveLcmRuntimeStrategy()
+      expect(strategy.name).toBe("dolt")
 
-        const strategy = getActiveLcmRuntimeStrategy()
-        expect(strategy.name).toBe(mode)
+      const result = await strategy.compactOnThreshold({
+        conversationId,
+        sessionID: "matrix-threshold-dolt",
+        user: makeCompactionUser("matrix-threshold-dolt"),
+        model: makeCompactionModel(),
+        overhead: 0,
+        reserve: 0,
+        contextWindow: 1000,
+      })
 
-        const result = await strategy.compactOnThreshold({
-          conversationId,
-          sessionID: `matrix-threshold-${mode}`,
-          user: makeCompactionUser(`matrix-threshold-${mode}`),
-          model: makeCompactionModel(),
-          overhead: 0,
-          reserve: 0,
-          contextWindow: 1000,
-        })
+      expect(result.actionTaken).toBe(true)
+      const context = await LcmDb.getCurrentContextWithRefs(conversationId)
+      assertLaneOrder(context)
+      assertLiveTailPreserved(context)
 
-        expect(result.actionTaken).toBe(true)
-        const context = await LcmDb.getCurrentContextWithRefs(conversationId)
-        assertLaneOrder(context)
-        assertLiveTailPreserved(context)
-
-        const conn = LcmDb.getConnection()
-        const archiveStubCount = await conn<{ count: number }[]>`
-          SELECT COUNT(*)::int AS count
-          FROM summaries
-          WHERE conversation_id = ${conversationId}
-            AND summary_type = 'archive_stub'
-        `
-
-        if (mode === "dolt") {
-          expect((result.evictedBindleIds ?? []).length).toBeGreaterThan(0)
-          expect(result.evictedBindleIds ?? []).toContain(seeded.bindleIds[0])
-          expect((result.archiveStubIds ?? []).length).toBeGreaterThan(0)
-          expect(archiveStubCount[0]?.count ?? 0).toBeGreaterThan(0)
-        } else {
-          expect((result.archiveStubIds ?? []).length).toBe(0)
-          expect(archiveStubCount[0]?.count ?? 0).toBe(0)
-        }
-      }
+      const conn = LcmDb.getConnection()
+      const archiveStubCount = await conn<{ count: number }[]>`
+        SELECT COUNT(*)::int AS count
+        FROM summaries
+        WHERE conversation_id = ${conversationId}
+          AND summary_type = 'archive_stub'
+      `
+      expect((result.evictedBindleIds ?? []).length).toBeGreaterThan(0)
+      expect(result.evictedBindleIds ?? []).toContain(seeded.bindleIds[0])
+      expect((result.archiveStubIds ?? []).length).toBeGreaterThan(0)
+      expect(archiveStubCount[0]?.count ?? 0).toBeGreaterThan(0)
     } finally {
       ;(Condense as any).condenseSummaries = originalCondense
+    }
+  })
+
+  test("upward threshold compacts when leaf trigger is true and threshold trigger is false", async () => {
+    setLcmPolicyConfigForTesting(makeMatrixPolicy("upward"))
+    const conversationId = await createConversation("[Test] Matrix upward leaf-trigger")
+    await appendLeafMessages({
+      conversationId,
+      tokenCounts: [10_000, 10_000, 1, 1, 1, 1],
+    })
+
+    const strategy = getActiveLcmRuntimeStrategy()
+    expect(strategy.name).toBe("upward")
+
+    const originalForcedRecursive = LcmContext.compactForcedRecursive
+    let forcedRecursiveCalls = 0
+    ;(LcmContext as any).compactForcedRecursive = async () => {
+      forcedRecursiveCalls += 1
+      return { actionTaken: true, condensed: true }
+    }
+
+    try {
+      const currentTokens = await LcmDb.getContextTokenCount(conversationId)
+      const threshold = Math.floor(0.6 * 100_000)
+      expect(currentTokens).toBeLessThanOrEqual(threshold)
+      expect(10_000 + 10_000).toBeGreaterThanOrEqual(UPWARD_LEAF_CHUNK_TOKENS)
+
+      const result = await strategy.compactOnThreshold({
+        conversationId,
+        sessionID: "matrix-upward-leaf-trigger",
+        user: makeCompactionUser("matrix-upward-leaf-trigger"),
+        model: makeCompactionModel(),
+        overhead: 0,
+        reserve: 0,
+        contextWindow: 100_000,
+      })
+
+      expect(result.actionTaken).toBe(true)
+      expect(forcedRecursiveCalls).toBe(1)
+    } finally {
+      ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
+    }
+  })
+
+  test("upward threshold does not compact when currentTokens equals threshold and leaf trigger is false", async () => {
+    setLcmPolicyConfigForTesting(makeMatrixPolicy("upward"))
+    const conversationId = await createConversation("[Test] Matrix upward threshold equals")
+    await appendLeafMessages({
+      conversationId,
+      tokenCounts: [100, 100, 100, 100, 100, 100],
+    })
+
+    const strategy = getActiveLcmRuntimeStrategy()
+    expect(strategy.name).toBe("upward")
+    const originalForcedRecursive = LcmContext.compactForcedRecursive
+    let forcedRecursiveCalls = 0
+    ;(LcmContext as any).compactForcedRecursive = async () => {
+      forcedRecursiveCalls += 1
+      return { actionTaken: true, condensed: true }
+    }
+
+    try {
+      const result = await strategy.compactOnThreshold({
+        conversationId,
+        sessionID: "matrix-upward-threshold-equals",
+        user: makeCompactionUser("matrix-upward-threshold-equals"),
+        model: makeCompactionModel(),
+        overhead: 0,
+        reserve: 0,
+        contextWindow: 1000,
+      })
+
+      expect(result.actionTaken).toBe(false)
+      expect(result.condensed).toBe(false)
+      expect(forcedRecursiveCalls).toBe(0)
+    } finally {
+      ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
+    }
+  })
+
+  test("upward threshold compacts when currentTokens is greater than threshold and leaf trigger is false", async () => {
+    setLcmPolicyConfigForTesting(makeMatrixPolicy("upward"))
+    const conversationId = await createConversation("[Test] Matrix upward threshold greater")
+    await appendLeafMessages({
+      conversationId,
+      tokenCounts: [100, 100, 100, 100, 100, 101],
+    })
+
+    const strategy = getActiveLcmRuntimeStrategy()
+    expect(strategy.name).toBe("upward")
+    const originalForcedRecursive = LcmContext.compactForcedRecursive
+    let forcedRecursiveCalls = 0
+    ;(LcmContext as any).compactForcedRecursive = async () => {
+      forcedRecursiveCalls += 1
+      return { actionTaken: true, condensed: true }
+    }
+
+    try {
+      const result = await strategy.compactOnThreshold({
+        conversationId,
+        sessionID: "matrix-upward-threshold-greater",
+        user: makeCompactionUser("matrix-upward-threshold-greater"),
+        model: makeCompactionModel(),
+        overhead: 0,
+        reserve: 0,
+        contextWindow: 66,
+      })
+
+      expect(result.actionTaken).toBe(true)
+      expect(forcedRecursiveCalls).toBe(1)
+    } finally {
+      ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
     }
   })
 
