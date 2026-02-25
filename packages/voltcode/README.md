@@ -263,6 +263,59 @@ What “recursive upward” means:
 - It stops naturally once a level lacks enough parents
 - It does not evict bindles to archive in this mode
 
+## Dual-Mode Operator Playbook
+
+### Mode Selection (Runnable)
+
+Run either mode explicitly from `packages/voltcode`:
+
+```bash
+# Dolt mode
+VOLTCODE_LCM_MODE=dolt bun test test/session/lcm/cross-mode-matrix.test.ts
+
+# Upward mode
+VOLTCODE_LCM_MODE=upward bun test test/session/lcm/cross-mode-matrix.test.ts
+```
+
+Both runs use the same deterministic matrix fixture and enforce mode-specific behavior instead of silent fallback.
+
+### Pressure, Hysteresis, and Minimum Tuning (Runnable)
+
+```bash
+# Example: tighten Dolt bindle hysteresis to force earlier compaction
+VOLTCODE_LCM_MODE=dolt \
+VOLTCODE_LCM_DOLT_BINDLES_SOFT=8000 \
+VOLTCODE_LCM_DOLT_BINDLES_DELTA=500 \
+VOLTCODE_LCM_DOLT_BINDLES_TARGET=7000 \
+VOLTCODE_LCM_DOLT_BINDLES_MIN_FANOUT=2 \
+bun test test/session/lcm/cross-mode-matrix.test.ts
+
+# Example: tighten Upward recursion thresholds
+VOLTCODE_LCM_MODE=upward \
+VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS=12000 \
+VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT=6 \
+VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT=4 \
+VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT_HARD=2 \
+VOLTCODE_LCM_UPWARD_CONDENSED_TARGET_TOKENS=1800 \
+bun test test/session/lcm/cross-mode-matrix.test.ts
+```
+
+### Behavioral Invariants and Intentional Mode Differences
+
+- Invariant (both modes): active context ordering remains `bindles -> sprigs -> leaves`.
+- Invariant (both modes): fresh live-tail leaves are preserved during compaction.
+- Dolt-only behavior: bindle eviction + ghost cue archival can occur under pressure.
+- Upward-only behavior: recursive condensation executes without bindle eviction.
+- Retrieval difference: Dolt supports off-context retrieval; Upward returns explicit `off_context_unavailable`.
+
+### Troubleshooting Mode Misconfiguration
+
+- Invalid mode value: startup fails fast with `VOLTCODE_LCM_MODE must be one of: dolt, upward`.
+- Unexpected Dolt behavior while expecting Upward: verify shell export with `echo "$VOLTCODE_LCM_MODE"`.
+- Unexpected Dolt behavior while expecting Upward: verify process env in the same shell where `bun` starts.
+- Retrieval returns empty in Upward: expected by design; check diagnostics for `off_context_unavailable`.
+- Ghost cues missing in Upward: expected by design; Upward hard-disables ghost cue archival.
+
 ## Lane Policy Semantics (Exact)
 
 For each lane (`leaves`, `sprigs`, `bindles`) policy has:
