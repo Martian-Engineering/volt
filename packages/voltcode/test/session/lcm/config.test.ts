@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { parseLcmPolicyConfig } from "../../../src/session/lcm/config"
 
 describe("parseLcmPolicyConfig", () => {
-  test("parses defaults with dolt mode and shared upward defaults", () => {
+  test("parses defaults with dolt mode and explicit upward controls", () => {
     const config = parseLcmPolicyConfig({})
 
     expect(config.mode).toBe("dolt")
@@ -41,9 +41,16 @@ describe("parseLcmPolicyConfig", () => {
       ...config.strategies.dolt,
       ghostCueArchiveEnabled: false,
     })
+    expect(config.upward).toEqual({
+      leafChunkTokens: 20000,
+      leafMinFanout: 8,
+      condensedMinFanout: 4,
+      condensedMinFanoutHard: 2,
+      condensedTargetTokens: 2000,
+    })
   })
 
-  test("supports mode and lane overrides with typed output shape", () => {
+  test("supports mode, lane, and upward override keys with typed output shape", () => {
     const config = parseLcmPolicyConfig({
       VOLTCODE_LCM_MODE: "upward",
       VOLTCODE_LCM_DEFAULT_CTX_CUTOFF_THRESHOLD: "0.7",
@@ -53,6 +60,11 @@ describe("parseLcmPolicyConfig", () => {
       VOLTCODE_LCM_UPWARD_BINDLES_DELTA: "2500",
       VOLTCODE_LCM_UPWARD_BINDLES_TARGET: "12000",
       VOLTCODE_LCM_UPWARD_BINDLES_MIN_FANOUT: "3",
+      VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS: "15000",
+      VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT: "6",
+      VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT: "5",
+      VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT_HARD: "3",
+      VOLTCODE_LCM_UPWARD_CONDENSED_TARGET_TOKENS: "2400",
     })
 
     expect(config.mode).toBe("upward")
@@ -67,6 +79,13 @@ describe("parseLcmPolicyConfig", () => {
       minFanout: 3,
     })
     expect(config.strategies.upward.ghostCueArchiveEnabled).toBe(false)
+    expect(config.upward).toEqual({
+      leafChunkTokens: 15000,
+      leafMinFanout: 6,
+      condensedMinFanout: 5,
+      condensedMinFanoutHard: 3,
+      condensedTargetTokens: 2400,
+    })
   })
 
   test("supports dolt ghost cue toggle while keeping upward ghost cue archival disabled", () => {
@@ -117,5 +136,25 @@ describe("parseLcmPolicyConfig", () => {
         VOLTCODE_LCM_DOLT_GHOST_CUE_ARCHIVE_ENABLED: "maybe",
       }),
     ).toThrow("VOLTCODE_LCM_DOLT_GHOST_CUE_ARCHIVE_ENABLED")
+  })
+
+  test("fails fast on invalid upward control values", () => {
+    expect(() =>
+      parseLcmPolicyConfig({
+        VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS: "0",
+      }),
+    ).toThrow("VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS")
+
+    expect(() =>
+      parseLcmPolicyConfig({
+        VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT: "-1",
+      }),
+    ).toThrow("VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT")
+
+    expect(() =>
+      parseLcmPolicyConfig({
+        VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT: "NaN",
+      }),
+    ).toThrow("VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT")
   })
 })

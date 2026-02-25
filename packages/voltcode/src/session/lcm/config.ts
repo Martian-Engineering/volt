@@ -151,10 +151,19 @@ export interface LcmRuntimePolicy {
   condenseMaxOutputTokens: number
 }
 
+export interface LcmUpwardPolicy {
+  leafChunkTokens: number
+  leafMinFanout: number
+  condensedMinFanout: number
+  condensedMinFanoutHard: number
+  condensedTargetTokens: number
+}
+
 export interface LcmPolicyConfig {
   mode: LcmMode
   runtime: LcmRuntimePolicy
   strategies: Record<LcmMode, LcmModePolicy>
+  upward: LcmUpwardPolicy
 }
 
 const DEFAULT_LCM_MODE: LcmMode = "dolt"
@@ -182,6 +191,12 @@ const DEFAULT_DOLT_LEAVES_FRESH_TAIL_FLOOR = 4
 const DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER = 0
 const DEFAULT_DOLT_GHOST_CUE_ARCHIVE_ENABLED = true
 const DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED = false
+const DEFAULT_UPWARD_LEAF_CHUNK_TOKENS = 20_000
+const DEFAULT_UPWARD_LEAF_MIN_FANOUT = 8
+const DEFAULT_UPWARD_CONDENSED_MIN_FANOUT = 4
+const DEFAULT_UPWARD_CONDENSED_MIN_FANOUT_HARD = 2
+const DEFAULT_UPWARD_CONDENSED_TARGET_TOKENS = 2_000
+const UPWARD_CONDENSED_MIN_INPUT_RATIO = 0.1
 
 /**
  * Parse LCM policy settings from env vars.
@@ -237,6 +252,34 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
     ),
   }
 
+  const upward: LcmUpwardPolicy = {
+    leafChunkTokens: readEnvPositiveInteger(
+      env,
+      "VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS",
+      DEFAULT_UPWARD_LEAF_CHUNK_TOKENS,
+    ),
+    leafMinFanout: readEnvPositiveInteger(
+      env,
+      "VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT",
+      DEFAULT_UPWARD_LEAF_MIN_FANOUT,
+    ),
+    condensedMinFanout: readEnvPositiveInteger(
+      env,
+      "VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT",
+      DEFAULT_UPWARD_CONDENSED_MIN_FANOUT,
+    ),
+    condensedMinFanoutHard: readEnvPositiveInteger(
+      env,
+      "VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT_HARD",
+      DEFAULT_UPWARD_CONDENSED_MIN_FANOUT_HARD,
+    ),
+    condensedTargetTokens: readEnvPositiveInteger(
+      env,
+      "VOLTCODE_LCM_UPWARD_CONDENSED_TARGET_TOKENS",
+      DEFAULT_UPWARD_CONDENSED_TARGET_TOKENS,
+    ),
+  }
+
   const doltDefaults: LcmModePolicy = {
     leaves: {
       soft: DEFAULT_DOLT_LEAVES_SOFT,
@@ -263,7 +306,7 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
   }
 
   const dolt = parseModePolicy(env, "DOLT", doltDefaults)
-  const upward = parseModePolicy(env, "UPWARD", {
+  const upwardModePolicy = parseModePolicy(env, "UPWARD", {
     ...dolt,
     ghostCueArchiveEnabled: DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED,
   })
@@ -273,8 +316,9 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
     runtime,
     strategies: {
       dolt,
-      upward,
+      upward: upwardModePolicy,
     },
+    upward,
   }
 }
 
@@ -293,6 +337,17 @@ export function getLcmPolicyConfig(): LcmPolicyConfig {
  */
 export function setLcmPolicyConfigForTesting(policy: LcmPolicyConfig | null): void {
   lcmPolicyConfigOverride = policy
+}
+
+/**
+ * Resolve the minimum summary-token floor for upward condensed passes.
+ *
+ * lossless-claw parity:
+ * minChunkTokens = max(condensedTargetTokens, floor(leafChunkTokens * 0.1))
+ */
+export function resolveUpwardCondensedMinChunkTokens(upward: LcmUpwardPolicy): number {
+  const ratioFloor = Math.floor(upward.leafChunkTokens * UPWARD_CONDENSED_MIN_INPUT_RATIO)
+  return Math.max(upward.condensedTargetTokens, ratioFloor)
 }
 
 function readPositiveInt(key: string, fallback: number): number {

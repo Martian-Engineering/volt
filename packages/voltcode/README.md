@@ -257,7 +257,9 @@ If unset, defaults to `dolt`. Invalid values fail fast.
 
 What “recursive upward” means:
 
-- Upward attempts condensation at each depth level while `minFanout` is satisfied
+- Upward leaf selection uses `VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS` as the raw chunk budget
+- Upward attempts condensation at each depth level while Upward fanout constraints are satisfied
+- Condensed chunk floor is derived as `minChunkTokens = max(condensedTargetTokens, floor(leafChunkTokens * 0.1))`
 - It stops naturally once a level lacks enough parents
 - It does not evict bindles to archive in this mode
 
@@ -310,7 +312,12 @@ Dolt lane defaults:
 
 Upward defaults:
 
-- inherits Dolt lane defaults unless `VOLTCODE_LCM_UPWARD_*` overrides are set
+- `leafChunkTokens=20000` (`VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS`)
+- `leafMinFanout=8` (`VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT`)
+- `condensedMinFanout=4` (`VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT`)
+- `condensedMinFanoutHard=2` (`VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT_HARD`)
+- `condensedTargetTokens=2000` (`VOLTCODE_LCM_UPWARD_CONDENSED_TARGET_TOKENS`)
+- `minChunkTokens = max(condensedTargetTokens, floor(leafChunkTokens * 0.1))`
 - `ghostCueArchiveEnabled=false` always
 
 Important runtime usage note:
@@ -515,6 +522,20 @@ URL precedence:
 | `VOLTCODE_LCM_MAX_COMPACTION_ROUNDS` | `10` | integer `>=1` |
 | `VOLTCODE_LCM_SUMMARY_MAX_OUTPUT_TOKENS` | `2200` | integer `>=1` |
 | `VOLTCODE_LCM_CONDENSE_MAX_OUTPUT_TOKENS` | `2200` | integer `>=1` |
+
+### Upward Recursive Controls (Exact)
+
+| Variable | Default | Type constraint |
+|---|---|---|
+| `VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS` | `20000` | integer `>0` |
+| `VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT` | `8` | integer `>0` |
+| `VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT` | `4` | integer `>0` |
+| `VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT_HARD` | `2` | integer `>0` |
+| `VOLTCODE_LCM_UPWARD_CONDENSED_TARGET_TOKENS` | `2000` | integer `>0` |
+
+Derived upward condensed floor:
+
+- `minChunkTokens = max(condensedTargetTokens, floor(leafChunkTokens * 0.1))`
 
 ### Per-Mode Lane Policy
 

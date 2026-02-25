@@ -6,7 +6,10 @@ import { LcmSummarize } from "./summarize"
 import { Condense } from "./condense"
 import { Summary } from "./summary"
 import { LcmGhostCue } from "./ghost-cue"
-import { getLcmPolicyConfig } from "./config"
+import {
+  getLcmPolicyConfig,
+  resolveUpwardCondensedMinChunkTokens as resolveUpwardCondensedMinChunkTokensFromConfig,
+} from "./config"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { TokenBudget } from "@/session/token-budget"
@@ -164,10 +167,6 @@ export namespace LcmContext {
    * Each round attempts to reduce context size via lane-aware compaction.
    */
   export const MAX_COMPACTION_ROUNDS = getLcmPolicyConfig().runtime.maxCompactionRounds
-  export const DEFAULT_UPWARD_LEAF_CHUNK_TOKENS = 20_000
-  export const DEFAULT_UPWARD_CONDENSED_TARGET_TOKENS = 900
-  const DEFAULT_UPWARD_CONDENSED_MIN_FANOUT_HARD = 2
-  const UPWARD_CONDENSED_MIN_INPUT_RATIO = 0.1
 
   /**
    * Result of the context threshold check and handling
@@ -415,7 +414,29 @@ export namespace LcmContext {
    * Resolve the upward leaf-trigger chunk token threshold.
    */
   export function resolveUpwardLeafChunkTokens(): number {
-    return DEFAULT_UPWARD_LEAF_CHUNK_TOKENS
+    return getLcmPolicyConfig().upward.leafChunkTokens
+  }
+
+  /**
+   * Resolve the minimum leaf count required for the first upward condensation pass.
+   */
+  export function resolveUpwardLeafMinFanout(): number {
+    return getLcmPolicyConfig().upward.leafMinFanout
+  }
+
+  /**
+   * Resolve the minimum fanout for upward condensed passes.
+   */
+  export function resolveUpwardCondensedMinFanout(hardTrigger: boolean = false): number {
+    const upward = getLcmPolicyConfig().upward
+    return hardTrigger ? upward.condensedMinFanoutHard : upward.condensedMinFanout
+  }
+
+  /**
+   * Resolve the minimum token floor for eligible upward condensed chunks.
+   */
+  export function resolveUpwardCondensedMinChunkTokens(): number {
+    return resolveUpwardCondensedMinChunkTokensFromConfig(getLcmPolicyConfig().upward)
   }
 
   /**
@@ -1363,7 +1384,6 @@ export namespace LcmContext {
         activeOrders,
         maxPositionExclusive: freshTailStartPosition,
         leafChunkTokens,
-        lanePolicy: initialThreshold.lanePolicy,
         hardTrigger,
         fanoutNoOpReasonForOrder,
         chunkTokenFloorNoOpReasonForOrder,
@@ -1500,31 +1520,17 @@ export namespace LcmContext {
     return summaries
   }
 
-  function resolveUpwardCondensedTargetTokens(): number {
-    return DEFAULT_UPWARD_CONDENSED_TARGET_TOKENS
-  }
-
-  function resolveUpwardCondensedMinFanoutHard(): number {
-    return DEFAULT_UPWARD_CONDENSED_MIN_FANOUT_HARD
-  }
-
   function resolveUpwardFanoutForDepth(input: {
     condensationOrder: number
-    lanePolicy: TokenBudget.DoltLanePolicy
     hardTrigger: boolean
   }): number {
     if (input.hardTrigger) {
-      return resolveUpwardCondensedMinFanoutHard()
+      return resolveUpwardCondensedMinFanout(true)
     }
     if (input.condensationOrder === 1) {
-      return input.lanePolicy.sprigs.minFanout
+      return resolveUpwardLeafMinFanout()
     }
-    return input.lanePolicy.bindles.minFanout
-  }
-
-  function resolveUpwardCondensedMinChunkTokens(leafChunkTokens: number): number {
-    const ratioFloor = Math.floor(leafChunkTokens * UPWARD_CONDENSED_MIN_INPUT_RATIO)
-    return Math.max(resolveUpwardCondensedTargetTokens(), ratioFloor)
+    return resolveUpwardCondensedMinFanout(false)
   }
 
   async function selectShallowestCondensationCandidate(input: {
@@ -1532,12 +1538,11 @@ export namespace LcmContext {
     activeOrders: number[]
     maxPositionExclusive: number
     leafChunkTokens: number
-    lanePolicy: TokenBudget.DoltLanePolicy
     hardTrigger: boolean
     fanoutNoOpReasonForOrder: (order: number) => string
     chunkTokenFloorNoOpReasonForOrder: (order: number) => string
   }): Promise<{ candidate: UpwardCondensedPhaseCandidate | null; noOpReason?: string }> {
-    const minChunkTokens = resolveUpwardCondensedMinChunkTokens(input.leafChunkTokens)
+    const minChunkTokens = resolveUpwardCondensedMinChunkTokens()
     let noOpReason: string | undefined
 
     for (const order of input.activeOrders) {
@@ -1571,7 +1576,6 @@ export namespace LcmContext {
 
       const fanout = resolveUpwardFanoutForDepth({
         condensationOrder: order,
-        lanePolicy: input.lanePolicy,
         hardTrigger: input.hardTrigger,
       })
       if (cappedSummaries.length < fanout) {
