@@ -11,6 +11,7 @@ import { createDoltRuntimeStrategy } from "./strategy-dolt"
 const log = Log.create({ service: "lcm.strategy" })
 
 type StrategyFactory = () => LcmRuntimeStrategy
+type UpwardSweepMode = LcmContext.UpwardSweepMode
 
 type StrategyFactories = Record<LcmMode, StrategyFactory>
 
@@ -80,6 +81,7 @@ const upwardStrategy: LcmRuntimeStrategy = {
     const leafChunkTokens = LcmContext.resolveUpwardLeafChunkTokens()
     const thresholdTriggered = currentTokens > threshold
     const leafTriggered = rawTokensOutsideTail >= leafChunkTokens
+    const sweepMode: UpwardSweepMode = input.force === true || currentTokens > tokenBudget ? "hard-trigger" : "normal"
 
     if (!input.force && !thresholdTriggered && !leafTriggered) {
       return {
@@ -87,9 +89,16 @@ const upwardStrategy: LcmRuntimeStrategy = {
         condensed: false,
       }
     }
-    return await LcmContext.compactForcedRecursive(input)
+    return await LcmContext.compactForcedRecursive({
+      ...input,
+      sweepMode,
+    })
   },
-  compactManual: (input) => LcmContext.compactForcedRecursive(input),
+  compactManual: (input) =>
+    LcmContext.compactForcedRecursive({
+      ...input,
+      sweepMode: "hard-trigger",
+    }),
   assembleContext: (conversationId) => LcmDb.getCurrentContext(conversationId),
   resolveRetrieval: (input) => LcmRetrievalFacade.resolveOffContextRetrieval(input, "upward"),
 }

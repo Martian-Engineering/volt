@@ -222,6 +222,8 @@ export namespace LcmContext {
     parentSummaries: ActiveSummaryForCompaction[]
   }
 
+  export type UpwardSweepMode = "normal" | "hard-trigger"
+
   function normalizeLaneCompactionState(
     state?: Partial<Record<TokenBudget.LaneName, boolean>> | null,
   ): LaneCompactionState {
@@ -1257,7 +1259,7 @@ export namespace LcmContext {
   }
 
   /**
-   * Manual recursive compaction flow used by `/compact` in upward mode.
+   * Shared upward full-sweep compaction flow.
    *
    * Steps:
    * 1. Summarize all eligible oldest leaves into one sprig (preserve fresh tail).
@@ -1277,6 +1279,7 @@ export namespace LcmContext {
     reserve: number
     contextWindow: number
     softThresholdOverride?: number
+    sweepMode?: UpwardSweepMode
   }): Promise<ContextHandlerResult> {
     const initialThreshold = await isOverThreshold({
       conversationId: input.conversationId,
@@ -1369,7 +1372,9 @@ export namespace LcmContext {
     const fanoutNoOpReasonForOrder = (order: number) => (order === 1 ? "sprigs_below_min_fanout" : `d${order}_below_min_fanout`)
     const chunkTokenFloorNoOpReasonForOrder = (order: number) =>
       order === 1 ? "sprigs_below_min_chunk_tokens" : `d${order}_below_min_chunk_tokens`
-    const hardTrigger = initialThreshold.overHard
+    const sweepMode: UpwardSweepMode =
+      input.sweepMode != null ? input.sweepMode : initialThreshold.overHard ? "hard-trigger" : "normal"
+    const hardTrigger = sweepMode === "hard-trigger"
 
     for (;;) {
       const messagesInContext = await getMessagesInContext(input.conversationId)
