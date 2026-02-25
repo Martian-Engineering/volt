@@ -1007,8 +1007,10 @@ export namespace SessionPrompt {
         } finally {
           LcmContext.clearCompactionState(input.sessionID)
         }
-      } else if (thresholdCheck.overSoft) {
-        // Tier 1 (soft threshold): schedule async compaction, proceed immediately
+      } else if (thresholdCheck.overSoft || strategy.name === "upward") {
+        // Tier 1 (soft threshold): schedule async compaction, proceed immediately.
+        // Upward parity with lossless-claw requires checking leaf-trigger compaction
+        // even when below soft threshold.
         const job = scheduleThresholdCompaction({
           conversationId,
           sessionID: input.sessionID,

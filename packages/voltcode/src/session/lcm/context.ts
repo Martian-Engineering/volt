@@ -539,6 +539,41 @@ export namespace LcmContext {
   }
 
   /**
+   * Resolve preceding summary text for Upward narrative continuity prompts.
+   *
+   * This reads active context order and collects summary content that appears
+   * before the new segment being summarized/condensed.
+   */
+  async function resolveUpwardPriorSummaryContext(input: {
+    conversationId: number
+    maxPositionExclusive: number
+    limit: number
+    lookbackCount?: number
+    condensationOrder?: number
+  }): Promise<string | undefined> {
+    const maxPositionExclusive = Math.floor(input.maxPositionExclusive)
+    const limit = Math.max(1, Math.floor(input.limit))
+    const lookbackCount = input.lookbackCount != null ? Math.max(1, Math.floor(input.lookbackCount)) : undefined
+    const contextEntries = await LcmDb.getCurrentContextWithRefs(input.conversationId)
+
+    const priorSummaries = contextEntries.filter((entry) => {
+      if (entry.position >= maxPositionExclusive) return false
+      if (entry.item_type !== "summary") return false
+      const content = entry.content.trim()
+      if (!content) return false
+      if (input.condensationOrder != null) {
+        return entry.condensation_order === input.condensationOrder
+      }
+      return true
+    })
+
+    const lookbackWindow = lookbackCount != null ? priorSummaries.slice(-lookbackCount) : priorSummaries
+    const selected = lookbackWindow.slice(-limit).map((entry) => entry.content.trim()).filter(Boolean)
+    if (selected.length < 1) return undefined
+    return selected.join("\n\n")
+  }
+
+  /**
    * Select the oldest leaf window for L0->L1 compaction while protecting a fresh tail.
    *
    * The selected window is a prefix of message leaves and never includes messages from the
@@ -1320,6 +1355,12 @@ export namespace LcmContext {
       const inputTokens = selectedMessages.reduce((sum, message) => sum + message.tokenCount, 0)
       const messagesToSummarize = await convertToMessageV2(selectedMessages)
       const dbMessageIds = selectedMessages.map((message) => message.messageId)
+      const chunkStartPosition = Math.min(...selectedMessages.map((message) => message.position))
+      const previousSummaryContext = await resolveUpwardPriorSummaryContext({
+        conversationId: input.conversationId,
+        maxPositionExclusive: chunkStartPosition,
+        limit: 2,
+      })
       const tokensBeforeLeafPass = await LcmDb.getContextTokenCount(input.conversationId)
       const sprigSummary = await LcmSummarize.summarize({
         messages: messagesToSummarize,
@@ -1327,20 +1368,10 @@ export namespace LcmContext {
         sessionID: input.sessionID,
         user: input.user,
         dbMessageIds,
+        previousSummaryContext,
         model: input.model,
         abort: input.abort,
       })
-
-      if (sprigSummary.tokenCount >= inputTokens) {
-        log.warn("upward recursive leaf summarization was not smaller than input; skipping leaf replacement", {
-          conversationId: input.conversationId,
-          inputTokens,
-          summaryTokens: sprigSummary.tokenCount,
-          selectedMessages: selectedMessages.length,
-        })
-        noOpReasons.push("leaf_summary_not_smaller_than_input")
-        break
-      }
 
       await LcmDb.replacePositionsWithSummary({
         conversationId: input.conversationId,
@@ -1406,6 +1437,8 @@ export namespace LcmContext {
       const condensationResult = await attemptCondensationForOrder({
         input,
         parentSummaries: candidate.parentSummaries,
+        includePriorSummaryContext: true,
+        skipSizeGuard: true,
       })
       if (!condensationResult.actionTaken) {
         noOpReasons.push(
@@ -1612,6 +1645,12 @@ export namespace LcmContext {
       abort?: AbortSignal
     }
     parentSummaries: ActiveSummaryForCompaction[]
+    includePriorSummaryContext?: boolean
+    /**
+     * Upward parity mode: allow non-shrinking replacements and rely on sweep
+     * progression + budget guards instead of an early size gate.
+     */
+    skipSizeGuard?: boolean
   }): Promise<ContextHandlerResult> {
     if (input.parentSummaries.length < 1) {
       return { actionTaken: false, condensed: false }
@@ -1620,6 +1659,15 @@ export namespace LcmContext {
     const parentOrder = input.parentSummaries[0]!.condensationOrder
     const condensationOrder = parentOrder + 1
     const inputTokens = input.parentSummaries.reduce((sum, summary) => sum + summary.tokenCount, 0)
+    const previousSummaryContext = input.includePriorSummaryContext === true
+      ? await resolveUpwardPriorSummaryContext({
+          conversationId: input.input.conversationId,
+          maxPositionExclusive: Math.min(...input.parentSummaries.map((summary) => summary.position)),
+          lookbackCount: 4,
+          limit: 2,
+          condensationOrder: parentOrder,
+        })
+      : undefined
 
     log.debug("attemptCondensationForOrder", {
       conversationId: input.input.conversationId,
@@ -1636,10 +1684,11 @@ export namespace LcmContext {
       dbConversationId: input.input.conversationId,
       model: input.input.model,
       condensationOrder,
+      previousSummaryContext,
       abort: input.input.abort,
     })
 
-    if (bindleSummary.tokenCount >= inputTokens) {
+    if (input.skipSizeGuard !== true && bindleSummary.tokenCount >= inputTokens) {
       log.warn("condensation not smaller than input; skipping condensation round", {
         conversationId: input.input.conversationId,
         parentOrder,

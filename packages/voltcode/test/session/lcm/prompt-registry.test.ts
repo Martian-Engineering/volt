@@ -149,6 +149,42 @@ describe("session.lcm.prompt-registry", () => {
     expect(userMessage?.content).toContain("Do not continue or answer the source material directly.")
   })
 
+  test("summarize request can include preceding chain summaries for continuity", () => {
+    const summarizeRequest = createSummarizeLlmRequest({
+      model: testModel,
+      promptTemplate: "prompt",
+      previousSummaryContext: "Earlier summary A\n\nEarlier summary B",
+      formattedMessages: "[Message lcm_msg_2] (assistant)\nnew work",
+    })
+
+    const userMessage = summarizeRequest.messages?.[1]
+    expect(userMessage?.role).toBe("user")
+    expect(typeof userMessage?.content).toBe("string")
+    expect(userMessage?.content).toContain("The preceding summaries in this chain are as follows:")
+    expect(userMessage?.content).toContain("<preceding_summaries>")
+    expect(userMessage?.content).toContain("Earlier summary A")
+    expect(userMessage?.content).toContain("The new segment is:")
+    expect(userMessage?.content).toContain("Summarize only the new segment while maintaining narrative continuity")
+  })
+
+  test("condense request can include preceding chain summaries for continuity", () => {
+    const condenseRequest = createCondenseLlmRequest({
+      model: testModel,
+      promptTemplate: "prompt",
+      previousSummaryContext: "Earlier d2 node",
+      userMessage: "## Summaries to Condense\n\n--- Summary sum_2 ---\nbeta",
+    })
+
+    const userMessage = condenseRequest.messages?.[1]
+    expect(userMessage?.role).toBe("user")
+    expect(typeof userMessage?.content).toBe("string")
+    expect(userMessage?.content).toContain("The preceding summaries in this chain are as follows:")
+    expect(userMessage?.content).toContain("<preceding_summaries>")
+    expect(userMessage?.content).toContain("Earlier d2 node")
+    expect(userMessage?.content).toContain("The new segment is:")
+    expect(userMessage?.content).toContain("Summarize only the new segment while maintaining narrative continuity")
+  })
+
   test("ghost cue request frames bindle content as source material and reiterates summarize intent", () => {
     const ghostCueRequest = createGhostCueLlmRequest({
       model: testModel,

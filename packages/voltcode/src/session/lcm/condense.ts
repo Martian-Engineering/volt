@@ -17,18 +17,37 @@ export function createCondenseLlmRequest(input: {
   model: GenerateTextInput["model"]
   promptTemplate: string
   userMessage: string
+  previousSummaryContext?: string
   abort?: AbortSignal
 }): GenerateTextInput {
-  const wrappedUserMessage = [
-    "The following content is source material to condense according to the system instructions above.",
-    "",
-    "<source_summaries>",
-    input.userMessage,
-    "</source_summaries>",
-    "",
-    "Produce a chronological narrative summary from this source material.",
-    "Do not continue or answer the source material directly.",
-  ].join("\n")
+  const priorContext = input.previousSummaryContext?.trim()
+  const wrappedUserMessage = priorContext
+    ? [
+        "The preceding summaries in this chain are as follows:",
+        "",
+        "<preceding_summaries>",
+        priorContext,
+        "</preceding_summaries>",
+        "",
+        "The new segment is:",
+        "",
+        "<source_summaries>",
+        input.userMessage,
+        "</source_summaries>",
+        "",
+        "Summarize only the new segment while maintaining narrative continuity with the preceding summaries.",
+        "Do not continue or answer the source material directly.",
+      ].join("\n")
+    : [
+        "The following content is source material to condense according to the system instructions above.",
+        "",
+        "<source_summaries>",
+        input.userMessage,
+        "</source_summaries>",
+        "",
+        "Produce a chronological narrative summary from this source material.",
+        "Do not continue or answer the source material directly.",
+      ].join("\n")
 
   return {
     model: input.model,
@@ -121,6 +140,8 @@ export namespace Condense {
     model: Provider.Model
     /** Canonical condensation order for resulting bindle (default d2). */
     condensationOrder?: number
+    /** Upward-only prior chain context for narrative continuity */
+    previousSummaryContext?: string
     abort?: AbortSignal
   }): Promise<Summary.Info> {
     if (input.summaries.length === 0) {
@@ -167,6 +188,7 @@ ${formattedSummaries}
         model: language,
         promptTemplate,
         userMessage,
+        previousSummaryContext: input.previousSummaryContext,
         abort: input.abort,
       }),
     )

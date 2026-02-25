@@ -152,6 +152,8 @@ export interface LcmRuntimePolicy {
 }
 
 export interface LcmUpwardPolicy {
+  contextThreshold: number
+  freshTailCount: number
   leafChunkTokens: number
   leafMinFanout: number
   condensedMinFanout: number
@@ -191,6 +193,8 @@ const DEFAULT_DOLT_LEAVES_FRESH_TAIL_FLOOR = 4
 const DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER = 0
 const DEFAULT_DOLT_GHOST_CUE_ARCHIVE_ENABLED = true
 const DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED = false
+const DEFAULT_UPWARD_CONTEXT_THRESHOLD = 0.75
+const DEFAULT_UPWARD_FRESH_TAIL_COUNT = 32
 const DEFAULT_UPWARD_LEAF_CHUNK_TOKENS = 20_000
 const DEFAULT_UPWARD_LEAF_MIN_FANOUT = 8
 const DEFAULT_UPWARD_CONDENSED_MIN_FANOUT = 4
@@ -253,6 +257,17 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
   }
 
   const upward: LcmUpwardPolicy = {
+    contextThreshold: readEnvUnitFloat(
+      env,
+      "VOLTCODE_LCM_UPWARD_CONTEXT_THRESHOLD",
+      DEFAULT_UPWARD_CONTEXT_THRESHOLD,
+    ),
+    freshTailCount: readEnvIntegerAtLeast(
+      env,
+      "VOLTCODE_LCM_UPWARD_FRESH_TAIL_COUNT",
+      DEFAULT_UPWARD_FRESH_TAIL_COUNT,
+      1,
+    ),
     leafChunkTokens: readEnvPositiveInteger(
       env,
       "VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS",
@@ -308,6 +323,10 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
   const dolt = parseModePolicy(env, "DOLT", doltDefaults)
   const upwardModePolicy = parseModePolicy(env, "UPWARD", {
     ...dolt,
+    leaves: {
+      ...dolt.leaves,
+      freshTailFloor: upward.freshTailCount,
+    },
     ghostCueArchiveEnabled: DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED,
   })
 

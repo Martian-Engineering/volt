@@ -11,7 +11,6 @@ import { createDoltRuntimeStrategy } from "./strategy-dolt"
 const log = Log.create({ service: "lcm.strategy" })
 
 type StrategyFactory = () => LcmRuntimeStrategy
-type UpwardSweepMode = LcmContext.UpwardSweepMode
 
 type StrategyFactories = Record<LcmMode, StrategyFactory>
 
@@ -71,17 +70,17 @@ const upwardStrategy: LcmRuntimeStrategy = {
   compactOnThreshold: async (input) => {
     const policy = getLcmPolicyConfig()
     const tokenBudget = Math.max(0, input.contextWindow - input.overhead - input.reserve)
-    const contextThreshold = policy.runtime.defaultCtxCutoffThreshold
-    const threshold = Math.floor(contextThreshold * tokenBudget)
+    const threshold = input.softThresholdOverride != null
+      ? Math.max(0, Math.min(tokenBudget, Math.floor(input.softThresholdOverride - input.overhead)))
+      : Math.floor(policy.upward.contextThreshold * tokenBudget)
     const currentTokens = await LcmDb.getContextTokenCount(input.conversationId)
     const rawTokensOutsideTail = await LcmContext.countRawTokensOutsideFreshTail({
       conversationId: input.conversationId,
-      freshTailCount: policy.strategies.upward.leaves.freshTailFloor,
+      freshTailCount: policy.upward.freshTailCount,
     })
     const leafChunkTokens = LcmContext.resolveUpwardLeafChunkTokens()
     const thresholdTriggered = currentTokens > threshold
     const leafTriggered = rawTokensOutsideTail >= leafChunkTokens
-    const sweepMode: UpwardSweepMode = input.force === true || currentTokens > tokenBudget ? "hard-trigger" : "normal"
 
     if (!input.force && !thresholdTriggered && !leafTriggered) {
       return {
@@ -91,13 +90,13 @@ const upwardStrategy: LcmRuntimeStrategy = {
     }
     return await LcmContext.compactForcedRecursive({
       ...input,
-      sweepMode,
+      sweepMode: "normal",
     })
   },
   compactManual: (input) =>
     LcmContext.compactForcedRecursive({
       ...input,
-      sweepMode: "hard-trigger",
+      sweepMode: "normal",
     }),
   assembleContext: (conversationId) => LcmDb.getCurrentContext(conversationId),
   resolveRetrieval: (input) => LcmRetrievalFacade.resolveOffContextRetrieval(input, "upward"),
@@ -183,7 +182,9 @@ export async function compactUntilUnderHardLimit(input: ThresholdCompactionInput
     softThresholdOverride: input.softThresholdOverride,
   })
 
-  if (initialCheck.currentTokens <= initialCheck.hardLimit) {
+  // Parity with lossless-claw: when tokens are exactly at hard limit,
+  // still attempt compaction to create headroom for provider-side framing.
+  if (initialCheck.currentTokens < initialCheck.hardLimit) {
     return {
       success: true,
       rounds: 0,

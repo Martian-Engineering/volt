@@ -47,6 +47,7 @@ function makeMatrixPolicy(mode: LcmMode) {
     VOLTCODE_LCM_UPWARD_BINDLES_SOFT: MATRIX_BINDLE_SOFT,
     VOLTCODE_LCM_UPWARD_BINDLES_DELTA: MATRIX_BINDLE_DELTA,
     VOLTCODE_LCM_UPWARD_BINDLES_TARGET: MATRIX_BINDLE_TARGET,
+    VOLTCODE_LCM_UPWARD_FRESH_TAIL_COUNT: "2",
   })
 }
 
@@ -350,7 +351,7 @@ describe("session.lcm.cross-mode-matrix", () => {
 
     try {
       const currentTokens = await LcmDb.getContextTokenCount(conversationId)
-      const threshold = Math.floor(0.6 * 100_000)
+      const threshold = Math.floor(0.75 * 100_000)
       expect(currentTokens).toBeLessThanOrEqual(threshold)
       expect(10_000 + 10_000).toBeGreaterThanOrEqual(UPWARD_LEAF_CHUNK_TOKENS)
 

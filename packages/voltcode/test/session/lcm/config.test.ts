@@ -39,9 +39,15 @@ describe("parseLcmPolicyConfig", () => {
 
     expect(config.strategies.upward).toEqual({
       ...config.strategies.dolt,
+      leaves: {
+        ...config.strategies.dolt.leaves,
+        freshTailFloor: 32,
+      },
       ghostCueArchiveEnabled: false,
     })
     expect(config.upward).toEqual({
+      contextThreshold: 0.75,
+      freshTailCount: 32,
       leafChunkTokens: 20000,
       leafMinFanout: 8,
       condensedMinFanout: 4,
@@ -65,6 +71,8 @@ describe("parseLcmPolicyConfig", () => {
       VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT: "5",
       VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT_HARD: "3",
       VOLTCODE_LCM_UPWARD_CONDENSED_TARGET_TOKENS: "2400",
+      VOLTCODE_LCM_UPWARD_CONTEXT_THRESHOLD: "0.65",
+      VOLTCODE_LCM_UPWARD_FRESH_TAIL_COUNT: "12",
     })
 
     expect(config.mode).toBe("upward")
@@ -80,6 +88,8 @@ describe("parseLcmPolicyConfig", () => {
     })
     expect(config.strategies.upward.ghostCueArchiveEnabled).toBe(false)
     expect(config.upward).toEqual({
+      contextThreshold: 0.65,
+      freshTailCount: 12,
       leafChunkTokens: 15000,
       leafMinFanout: 6,
       condensedMinFanout: 5,

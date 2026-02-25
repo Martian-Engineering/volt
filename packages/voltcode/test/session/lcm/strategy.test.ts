@@ -4,7 +4,7 @@ import os from "os"
 import path from "path"
 import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../../src/session/lcm/config"
 import { LcmContext } from "../../../src/session/lcm/context"
-import type { LcmDb } from "../../../src/session/lcm/db"
+import { LcmDb } from "../../../src/session/lcm/db"
 import type { LcmRetrieval } from "../../../src/session/lcm/retrieval"
 import {
   getActiveLcmRuntimeStrategy,
@@ -157,33 +157,26 @@ describe("LCM runtime strategy", () => {
     expect(doltManualCalls).toBe(0)
   })
 
-  test("routes upward threshold compaction through forced-recursive handler", async () => {
+  test("routes upward threshold compaction through forced-recursive handler in normal sweep mode", async () => {
     setLcmRuntimeStrategyFactoriesForTesting(null)
     setLcmPolicyConfigForTesting(makePolicy("upward"))
 
-    const originalIsOverThreshold = LcmContext.isOverThreshold
     const originalForcedRecursive = LcmContext.compactForcedRecursive
-    const originalDoltThreshold = LcmContext.onContextThresholdReached
+    const originalCountRawTokensOutsideFreshTail = LcmContext.countRawTokensOutsideFreshTail
+    const originalGetContextTokenCount = LcmDb.getContextTokenCount
     let forcedRecursiveCalls = 0
-    let doltThresholdCalls = 0
+    let observedSweepMode: string | undefined
+    let observedFreshTailCount: number | undefined
 
-    ;(LcmContext as any).isOverThreshold = async () => ({
-      overHard: false,
-      overSoft: true,
-      currentTokens: 1200,
-      hardLimit: 1000,
-      softThreshold: 600,
-      lanePolicy: {} as any,
-      laneTokens: {} as any,
-      laneDecisions: {} as any,
-    })
-    ;(LcmContext as any).compactForcedRecursive = async () => {
-      forcedRecursiveCalls += 1
-      return { actionTaken: true, condensed: true }
+    ;(LcmDb as any).getContextTokenCount = async () => 1200
+    ;(LcmContext as any).countRawTokensOutsideFreshTail = async (input: any) => {
+      observedFreshTailCount = input.freshTailCount
+      return 0
     }
-    ;(LcmContext as any).onContextThresholdReached = async () => {
-      doltThresholdCalls += 1
-      return { actionTaken: true, condensed: false }
+    ;(LcmContext as any).compactForcedRecursive = async (input: any) => {
+      forcedRecursiveCalls += 1
+      observedSweepMode = input.sweepMode
+      return { actionTaken: true, condensed: true }
     }
 
     try {
@@ -197,11 +190,48 @@ describe("LCM runtime strategy", () => {
       expect(strategy.name).toBe("upward")
       expect(result.condensed).toBe(true)
       expect(forcedRecursiveCalls).toBe(1)
-      expect(doltThresholdCalls).toBe(0)
+      expect(observedSweepMode).toBe("normal")
+      expect(observedFreshTailCount).toBe(32)
     } finally {
-      ;(LcmContext as any).isOverThreshold = originalIsOverThreshold
+      ;(LcmDb as any).getContextTokenCount = originalGetContextTokenCount
       ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
-      ;(LcmContext as any).onContextThresholdReached = originalDoltThreshold
+      ;(LcmContext as any).countRawTokensOutsideFreshTail = originalCountRawTokensOutsideFreshTail
+    }
+  })
+
+  test("upward threshold compaction also triggers from leaf pressure below soft threshold", async () => {
+    setLcmRuntimeStrategyFactoriesForTesting(null)
+    setLcmPolicyConfigForTesting(makePolicy("upward"))
+
+    const originalForcedRecursive = LcmContext.compactForcedRecursive
+    const originalCountRawTokensOutsideFreshTail = LcmContext.countRawTokensOutsideFreshTail
+    const originalResolveLeafChunkTokens = LcmContext.resolveUpwardLeafChunkTokens
+    const originalGetContextTokenCount = LcmDb.getContextTokenCount
+
+    let forcedRecursiveCalls = 0
+    ;(LcmDb as any).getContextTokenCount = async () => 100
+    ;(LcmContext as any).resolveUpwardLeafChunkTokens = () => 50
+    ;(LcmContext as any).countRawTokensOutsideFreshTail = async () => 50
+    ;(LcmContext as any).compactForcedRecursive = async (input: any) => {
+      forcedRecursiveCalls += 1
+      expect(input.sweepMode).toBe("normal")
+      return { actionTaken: true, condensed: true }
+    }
+
+    try {
+      const strategy = getActiveLcmRuntimeStrategy()
+      await strategy.compactOnThreshold({
+        conversationId: 55,
+        overhead: 0,
+        reserve: 0,
+        contextWindow: 1000,
+      } as any)
+      expect(forcedRecursiveCalls).toBe(1)
+    } finally {
+      ;(LcmDb as any).getContextTokenCount = originalGetContextTokenCount
+      ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
+      ;(LcmContext as any).countRawTokensOutsideFreshTail = originalCountRawTokensOutsideFreshTail
+      ;(LcmContext as any).resolveUpwardLeafChunkTokens = originalResolveLeafChunkTokens
     }
   })
 

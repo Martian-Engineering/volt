@@ -243,7 +243,7 @@ describe("session.lcm.upward-hard-trigger-parity", () => {
     }
   })
 
-  test("manual /compact and hard-limit forced round both execute hard-trigger sweep mode", async () => {
+  test("manual /compact and hard-limit forced round both execute normal sweep mode", async () => {
     setLcmPolicyConfigForTesting(makeUpwardPolicyForHardTriggerParity())
 
     const originalForcedRecursive = LcmContext.compactForcedRecursive
@@ -317,7 +317,7 @@ describe("session.lcm.upward-hard-trigger-parity", () => {
 
       expect(hardLimitResult.success).toBe(true)
       expect(hardLimitResult.rounds).toBe(1)
-      expect(sweepModes).toEqual(["hard-trigger", "hard-trigger"])
+      expect(sweepModes).toEqual(["normal", "normal"])
     } finally {
       ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
       ;(LcmContext as any).isOverThreshold = originalIsOverThreshold

@@ -17,18 +17,37 @@ export function createSummarizeLlmRequest(input: {
   model: GenerateTextInput["model"]
   promptTemplate: string
   formattedMessages: string
+  previousSummaryContext?: string
   abort?: AbortSignal
 }): GenerateTextInput {
-  const userMessage = [
-    "The following content is source material to summarize according to the system instructions above.",
-    "",
-    "<messages>",
-    input.formattedMessages,
-    "</messages>",
-    "",
-    "Produce a chronological narrative summary of this source material.",
-    "Do not continue or answer the source conversation directly.",
-  ].join("\n")
+  const priorContext = input.previousSummaryContext?.trim()
+  const userMessage = priorContext
+    ? [
+        "The preceding summaries in this chain are as follows:",
+        "",
+        "<preceding_summaries>",
+        priorContext,
+        "</preceding_summaries>",
+        "",
+        "The new segment is:",
+        "",
+        "<messages>",
+        input.formattedMessages,
+        "</messages>",
+        "",
+        "Summarize only the new segment while maintaining narrative continuity with the preceding summaries.",
+        "Do not continue or answer the source conversation directly.",
+      ].join("\n")
+    : [
+        "The following content is source material to summarize according to the system instructions above.",
+        "",
+        "<messages>",
+        input.formattedMessages,
+        "</messages>",
+        "",
+        "Produce a chronological narrative summary of this source material.",
+        "Do not continue or answer the source conversation directly.",
+      ].join("\n")
 
   return {
     model: input.model,
@@ -94,6 +113,8 @@ export namespace LcmSummarize {
     dbMessageIds?: number[]
     /** Model to use for summarization (if not provided, uses compaction agent or user model) */
     model?: Provider.Model
+    /** Upward-only prior chain context for narrative continuity */
+    previousSummaryContext?: string
     /** Abort signal for cancellation */
     abort?: AbortSignal
   }): Promise<Summary.WithMessages> {
@@ -129,6 +150,7 @@ export namespace LcmSummarize {
         model: language,
         promptTemplate,
         formattedMessages,
+        previousSummaryContext: input.previousSummaryContext,
         abort: input.abort,
       }),
     )
