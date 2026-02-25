@@ -88,6 +88,8 @@ import "opentui-spinner/solid"
 
 addDefaultParsers(parsers.parsers)
 
+const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_grep", "lcm_read"]
+
 class CustomSpeedScroll implements ScrollAcceleration {
   constructor(private speed: number) {}
 
@@ -1558,9 +1560,6 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const { theme } = useTheme()
   const ctx = use()
 
-  // Internal LCM tools that are always hidden (not in dev mode)
-  const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_grep", "lcm_read"]
-
   // Check if there are hidden tools with no visible content
   const hasHiddenToolsOnly = createMemo(() => {
     // Check if there are any tool parts
@@ -1583,6 +1582,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
       .filter((p) => p.type === "tool")
       .every((p) => {
         const toolPart = p as ToolPart
+        // See LCM_INTERNAL_TOOLS definition above
         // Internal LCM tools are always hidden when not in dev mode
         if (!ctx.devMode() && LCM_INTERNAL_TOOLS.includes(toolPart.tool)) return true
         // Other tools are hidden when showDetails=false and completed
@@ -1836,12 +1836,10 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
   const ctx = use()
   const sync = useSync()
 
-  // Internal LCM tools that should only be visible in dev mode
-  const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_grep", "lcm_read"]
-
   // Hide tool if showDetails is false and tool completed successfully
   // Hide internal LCM tools (lcm_expand, lcm_grep) when not in dev mode
   const shouldHide = createMemo(() => {
+    // See LCM_INTERNAL_TOOLS definition above
     // Hide internal LCM tools when not in dev mode
     if (!ctx.devMode() && LCM_INTERNAL_TOOLS.includes(props.part.tool)) return true
     if (ctx.showDetails()) return false
