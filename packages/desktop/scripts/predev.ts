@@ -6,7 +6,7 @@ const RUST_TARGET = Bun.env.TAURI_ENV_TARGET_TRIPLE
 
 const sidecarConfig = getCurrentSidecar(RUST_TARGET)
 
-const binaryPath = windowsify(`../voltcode/dist/${sidecarConfig.ocBinary}/bin/voltcode`)
+const binaryPath = windowsify(`../voltcode/dist/${sidecarConfig.ocBinary}/bin/volt`)
 
 await $`cd ../voltcode && bun run build --single`
 

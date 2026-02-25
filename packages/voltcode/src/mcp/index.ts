@@ -383,7 +383,7 @@ export namespace MCP {
               // Show toast for needs_auth
               Bus.publish(TuiEvent.ToastShow, {
                 title: "MCP Authentication Required",
-                message: `Server "${key}" requires authentication. Run: voltcode mcp auth ${key}`,
+                message: `Server "${key}" requires authentication. Run: volt mcp auth ${key}`,
                 variant: "warning",
                 duration: 8000,
               }).catch((e) => log.debug("failed to show toast", { error: e }))
@@ -415,7 +415,7 @@ export namespace MCP {
         cwd,
         env: {
           ...process.env,
-          ...(cmd === "voltcode" ? { BUN_BE_BUN: "1" } : {}),
+          ...(cmd === "volt" ? { BUN_BE_BUN: "1" } : {}),
           ...mcp.environment,
         },
       })

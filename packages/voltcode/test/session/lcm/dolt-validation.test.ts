@@ -212,6 +212,19 @@ describe("dolt v1 validation suite", () => {
       async getSummaryLineageIds(summaryId) {
         return [summaryId]
       },
+      async getLeafMessagesForSummary(summaryId) {
+        return [
+          {
+            message_id: summaryId === bindleA ? 8201 : 8202,
+            conversation_id: 1001,
+            seq: summaryId === bindleA ? 1 : 2,
+            role: "user",
+            content: `leaf memory for ${summaryId}`,
+            token_count: 8,
+            created_at: new Date("2026-02-24T00:00:00.000Z"),
+          },
+        ]
+      },
       async setSummaryQmdDocMapping() {},
     }
 

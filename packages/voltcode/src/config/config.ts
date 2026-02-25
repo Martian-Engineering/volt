@@ -908,7 +908,7 @@ export namespace Config {
       keybinds: Keybinds.optional().describe("Custom keybind configurations"),
       logLevel: Log.Level.optional().describe("Log level"),
       tui: TUI.optional().describe("TUI specific settings"),
-      server: Server.optional().describe("Server configuration for voltcode serve and web commands"),
+      server: Server.optional().describe("Server configuration for volt serve and web commands"),
       command: z
         .record(z.string(), Command)
         .optional()

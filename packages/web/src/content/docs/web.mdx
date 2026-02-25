@@ -12,7 +12,7 @@ VoltCode can run as a web application in your browser, providing the same powerf
 Start the web interface by running:
 
 ```bash
-voltcode web
+volt web
 ```
 
 This starts a local server on `127.0.0.1` with a random available port and automatically opens VoltCode in your default browser.
@@ -32,7 +32,7 @@ You can configure the web server using command line flags or in your [config fil
 By default, VoltCode picks an available port. You can specify a port:
 
 ```bash
-voltcode web --port 4096
+volt web --port 4096
 ```
 
 ### Hostname
@@ -40,7 +40,7 @@ voltcode web --port 4096
 By default, the server binds to `127.0.0.1` (localhost only). To make VoltCode accessible on your network:
 
 ```bash
-voltcode web --hostname 0.0.0.0
+volt web --hostname 0.0.0.0
 ```
 
 When using `0.0.0.0`, VoltCode will display both local and network addresses:
@@ -55,7 +55,7 @@ When using `0.0.0.0`, VoltCode will display both local and network addresses:
 Enable mDNS to make your server discoverable on the local network:
 
 ```bash
-voltcode web --mdns
+volt web --mdns
 ```
 
 This automatically sets the hostname to `0.0.0.0` and advertises the server as `opencode.local`.
@@ -65,7 +65,7 @@ This automatically sets the hostname to `0.0.0.0` and advertises the server as `
 To allow additional domains for CORS (useful for custom frontends):
 
 ```bash
-voltcode web --cors https://example.com
+volt web --cors https://example.com
 ```
 
 ### Authentication
@@ -73,7 +73,7 @@ voltcode web --cors https://example.com
 To protect access, set a password using the `VOLTCODE_SERVER_PASSWORD` environment variable:
 
 ```bash
-VOLTCODE_SERVER_PASSWORD=secret voltcode web
+VOLTCODE_SERVER_PASSWORD=secret volt web
 ```
 
 The username defaults to `voltcode` but can be changed with `VOLTCODE_SERVER_USERNAME`.
@@ -104,10 +104,10 @@ You can attach a terminal TUI to a running web server:
 
 ```bash
 # Start the web server
-voltcode web --port 4096
+volt web --port 4096
 
 # In another terminal, attach the TUI
-voltcode attach http://localhost:4096
+volt attach http://localhost:4096
 ```
 
 This allows you to use both the web interface and terminal simultaneously, sharing the same sessions and state.

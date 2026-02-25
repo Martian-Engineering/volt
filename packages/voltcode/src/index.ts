@@ -49,7 +49,7 @@ process.on("warning", (warning) => {
 
 const cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
-  .scriptName("voltcode")
+  .scriptName("volt")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")

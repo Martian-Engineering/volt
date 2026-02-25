@@ -8,13 +8,13 @@ import { Tabs, TabItem } from "@astrojs/starlight/components"
 The VoltCode CLI by default starts the [TUI](/docs/tui) when run without any arguments.
 
 ```bash
-voltcode
+volt
 ```
 
 But it also accepts commands as documented on this page. This allows you to interact with VoltCode programmatically.
 
 ```bash
-voltcode run "Explain how closures work in JavaScript"
+volt run "Explain how closures work in JavaScript"
 ```
 
 ---
@@ -24,7 +24,7 @@ voltcode run "Explain how closures work in JavaScript"
 Start the VoltCode terminal user interface.
 
 ```bash
-voltcode [project]
+volt [project]
 ```
 
 #### Flags
@@ -52,7 +52,7 @@ The VoltCode CLI also has the following commands.
 Manage agents for VoltCode.
 
 ```bash
-voltcode agent [command]
+volt agent [command]
 ```
 
 ---
@@ -62,17 +62,17 @@ voltcode agent [command]
 Attach a terminal to an already running VoltCode backend server started via `serve` or `web` commands.
 
 ```bash
-voltcode attach [url]
+volt attach [url]
 ```
 
 This allows using the TUI with a remote VoltCode backend. For example:
 
 ```bash
 # Start the backend server for web/mobile access
-voltcode web --port 4096 --hostname 0.0.0.0
+volt web --port 4096 --hostname 0.0.0.0
 
 # In another terminal, attach the TUI to the running backend
-voltcode attach http://10.20.30.40:4096
+volt attach http://10.20.30.40:4096
 ```
 
 #### Flags
@@ -89,7 +89,7 @@ voltcode attach http://10.20.30.40:4096
 Create a new agent with custom configuration.
 
 ```bash
-voltcode agent create
+volt agent create
 ```
 
 This command will guide you through creating a new agent with a custom system prompt and tool configuration.
@@ -101,7 +101,7 @@ This command will guide you through creating a new agent with a custom system pr
 List all available agents.
 
 ```bash
-voltcode agent list
+volt agent list
 ```
 
 ---
@@ -111,17 +111,17 @@ voltcode agent list
 Command to manage credentials and login for providers.
 
 ```bash
-voltcode auth [command]
+volt auth [command]
 ```
 
 ---
 
 #### login
 
-VoltCode is powered by the provider list at [Models.dev](https://models.dev), so you can use `voltcode auth login` to configure API keys for any provider you'd like to use. This is stored in `~/.local/share/voltcode/auth.json`.
+VoltCode is powered by the provider list at [Models.dev](https://models.dev), so you can use `volt auth login` to configure API keys for any provider you'd like to use. This is stored in `~/.local/share/voltcode/auth.json`.
 
 ```bash
-voltcode auth login
+volt auth login
 ```
 
 When VoltCode starts up it loads the providers from the credentials file. And if there are any keys defined in your environments or a `.env` file in your project.
@@ -133,13 +133,13 @@ When VoltCode starts up it loads the providers from the credentials file. And if
 Lists all the authenticated providers as stored in the credentials file.
 
 ```bash
-voltcode auth list
+volt auth list
 ```
 
 Or the short version.
 
 ```bash
-voltcode auth ls
+volt auth ls
 ```
 
 ---
@@ -149,7 +149,7 @@ voltcode auth ls
 Logs you out of a provider by clearing it from the credentials file.
 
 ```bash
-voltcode auth logout
+volt auth logout
 ```
 
 ---
@@ -159,7 +159,7 @@ voltcode auth logout
 Manage the GitHub agent for repository automation.
 
 ```bash
-voltcode github [command]
+volt github [command]
 ```
 
 ---
@@ -169,7 +169,7 @@ voltcode github [command]
 Install the GitHub agent in your repository.
 
 ```bash
-voltcode github install
+volt github install
 ```
 
 This sets up the necessary GitHub Actions workflow and guides you through the configuration process. [Learn more](/docs/github).
@@ -181,7 +181,7 @@ This sets up the necessary GitHub Actions workflow and guides you through the co
 Run the GitHub agent. This is typically used in GitHub Actions.
 
 ```bash
-voltcode github run
+volt github run
 ```
 
 ##### Flags
@@ -198,7 +198,7 @@ voltcode github run
 Manage Model Context Protocol servers.
 
 ```bash
-voltcode mcp [command]
+volt mcp [command]
 ```
 
 ---
@@ -208,7 +208,7 @@ voltcode mcp [command]
 Add an MCP server to your configuration.
 
 ```bash
-voltcode mcp add
+volt mcp add
 ```
 
 This command will guide you through adding either a local or remote MCP server.
@@ -220,13 +220,13 @@ This command will guide you through adding either a local or remote MCP server.
 List all configured MCP servers and their connection status.
 
 ```bash
-voltcode mcp list
+volt mcp list
 ```
 
 Or use the short version.
 
 ```bash
-voltcode mcp ls
+volt mcp ls
 ```
 
 ---
@@ -236,7 +236,7 @@ voltcode mcp ls
 Authenticate with an OAuth-enabled MCP server.
 
 ```bash
-voltcode mcp auth [name]
+volt mcp auth [name]
 ```
 
 If you don't provide a server name, you'll be prompted to select from available OAuth-capable servers.
@@ -244,13 +244,13 @@ If you don't provide a server name, you'll be prompted to select from available 
 You can also list OAuth-capable servers and their authentication status.
 
 ```bash
-voltcode mcp auth list
+volt mcp auth list
 ```
 
 Or use the short version.
 
 ```bash
-voltcode mcp auth ls
+volt mcp auth ls
 ```
 
 ---
@@ -260,7 +260,7 @@ voltcode mcp auth ls
 Remove OAuth credentials for an MCP server.
 
 ```bash
-voltcode mcp logout [name]
+volt mcp logout [name]
 ```
 
 ---
@@ -270,7 +270,7 @@ voltcode mcp logout [name]
 Debug OAuth connection issues for an MCP server.
 
 ```bash
-voltcode mcp debug <name>
+volt mcp debug <name>
 ```
 
 ---
@@ -280,7 +280,7 @@ voltcode mcp debug <name>
 List all available models from configured providers.
 
 ```bash
-voltcode models [provider]
+volt models [provider]
 ```
 
 This command displays all models available across your configured providers in the format `provider/model`.
@@ -290,7 +290,7 @@ This is useful for figuring out the exact model name to use in [your config](/do
 You can optionally pass a provider ID to filter models by that provider.
 
 ```bash
-voltcode models anthropic
+volt models anthropic
 ```
 
 #### Flags
@@ -303,33 +303,33 @@ voltcode models anthropic
 Use the `--refresh` flag to update the cached model list. This is useful when new models have been added to a provider and you want to see them in VoltCode.
 
 ```bash
-voltcode models --refresh
+volt models --refresh
 ```
 
 ---
 
 ### run
 
-Run voltcode in non-interactive mode by passing a prompt directly.
+Run volt in non-interactive mode by passing a prompt directly.
 
 ```bash
-voltcode run [message..]
+volt run [message..]
 ```
 
 This is useful for scripting, automation, or when you want a quick answer without launching the full TUI. For example.
 
-```bash "voltcode run"
-voltcode run Explain the use of context in Go
+```bash "volt run"
+volt run Explain the use of context in Go
 ```
 
-You can also attach to a running `voltcode serve` instance to avoid MCP server cold boot times on every run:
+You can also attach to a running `volt serve` instance to avoid MCP server cold boot times on every run:
 
 ```bash
 # Start a headless server in one terminal
-voltcode serve
+volt serve
 
 # In another terminal, run commands that attach to it
-voltcode run --attach http://localhost:4096 "Explain async/await in JavaScript"
+volt run --attach http://localhost:4096 "Explain async/await in JavaScript"
 ```
 
 #### Flags
@@ -355,7 +355,7 @@ voltcode run --attach http://localhost:4096 "Explain async/await in JavaScript"
 Start a headless VoltCode server for API access. Check out the [server docs](/docs/server) for the full HTTP interface.
 
 ```bash
-voltcode serve
+volt serve
 ```
 
 This starts an HTTP server that provides API access to voltcode functionality without the TUI interface. Set `VOLTCODE_SERVER_PASSWORD` to enable HTTP basic auth (username defaults to `voltcode`).
@@ -376,7 +376,7 @@ This starts an HTTP server that provides API access to voltcode functionality wi
 Manage VoltCode sessions.
 
 ```bash
-voltcode session [command]
+volt session [command]
 ```
 
 ---
@@ -386,7 +386,7 @@ voltcode session [command]
 List all VoltCode sessions.
 
 ```bash
-voltcode session list
+volt session list
 ```
 
 ##### Flags
@@ -403,7 +403,7 @@ voltcode session list
 Show token usage and cost statistics for your VoltCode sessions.
 
 ```bash
-voltcode stats
+volt stats
 ```
 
 #### Flags
@@ -422,7 +422,7 @@ voltcode stats
 Export session data as JSON.
 
 ```bash
-voltcode export [sessionID]
+volt export [sessionID]
 ```
 
 If you don't provide a session ID, you'll be prompted to select from available sessions.
@@ -434,14 +434,14 @@ If you don't provide a session ID, you'll be prompted to select from available s
 Import session data from a JSON file or VoltCode share URL.
 
 ```bash
-voltcode import <file>
+volt import <file>
 ```
 
 You can import from a local file or an VoltCode share URL.
 
 ```bash
-voltcode import session.json
-voltcode import https://opncd.ai/s/abc123
+volt import session.json
+volt import https://opncd.ai/s/abc123
 ```
 
 ---
@@ -451,7 +451,7 @@ voltcode import https://opncd.ai/s/abc123
 Start a headless VoltCode server with a web interface.
 
 ```bash
-voltcode web
+volt web
 ```
 
 This starts an HTTP server and opens a web browser to access VoltCode through a web interface. Set `VOLTCODE_SERVER_PASSWORD` to enable HTTP basic auth (username defaults to `voltcode`).
@@ -472,7 +472,7 @@ This starts an HTTP server and opens a web browser to access VoltCode through a 
 Start an ACP (Agent Client Protocol) server.
 
 ```bash
-voltcode acp
+volt acp
 ```
 
 This command starts an ACP server that communicates via stdin/stdout using nd-JSON.
@@ -492,7 +492,7 @@ This command starts an ACP server that communicates via stdin/stdout using nd-JS
 Uninstall VoltCode and remove all related files.
 
 ```bash
-voltcode uninstall
+volt uninstall
 ```
 
 #### Flags
@@ -508,22 +508,22 @@ voltcode uninstall
 
 ### upgrade
 
-Updates voltcode to the latest version or a specific version.
+Updates VoltCode to the latest version or a specific version.
 
 ```bash
-voltcode upgrade [target]
+volt upgrade [target]
 ```
 
 To upgrade to the latest version.
 
 ```bash
-voltcode upgrade
+volt upgrade
 ```
 
 To upgrade to a specific version.
 
 ```bash
-voltcode upgrade v0.1.48
+volt upgrade v0.1.48
 ```
 
 #### Flags
@@ -536,7 +536,7 @@ voltcode upgrade v0.1.48
 
 ## Global Flags
 
-The voltcode CLI takes the following global flags.
+The volt CLI takes the following global flags.
 
 | Flag           | Short | Description                          |
 | -------------- | ----- | ------------------------------------ |

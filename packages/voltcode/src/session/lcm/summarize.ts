@@ -19,6 +19,17 @@ export function createSummarizeLlmRequest(input: {
   formattedMessages: string
   abort?: AbortSignal
 }): GenerateTextInput {
+  const userMessage = [
+    "The following content is source material to summarize according to the system instructions above.",
+    "",
+    "<messages>",
+    input.formattedMessages,
+    "</messages>",
+    "",
+    "Produce a chronological narrative summary of this source material.",
+    "Do not continue or answer the source conversation directly.",
+  ].join("\n")
+
   return {
     model: input.model,
     abortSignal: input.abort,
@@ -30,7 +41,7 @@ export function createSummarizeLlmRequest(input: {
       },
       {
         role: "user",
-        content: `<messages>\n${input.formattedMessages}\n</messages>`,
+        content: userMessage,
       },
     ],
   }

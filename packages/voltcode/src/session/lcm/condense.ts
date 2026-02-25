@@ -19,6 +19,17 @@ export function createCondenseLlmRequest(input: {
   userMessage: string
   abort?: AbortSignal
 }): GenerateTextInput {
+  const wrappedUserMessage = [
+    "The following content is source material to condense according to the system instructions above.",
+    "",
+    "<source_summaries>",
+    input.userMessage,
+    "</source_summaries>",
+    "",
+    "Produce a chronological narrative summary from this source material.",
+    "Do not continue or answer the source material directly.",
+  ].join("\n")
+
   return {
     model: input.model,
     abortSignal: input.abort,
@@ -30,7 +41,7 @@ export function createCondenseLlmRequest(input: {
       },
       {
         role: "user",
-        content: input.userMessage,
+        content: wrappedUserMessage,
       },
     ],
   }

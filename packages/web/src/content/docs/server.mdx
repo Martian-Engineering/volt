@@ -6,14 +6,14 @@ description: Interact with voltcode server over HTTP.
 import config from "../../../config.mjs"
 export const typesUrl = `${config.github}/blob/dev/packages/sdk/js/src/gen/types.gen.ts`
 
-The `voltcode serve` command runs a headless HTTP server that exposes an OpenAPI endpoint that an voltcode client can use.
+The `volt serve` command runs a headless HTTP server that exposes an OpenAPI endpoint that a VoltCode client can use.
 
 ---
 
 ### Usage
 
 ```bash
-voltcode serve [--port <number>] [--hostname <string>] [--cors <origin>]
+volt serve [--port <number>] [--hostname <string>] [--cors <origin>]
 ```
 
 #### Options
@@ -28,35 +28,35 @@ voltcode serve [--port <number>] [--hostname <string>] [--cors <origin>]
 `--cors` can be passed multiple times:
 
 ```bash
-voltcode serve --cors http://localhost:5173 --cors https://app.example.com
+volt serve --cors http://localhost:5173 --cors https://app.example.com
 ```
 
 ---
 
 ### Authentication
 
-Set `VOLTCODE_SERVER_PASSWORD` to protect the server with HTTP basic auth. The username defaults to `voltcode`, or set `VOLTCODE_SERVER_USERNAME` to override it. This applies to both `voltcode serve` and `voltcode web`.
+Set `VOLTCODE_SERVER_PASSWORD` to protect the server with HTTP basic auth. The username defaults to `voltcode`, or set `VOLTCODE_SERVER_USERNAME` to override it. This applies to both `volt serve` and `volt web`.
 
 ```bash
-VOLTCODE_SERVER_PASSWORD=your-password voltcode serve
+VOLTCODE_SERVER_PASSWORD=your-password volt serve
 ```
 
 ---
 
 ### How it works
 
-When you run `voltcode` it starts a TUI and a server. Where the TUI is the
+When you run `volt` it starts a TUI and a server. Where the TUI is the
 client that talks to the server. The server exposes an OpenAPI 3.1 spec
 endpoint. This endpoint is also used to generate an [SDK](/docs/sdk).
 
 :::tip
-Use the voltcode server to interact with voltcode programmatically.
+Use the VoltCode server to interact with VoltCode programmatically.
 :::
 
 This architecture lets voltcode support multiple clients and allows you to interact with voltcode programmatically.
 
-You can run `voltcode serve` to start a standalone server. If you have the
-voltcode TUI running, `voltcode serve` will start a new server.
+You can run `volt serve` to start a standalone server. If you have the
+VoltCode TUI running, `volt serve` will start a new server.
 
 ---
 

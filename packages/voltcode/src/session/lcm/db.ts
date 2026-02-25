@@ -2376,6 +2376,51 @@ export namespace LcmDb {
   }
 
   /**
+   * Get all leaf messages covered by a summary lineage.
+   *
+   * Traverses parent and lineage-pointer edges from the provided summary ID and
+   * returns unique concrete message rows (ordered chronologically) linked through
+   * summary_messages.
+   */
+  export async function getLeafMessagesForSummary(summaryId: string): Promise<Message[]> {
+    const conn = sql()
+    const rows = await conn<Message[]>`
+      WITH RECURSIVE walk(summary_id) AS (
+        SELECT ${summaryId}::text
+        UNION
+        SELECT edge.summary_id
+        FROM walk w
+        JOIN LATERAL (
+          SELECT sp.parent_summary_id AS summary_id
+          FROM summary_parents sp
+          WHERE sp.summary_id = w.summary_id
+          UNION
+          SELECT sl.points_to_summary_id AS summary_id
+          FROM summary_lineage_pointers sl
+          WHERE sl.summary_id = w.summary_id
+        ) edge ON true
+      ),
+      scoped_messages AS (
+        SELECT DISTINCT sm.message_id
+        FROM walk w
+        JOIN summary_messages sm ON sm.summary_id = w.summary_id
+      )
+      SELECT
+        m.message_id,
+        m.conversation_id,
+        m.seq,
+        m.role,
+        m.content,
+        m.token_count,
+        m.created_at
+      FROM messages m
+      JOIN scoped_messages scoped ON scoped.message_id = m.message_id
+      ORDER BY m.seq, m.message_id
+    `
+    return rows
+  }
+
+  /**
    * Get parent summary IDs for a bindle summary
    */
   export async function getSummaryParentIds(summaryId: string): Promise<string[]> {

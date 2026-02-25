@@ -7,12 +7,12 @@ ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=${BUN_RUNTIME_TRANSPILER_CACHE_PATH}
 RUN apk add libgcc libstdc++ ripgrep
 
 FROM base AS build-amd64
-COPY dist/voltcode-linux-x64-baseline-musl/bin/voltcode /usr/local/bin/voltcode
+COPY dist/voltcode-linux-x64-baseline-musl/bin/volt /usr/local/bin/volt
 
 FROM base AS build-arm64
-COPY dist/voltcode-linux-arm64-musl/bin/voltcode /usr/local/bin/voltcode
+COPY dist/voltcode-linux-arm64-musl/bin/volt /usr/local/bin/volt
 
 ARG TARGETARCH
 FROM build-${TARGETARCH}
-RUN voltcode --version
-ENTRYPOINT ["voltcode"]
+RUN volt --version
+ENTRYPOINT ["volt"]

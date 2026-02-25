@@ -40,7 +40,8 @@ function getContextThresholdFlag(): number | undefined {
  */
 export namespace LcmContext {
   const log = Log.create({ service: "lcm.context" })
-  const inFlightCompactions = new Map<number, Promise<ContextHandlerResult | null>>()
+  type LaneCompactionState = Record<TokenBudget.LaneName, boolean>
+  const laneCompactionStateByConversation = new Map<number, LaneCompactionState>()
 
   // In-memory compaction state tracking (not persisted)
   interface CompactionState {
@@ -206,6 +207,35 @@ export namespace LcmContext {
     summaryType: Summary.Type
   }
 
+  function normalizeLaneCompactionState(
+    state?: Partial<Record<TokenBudget.LaneName, boolean>> | null,
+  ): LaneCompactionState {
+    return {
+      leaves: Boolean(state?.leaves),
+      sprigs: Boolean(state?.sprigs),
+      bindles: Boolean(state?.bindles),
+    }
+  }
+
+  function persistLaneCompactionState(conversationId: number, nextState: LaneCompactionState): void {
+    if (!nextState.leaves && !nextState.sprigs && !nextState.bindles) {
+      laneCompactionStateByConversation.delete(conversationId)
+      return
+    }
+    laneCompactionStateByConversation.set(conversationId, nextState)
+  }
+
+  /**
+   * Test-only helper for clearing lane hysteresis latch state.
+   */
+  export function clearLaneCompactionStateForTesting(conversationId?: number): void {
+    if (conversationId == null) {
+      laneCompactionStateByConversation.clear()
+      return
+    }
+    laneCompactionStateByConversation.delete(conversationId)
+  }
+
   /**
    * Check if the current context exceeds the threshold.
    *
@@ -224,6 +254,7 @@ export namespace LcmContext {
     contextWindow: number
     softThresholdOverride?: number
     laneTokens?: Partial<TokenBudget.LaneTokenCounts>
+    currentlyCompacting?: Partial<Record<TokenBudget.LaneName, boolean>>
   }): Promise<{
     overHard: boolean
     overSoft: boolean
@@ -249,11 +280,16 @@ export namespace LcmContext {
       bindles: Math.max(0, Math.floor(input.laneTokens?.bindles ?? measuredLaneTokens.bindles)),
       total: Math.max(0, Math.floor(input.laneTokens?.total ?? currentTokens)),
     }
+    const currentlyCompacting = normalizeLaneCompactionState(
+      input.currentlyCompacting ?? laneCompactionStateByConversation.get(input.conversationId),
+    )
     const laneDecisions = TokenBudget.evaluateDoltLaneDecisions({
       laneTokens,
       policy: lanePolicy,
       hardLimit,
+      currentlyCompacting,
     })
+    persistLaneCompactionState(input.conversationId, laneDecisions.nextCompacting)
 
     log.debug("isOverThreshold", {
       conversationId: input.conversationId,
@@ -262,6 +298,7 @@ export namespace LcmContext {
       hardLimit,
       laneTokens,
       laneDecisions,
+      currentlyCompacting,
       contextWindow: input.contextWindow,
       overhead: input.overhead,
       reserve: input.reserve,
@@ -747,14 +784,18 @@ export namespace LcmContext {
     const modelMaxTokens = conversation?.model_ctx_max_tokens ?? 128000
     const maxSummarizationInputTokens = Math.floor(modelMaxTokens * 0.75)
 
-    const leavesOverTarget = Math.max(1, thresholdCheck.laneTokens.leaves - thresholdCheck.lanePolicy.leaves.target)
-    const selectionTokenBudget = Math.min(leavesOverTarget, maxSummarizationInputTokens)
     const protectedTailCount = thresholdCheck.lanePolicy.leaves.freshTailFloor
+    const leavesOverTarget = Math.max(1, thresholdCheck.laneTokens.leaves - thresholdCheck.lanePolicy.leaves.target)
+    const eligibleLeafCount = Math.max(0, messagesInContext.length - protectedTailCount)
+    const eligibleLeafTokens = messagesInContext
+      .slice(0, eligibleLeafCount)
+      .reduce((sum, message) => sum + Math.max(0, message.tokenCount), 0)
+    const selectionTokenBudget = Math.min(Math.max(1, eligibleLeafTokens), maxSummarizationInputTokens)
     const { selectedMessages, protectedTailMessages, effectiveProtectedTailCount } = selectLeavesForSprigCompaction({
       messages: messagesInContext,
       tokenBudget: selectionTokenBudget,
       protectedTailCount,
-      minimumProtectedTailCount: getLcmPolicyConfig().runtime.minProtectedTailLeaves,
+      minimumProtectedTailCount: protectedTailCount,
       minimumSelectionCount: thresholdCheck.lanePolicy.leaves.minFanout,
     })
 
@@ -1147,21 +1188,37 @@ export namespace LcmContext {
       noOpReasons.push("eligible_leaves_below_min")
     }
 
-    let parentOrder = 1
+    const minimumFanoutForOrder = (order: number) =>
+      order === 1 ? initialThreshold.lanePolicy.sprigs.minFanout : initialThreshold.lanePolicy.bindles.minFanout
+
+    const fanoutNoOpReasonForOrder = (order: number) => (order === 1 ? "sprigs_below_min_fanout" : `d${order}_below_min_fanout`)
+
     for (;;) {
       const activeSummaries = await getActiveSummariesForCompaction(input.conversationId)
-      const candidates = activeSummaries.filter((summary) => {
-        if (summary.condensationOrder !== parentOrder) return false
-        if (parentOrder === 1) return summary.summaryType === "sprig"
-        return summary.summaryType === "bindle"
-      })
-      const minimumFanout =
-        parentOrder === 1 ? initialThreshold.lanePolicy.sprigs.minFanout : initialThreshold.lanePolicy.bindles.minFanout
+      const candidateGroups = new Map<number, ActiveSummaryForCompaction[]>()
+      for (const summary of activeSummaries) {
+        if (summary.condensationOrder === 1 && summary.summaryType !== "sprig") continue
+        if (summary.condensationOrder >= 2 && summary.summaryType !== "bindle") continue
+        const existing = candidateGroups.get(summary.condensationOrder)
+        if (existing) {
+          existing.push(summary)
+        } else {
+          candidateGroups.set(summary.condensationOrder, [summary])
+        }
+      }
 
-      if (candidates.length < minimumFanout) {
-        noOpReasons.push(parentOrder === 1 ? "sprigs_below_min_fanout" : `d${parentOrder}_below_min_fanout`)
+      const eligibleOrders = [...candidateGroups.keys()]
+        .filter((order) => (candidateGroups.get(order)?.length ?? 0) >= minimumFanoutForOrder(order))
+        .sort((a, b) => a - b)
+      if (eligibleOrders.length === 0) {
+        const lowestOrder = [...candidateGroups.keys()].sort((a, b) => a - b)[0]
+        if (lowestOrder != null) {
+          noOpReasons.push(fanoutNoOpReasonForOrder(lowestOrder))
+        }
         break
       }
+      const parentOrder = eligibleOrders[0]!
+      const candidates = candidateGroups.get(parentOrder)!
 
       const condensationResult = await attemptCondensationForOrder({
         input,
@@ -1181,7 +1238,6 @@ export namespace LcmContext {
       if (condensationResult.createdSummary) {
         createdSummary = condensationResult.createdSummary
       }
-      parentOrder += 1
     }
 
     if (!actionTaken) {
@@ -1395,254 +1451,4 @@ export namespace LcmContext {
     })
   }
 
-  /**
-   * Schedule an asynchronous compaction job for a conversation.
-   *
-   * Returns a promise for the compaction result if a new job was scheduled,
-   * or null if a job is already running for this conversation.
-   */
-  /**
-   * Check if a compaction job is currently in flight for a conversation.
-   */
-  export function isCompactionInFlight(conversationId: number): boolean {
-    return inFlightCompactions.has(conversationId)
-  }
-
-  export function scheduleCompaction(input: {
-    conversationId: number
-    sessionID: string
-    user: MessageV2.User
-    model: Provider.Model
-    overhead: number
-    reserve: number
-    contextWindow: number
-    softThresholdOverride?: number
-  }): Promise<ContextHandlerResult | null> | null {
-    if (inFlightCompactions.has(input.conversationId)) {
-      log.debug("scheduleCompaction: already in flight", { conversationId: input.conversationId })
-      return null
-    }
-
-    log.debug("scheduleCompaction: launching async compaction", {
-      conversationId: input.conversationId,
-      sessionID: input.sessionID,
-    })
-
-    const job = (async () => {
-      try {
-        return await onContextThresholdReached({
-          conversationId: input.conversationId,
-          sessionID: input.sessionID,
-          user: input.user,
-          model: input.model,
-          overhead: input.overhead,
-          reserve: input.reserve,
-          contextWindow: input.contextWindow,
-          softThresholdOverride: input.softThresholdOverride,
-        })
-      } catch (error) {
-        log.warn("async compaction failed", { conversationId: input.conversationId, error })
-        return null
-      }
-    })()
-
-    inFlightCompactions.set(input.conversationId, job)
-    job.finally(() => {
-      inFlightCompactions.delete(input.conversationId)
-    })
-
-    return job
-  }
-
-  /**
-   * Compact context until it is under the given hard limit.
-   *
-   * Runs up to MAX_COMPACTION_ROUNDS of compaction. Each round calls
-   * onContextThresholdReached() and
-   * rechecks context size. Stops when:
-   * - Context is under the hard limit
-   * - Compaction made no progress (no token reduction)
-   * - MAX_COMPACTION_ROUNDS exhausted
-   *
-   * @param input - The compaction parameters
-   * @returns Result with success status and diagnostics
-   */
-  export async function compactUntilUnderLimit(input: {
-    conversationId: number
-    sessionID: string
-    user: MessageV2.User
-    model: Provider.Model
-    abort?: AbortSignal
-    overhead: number
-    reserve: number
-    contextWindow: number
-    softThresholdOverride?: number
-  }): Promise<{
-    success: boolean
-    rounds: number
-    finalTokens: number
-    hardLimit: number
-  }> {
-    log.debug("compactUntilUnderLimit entry", {
-      conversationId: input.conversationId,
-      overhead: input.overhead,
-      reserve: input.reserve,
-      contextWindow: input.contextWindow,
-    })
-
-    const initialCheck = await isOverThreshold({
-      conversationId: input.conversationId,
-      overhead: input.overhead,
-      reserve: input.reserve,
-      contextWindow: input.contextWindow,
-      softThresholdOverride: input.softThresholdOverride,
-    })
-
-    if (initialCheck.currentTokens <= initialCheck.hardLimit) {
-      log.debug("compactUntilUnderLimit: already under limit", {
-        conversationId: input.conversationId,
-        currentTokens: initialCheck.currentTokens,
-        hardLimit: initialCheck.hardLimit,
-      })
-      return {
-        success: true,
-        rounds: 0,
-        finalTokens: initialCheck.currentTokens,
-        hardLimit: initialCheck.hardLimit,
-      }
-    }
-
-    log.info("starting hard-limit compaction loop", {
-      sessionID: input.sessionID,
-      conversationId: input.conversationId,
-      currentTokens: initialCheck.currentTokens,
-      hardLimit: initialCheck.hardLimit,
-      overhead: input.overhead,
-      reserve: input.reserve,
-    })
-
-    let lastTokenCount = initialCheck.currentTokens
-    const maxCompactionRounds = getLcmPolicyConfig().runtime.maxCompactionRounds
-    for (let round = 1; round <= maxCompactionRounds; round++) {
-      log.debug("compactUntilUnderLimit: starting round", {
-        conversationId: input.conversationId,
-        round,
-        lastTokenCount,
-        hardLimit: initialCheck.hardLimit,
-      })
-      const result = await onContextThresholdReached({
-        conversationId: input.conversationId,
-        sessionID: input.sessionID,
-        user: input.user,
-        model: input.model,
-        abort: input.abort,
-        force: true,
-        overhead: input.overhead,
-        reserve: input.reserve,
-        contextWindow: input.contextWindow,
-        softThresholdOverride: input.softThresholdOverride,
-      })
-
-      const recheck = await isOverThreshold({
-        conversationId: input.conversationId,
-        overhead: input.overhead,
-        reserve: input.reserve,
-        contextWindow: input.contextWindow,
-        softThresholdOverride: input.softThresholdOverride,
-      })
-
-      log.info("hard-limit compaction round completed", {
-        sessionID: input.sessionID,
-        round,
-        beforeTokens: lastTokenCount,
-        afterTokens: recheck.currentTokens,
-        hardLimit: recheck.hardLimit,
-        actionTaken: result.actionTaken,
-      })
-
-      if (recheck.currentTokens <= recheck.hardLimit) {
-        return {
-          success: true,
-          rounds: round,
-          finalTokens: recheck.currentTokens,
-          hardLimit: recheck.hardLimit,
-        }
-      }
-
-      if (!result.actionTaken || recheck.currentTokens >= lastTokenCount) {
-        log.error("compaction made no progress, cannot reduce context further", {
-          sessionID: input.sessionID,
-          conversationId: input.conversationId,
-          currentTokens: recheck.currentTokens,
-          hardLimit: recheck.hardLimit,
-          round,
-        })
-        return {
-          success: false,
-          rounds: round,
-          finalTokens: recheck.currentTokens,
-          hardLimit: recheck.hardLimit,
-        }
-      }
-
-      lastTokenCount = recheck.currentTokens
-    }
-
-    // Exhausted all rounds
-    const finalCheck = await isOverThreshold({
-      conversationId: input.conversationId,
-      overhead: input.overhead,
-      reserve: input.reserve,
-      contextWindow: input.contextWindow,
-      softThresholdOverride: input.softThresholdOverride,
-    })
-    log.error("context exceeds hard limit after max compaction rounds", {
-      sessionID: input.sessionID,
-      conversationId: input.conversationId,
-      currentTokens: finalCheck.currentTokens,
-      hardLimit: finalCheck.hardLimit,
-      maxRounds: maxCompactionRounds,
-    })
-
-    return {
-      success: false,
-      rounds: maxCompactionRounds,
-      finalTokens: finalCheck.currentTokens,
-      hardLimit: finalCheck.hardLimit,
-    }
-  }
-
-  /**
-   * Check and handle context threshold for a conversation.
-   *
-   * This is a convenience function that combines isOverThreshold check
-   * with onContextThresholdReached handler.
-   *
-   * @param input - The input parameters
-   * @returns Result indicating what actions were taken (or null if under threshold)
-   */
-  export async function checkAndHandle(input: {
-    conversationId: number
-    sessionID: string
-    user: MessageV2.User
-    model: Provider.Model
-    abort?: AbortSignal
-    overhead: number
-    reserve: number
-    contextWindow: number
-    softThresholdOverride?: number
-  }): Promise<ContextHandlerResult | null> {
-    const check = await isOverThreshold({
-      conversationId: input.conversationId,
-      overhead: input.overhead,
-      reserve: input.reserve,
-      contextWindow: input.contextWindow,
-      softThresholdOverride: input.softThresholdOverride,
-    })
-    if (!check.overSoft) {
-      return null
-    }
-
-    return await onContextThresholdReached(input)
-  }
 }

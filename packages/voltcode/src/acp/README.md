@@ -38,10 +38,10 @@ The implementation follows a clean separation of concerns:
 
 ```bash
 # Start the ACP server in the current directory
-voltcode acp
+volt acp
 
 # Start in a specific directory
-voltcode acp --cwd /path/to/project
+volt acp --cwd /path/to/project
 ```
 
 ### Programmatic
@@ -60,7 +60,7 @@ Add to your Zed configuration (`~/.config/zed/settings.json`):
 {
   "agent_servers": {
     "VoltCode": {
-      "command": "voltcode",
+      "command": "volt",
       "args": ["acp"]
     }
   }
@@ -123,7 +123,7 @@ This implementation follows the ACP specification v1:
 bun test test/acp.test.ts
 
 # Test manually with stdio
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}' | voltcode acp
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}' | volt acp
 ```
 
 ## Design Decisions

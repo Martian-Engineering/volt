@@ -189,7 +189,7 @@ For most OAuth-enabled MCP servers, no special configuration is needed. Just con
 }
 ```
 
-If the server requires authentication, VoltCode will prompt you to authenticate when you first try to use it. If not, you can [manually trigger the flow](#authenticating) with `voltcode mcp auth <server-name>`.
+If the server requires authentication, VoltCode will prompt you to authenticate when you first try to use it. If not, you can [manually trigger the flow](#authenticating) with `volt mcp auth <server-name>`.
 
 ---
 
@@ -223,19 +223,19 @@ You can manually trigger authentication or manage credentials.
 Authenticate with a specific MCP server:
 
 ```bash
-voltcode mcp auth my-oauth-server
+volt mcp auth my-oauth-server
 ```
 
 List all MCP servers and their auth status:
 
 ```bash
-voltcode mcp list
+volt mcp list
 ```
 
 Remove stored credentials:
 
 ```bash
-voltcode mcp logout my-oauth-server
+volt mcp logout my-oauth-server
 ```
 
 The `mcp auth` command will open your browser for authorization. After you authorize, VoltCode will store the tokens securely in `~/.local/share/voltcode/mcp-auth.json`.
@@ -279,10 +279,10 @@ If a remote MCP server is failing to authenticate, you can diagnose issues with:
 
 ```bash
 # View auth status for all OAuth-capable servers
-voltcode mcp auth list
+volt mcp auth list
 
 # Debug connection and OAuth flow for a specific server
-voltcode mcp debug my-oauth-server
+volt mcp debug my-oauth-server
 ```
 
 The `mcp debug` command shows the current auth status, tests HTTP connectivity, and attempts the OAuth discovery flow.
@@ -420,7 +420,7 @@ Add the [Sentry MCP server](https://mcp.sentry.dev) to interact with your Sentry
 After adding the configuration, authenticate with Sentry:
 
 ```bash
-voltcode mcp auth sentry
+volt mcp auth sentry
 ```
 
 This will open a browser window to complete the OAuth flow and connect VoltCode to your Sentry account.

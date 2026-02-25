@@ -52,6 +52,19 @@ describe("session.lcm.retrieval-facade", () => {
       async getSummaryLineageIds() {
         return [summaryId]
       },
+      async getLeafMessagesForSummary() {
+        return [
+          {
+            message_id: 7001,
+            conversation_id: 3001,
+            seq: 1,
+            role: "user",
+            content: "leaf memory for dolt retrieval facade",
+            token_count: 8,
+            created_at: new Date("2026-02-24T00:00:00.000Z"),
+          },
+        ]
+      },
       async setSummaryQmdDocMapping() {},
     }
 

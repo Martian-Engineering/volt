@@ -45,18 +45,37 @@ function makeSummary(input: {
   }
 }
 
+function makeLeafMessage(input: {
+  messageId: number
+  conversationId?: number
+  seq?: number
+  content?: string
+}): LcmDb.Message {
+  return {
+    message_id: input.messageId,
+    conversation_id: input.conversationId ?? 101,
+    seq: input.seq ?? input.messageId,
+    role: "user",
+    content: input.content ?? `leaf content ${input.messageId}`,
+    token_count: 8,
+    created_at: new Date("2026-02-18T00:00:00.000Z"),
+  }
+}
+
 function makeFakeDb(input: {
   summaries: LcmDb.Summary[]
   activeSummaryIds?: string[]
   parentsBySummaryId?: Record<string, string[]>
   pointersBySummaryId?: Record<string, LcmDb.SummaryLineagePointer[]>
   lineageBySummaryId?: Record<string, string[]>
+  leafMessagesBySummaryId?: Record<string, LcmDb.Message[]>
 }): LcmRetrieval.RetrievalDb & { mappings: Map<string, { qmdDocId: string | null; qmdDocVersion: number | null }> } {
   const summaries = new Map(input.summaries.map((summary) => [summary.summary_id, { ...summary }]))
   const activeSummaryIds = new Set(input.activeSummaryIds ?? [])
   const parentsBySummaryId = input.parentsBySummaryId ?? {}
   const pointersBySummaryId = input.pointersBySummaryId ?? {}
   const lineageBySummaryId = input.lineageBySummaryId ?? {}
+  const leafMessagesBySummaryId = input.leafMessagesBySummaryId ?? {}
   const mappings = new Map<string, { qmdDocId: string | null; qmdDocVersion: number | null }>()
 
   return {
@@ -79,6 +98,9 @@ function makeFakeDb(input: {
     },
     async getSummaryLineageIds(summaryId) {
       return [...(lineageBySummaryId[summaryId] ?? [summaryId])]
+    },
+    async getLeafMessagesForSummary(summaryId) {
+      return [...(leafMessagesBySummaryId[summaryId] ?? [makeLeafMessage({ messageId: 9001 })])]
     },
     async setSummaryQmdDocMapping(input) {
       const summary = summaries.get(input.summaryId)

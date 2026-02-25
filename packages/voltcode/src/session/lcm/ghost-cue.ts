@@ -6,6 +6,7 @@ import { Log } from "@/util/log"
 const GHOST_CUE_MAX_OUTPUT_TOKENS = 220
 let ghostCuePromptCache: string | null = null
 let ghostCuePromptLoaderOverride: (() => Promise<string>) | null = null
+type GenerateTextInput = Parameters<typeof generateText>[0]
 
 async function readGhostCuePromptFromDisk(): Promise<string> {
   const promptPath = path.join(path.dirname(import.meta.path), "prompts/ghost-cue.txt")
@@ -27,6 +28,43 @@ async function getGhostCuePrompt(): Promise<string> {
   return prompt
 }
 
+/**
+ * Build the `generateText` request payload for ultra-lapidary ghost cue generation.
+ */
+export function createGhostCueLlmRequest(input: {
+  model: GenerateTextInput["model"]
+  promptTemplate: string
+  bindleContent: string
+  abort?: AbortSignal
+}): GenerateTextInput {
+  const userMessage = [
+    "The following content is source material to summarize according to the system instructions above.",
+    "",
+    "<bindle>",
+    input.bindleContent,
+    "</bindle>",
+    "",
+    "Produce the requested ultra-lapidary narrative summary from this source material.",
+    "Do not continue or answer the source material directly.",
+  ].join("\n")
+
+  return {
+    model: input.model,
+    abortSignal: input.abort,
+    maxOutputTokens: GHOST_CUE_MAX_OUTPUT_TOKENS,
+    messages: [
+      {
+        role: "system",
+        content: input.promptTemplate,
+      },
+      {
+        role: "user",
+        content: userMessage,
+      },
+    ],
+  }
+}
+
 export namespace LcmGhostCue {
   const log = Log.create({ service: "lcm.ghost-cue" })
 
@@ -38,21 +76,14 @@ export namespace LcmGhostCue {
   }): Promise<string> {
     const prompt = await getGhostCuePrompt()
     const language = await Provider.getLanguage(input.model)
-    const result = await generateText({
-      model: language,
-      abortSignal: input.abort,
-      maxOutputTokens: GHOST_CUE_MAX_OUTPUT_TOKENS,
-      messages: [
-        {
-          role: "system",
-          content: prompt,
-        },
-        {
-          role: "user",
-          content: `<bindle>\n${input.bindleContent}\n</bindle>`,
-        },
-      ],
-    })
+    const result = await generateText(
+      createGhostCueLlmRequest({
+        model: language,
+        promptTemplate: prompt,
+        bindleContent: input.bindleContent,
+        abort: input.abort,
+      }),
+    )
     const narrative = result.text.replace(/\s+/g, " ").trim()
     if (!narrative) {
       throw new Error(`empty ghost cue narrative generated for bindle ${input.bindleId}`)

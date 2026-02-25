@@ -95,6 +95,7 @@ export namespace LcmRetrieval {
     getSummaryParentIds(summaryId: string): Promise<string[]>
     getSummaryLineagePointers(summaryId: string): Promise<LcmDb.SummaryLineagePointer[]>
     getSummaryLineageIds(summaryId: string): Promise<string[]>
+    getLeafMessagesForSummary(summaryId: string): Promise<LcmDb.Message[]>
     setSummaryQmdDocMapping(input: {
       summaryId: string
       qmdDocId: string | null
@@ -109,19 +110,20 @@ export namespace LcmRetrieval {
     title?: string
   }
 
-  interface RecallArtifact {
+  interface RecallSummaryArtifact {
     summary: LcmDb.Summary
     summaryId: string
-    artifactPath: string
     pointerSummaryIds: string[]
     lineageSummaryIds: string[]
+    leafCount: number
   }
 
   /**
-   * Query off-context bindle-lane summaries via qmd vector search.
+   * Query off-context bindle-lane cues via leaf-vector search.
    *
    * Guarantees:
    * - Candidates are bindle-lane off-context summaries only.
+   * - Semantic ranking is performed over leaf messages in each candidate summary lineage.
    * - Active-context summaries are excluded from final results.
    * - Deterministic top-K ordering by score DESC, distance ASC, summary_id ASC.
    */
@@ -158,7 +160,11 @@ export namespace LcmRetrieval {
 
     const indexName = `${LCM_RETRIEVAL_QMD_INDEX_PREFIX}-${input.conversationId}`
     const artifactsRoot = input.artifactsRoot ?? path.join(LCM_RETRIEVAL_ROOT, `conversation-${input.conversationId}`)
-    const artifacts = await syncRecallArtifacts({ summaries: candidates, rootPath: artifactsRoot, db })
+    const artifacts = await syncRecallLeafArtifacts({ summaries: candidates, rootPath: artifactsRoot, db })
+
+    if (artifacts.size === 0) {
+      return emptyQueryResult(input)
+    }
 
     await qmdClient.ensureCollection({
       indexName,
@@ -176,9 +182,7 @@ export namespace LcmRetrieval {
 
     const qmdDocToSummaryId = new Map<string, string>()
     for (const artifact of artifacts.values()) {
-      if (artifact.summary.qmd_doc_id) {
-        qmdDocToSummaryId.set(artifact.summary.qmd_doc_id, artifact.summaryId)
-      }
+      if (artifact.summary.qmd_doc_id) qmdDocToSummaryId.set(artifact.summary.qmd_doc_id, artifact.summaryId)
     }
 
     const bestHitsBySummaryId = new Map<string, QueryHit>()
@@ -228,7 +232,7 @@ export namespace LcmRetrieval {
     log.info("queried off-context bindles", {
       conversationId: input.conversationId,
       query,
-      candidates: candidates.length,
+      candidates: artifacts.size,
       returned: hits.length,
       topK,
       minScore,
@@ -240,7 +244,7 @@ export namespace LcmRetrieval {
       topK,
       minScore,
       maxDistance,
-      candidatesConsidered: candidates.length,
+      candidatesConsidered: artifacts.size,
       hits,
       diagnostics: [],
     }
@@ -275,13 +279,13 @@ export namespace LcmRetrieval {
     ])
   }
 
-  async function syncRecallArtifacts(input: {
+  async function syncRecallLeafArtifacts(input: {
     summaries: LcmDb.Summary[]
     rootPath: string
     db: RetrievalDb
-  }): Promise<Map<string, RecallArtifact>> {
+  }): Promise<Map<string, RecallSummaryArtifact>> {
     await fs.mkdir(input.rootPath, { recursive: true })
-    const artifacts = new Map<string, RecallArtifact>()
+    const artifacts = new Map<string, RecallSummaryArtifact>()
     const keepFiles = new Set<string>()
 
     for (const summary of input.summaries) {
@@ -293,21 +297,32 @@ export namespace LcmRetrieval {
         ...lineagePointers.map((pointer) => pointer.points_to_summary_id),
       ])
       const lineageIds = sortUnique(lineageSummaryIds)
-      const artifactPath = path.join(input.rootPath, `${summary.summary_id}.md`)
-      const artifactContent = formatRecallArtifact({
-        summary,
-        pointerSummaryIds,
-        lineageSummaryIds: lineageIds,
-      })
+      const leafMessages = await input.db.getLeafMessagesForSummary(summary.summary_id)
+      if (leafMessages.length === 0) {
+        log.debug("skipping retrieval artifact generation for summary with no leaf lineage", {
+          summaryId: summary.summary_id,
+        })
+        continue
+      }
 
-      await fs.writeFile(artifactPath, artifactContent, "utf8")
-      keepFiles.add(path.basename(artifactPath))
+      for (const leaf of leafMessages) {
+        const artifactPath = path.join(input.rootPath, `${summary.summary_id}__msg_${leaf.message_id}.md`)
+        const artifactContent = formatLeafRecallArtifact({
+          summary,
+          message: leaf,
+          pointerSummaryIds,
+          lineageSummaryIds: lineageIds,
+        })
+        await fs.writeFile(artifactPath, artifactContent, "utf8")
+        keepFiles.add(path.basename(artifactPath))
+      }
+
       artifacts.set(summary.summary_id, {
         summary,
         summaryId: summary.summary_id,
-        artifactPath,
         pointerSummaryIds,
         lineageSummaryIds: lineageIds,
+        leafCount: leafMessages.length,
       })
     }
 
@@ -321,8 +336,9 @@ export namespace LcmRetrieval {
     return artifacts
   }
 
-  function formatRecallArtifact(input: {
+  function formatLeafRecallArtifact(input: {
     summary: LcmDb.Summary
+    message: LcmDb.Message
     pointerSummaryIds: string[]
     lineageSummaryIds: string[]
   }): string {
@@ -334,16 +350,21 @@ export namespace LcmRetrieval {
     lines.push(`condensation_order: ${input.summary.condensation_order}`)
     lines.push(`summary_type: ${input.summary.summary_type}`)
     lines.push(`is_off_context: ${input.summary.is_off_context}`)
+    lines.push(`leaf_message_id: ${input.message.message_id}`)
+    lines.push(`leaf_seq: ${input.message.seq}`)
+    lines.push(`leaf_role: ${input.message.role}`)
     lines.push(`pointer_summary_ids: ${toYamlArray(input.pointerSummaryIds)}`)
     lines.push(`lineage_summary_ids: ${toYamlArray(input.lineageSummaryIds)}`)
     lines.push("---")
     lines.push("")
     lines.push(`[Summary ID: ${input.summary.summary_id}]`)
+    lines.push(`[Leaf Message ID: ${input.message.message_id}]`)
+    lines.push(`[Leaf Role: ${input.message.role}]`)
     lines.push(`[Summary Type: ${input.summary.summary_type}]`)
     lines.push(`[Pointer IDs: ${input.pointerSummaryIds.join(", ")}]`)
     lines.push(`[Lineage IDs: ${input.lineageSummaryIds.join(", ")}]`)
     lines.push("")
-    lines.push(input.summary.content.trim())
+    lines.push(input.message.content.trim())
     lines.push("")
     return lines.join("\n")
   }

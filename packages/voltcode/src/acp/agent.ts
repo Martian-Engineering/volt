@@ -405,18 +405,18 @@ export namespace ACP {
       log.info("initialize", { protocolVersion: params.protocolVersion })
 
       const authMethod: AuthMethod = {
-        description: "Run `voltcode auth login` in the terminal",
-        name: "Login with voltcode",
-        id: "voltcode-login",
+        description: "Run `volt auth login` in the terminal",
+        name: "Login with Volt",
+        id: "volt-login",
       }
 
       // If client supports terminal-auth capability, use that instead.
       if (params.clientCapabilities?._meta?.["terminal-auth"] === true) {
         authMethod._meta = {
           "terminal-auth": {
-            command: "voltcode",
+            command: "volt",
             args: ["auth", "login"],
-            label: "VoltCode Login",
+            label: "Volt Login",
           },
         }
       }

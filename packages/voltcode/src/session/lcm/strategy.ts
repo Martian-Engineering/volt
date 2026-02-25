@@ -67,7 +67,22 @@ export interface LcmRuntimeStrategy {
 
 const upwardStrategy: LcmRuntimeStrategy = {
   name: "upward",
-  compactOnThreshold: (input) => LcmContext.onContextThresholdReached(input),
+  compactOnThreshold: async (input) => {
+    const threshold = await LcmContext.isOverThreshold({
+      conversationId: input.conversationId,
+      overhead: input.overhead,
+      reserve: input.reserve,
+      contextWindow: input.contextWindow,
+      softThresholdOverride: input.softThresholdOverride,
+    })
+    if (!threshold.overSoft && !input.force) {
+      return {
+        actionTaken: false,
+        condensed: false,
+      }
+    }
+    return await LcmContext.compactForcedRecursive(input)
+  },
   compactManual: (input) => LcmContext.compactForcedRecursive(input),
   assembleContext: (conversationId) => LcmDb.getCurrentContext(conversationId),
   resolveRetrieval: (input) => LcmRetrievalFacade.resolveOffContextRetrieval(input, "upward"),

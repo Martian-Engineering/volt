@@ -4,7 +4,7 @@ import { message } from "@tauri-apps/plugin-dialog"
 export async function installCli(): Promise<void> {
   try {
     const path = await invoke<string>("install_cli")
-    await message(`CLI installed to ${path}\n\nRestart your terminal to use the 'voltcode' command.`, {
+    await message(`CLI installed to ${path}\n\nRestart your terminal to use the 'volt' command.`, {
       title: "CLI Installed",
     })
   } catch (e) {

@@ -9,6 +9,7 @@ if (!isLcmAvailable) {
 } else {
   const { LcmDb } = await import("../../../src/session/lcm/db")
   const { LcmContext } = await import("../../../src/session/lcm/context")
+  const { scheduleThresholdCompaction, isThresholdCompactionInFlight } = await import("../../../src/session/lcm/strategy")
 
   let testConversationId: number
   const createdConversationIds: number[] = []
@@ -52,7 +53,7 @@ if (!isLcmAvailable) {
   })
 
   describe("session.lcm.async-compaction", () => {
-    test("scheduleCompaction dedupes in-flight job and respects fresh-tail floor", async () => {
+    test("strategy-scheduled threshold compaction dedupes in-flight job and respects fresh-tail floor", async () => {
       // Keep message count at 3 so the selector cannot form a 2-leaf sprig
       // while still honoring minimum protected tail (2). This validates
       // in-flight dedupe behavior without requiring LLM summarization.
@@ -82,7 +83,7 @@ if (!isLcmAvailable) {
       } as any
       const model = { id: "test-model", providerID: "test" } as any
 
-      const job = LcmContext.scheduleCompaction({
+      const job = scheduleThresholdCompaction({
         conversationId: testConversationId,
         sessionID: "session-1",
         user,
@@ -93,8 +94,9 @@ if (!isLcmAvailable) {
       })
 
       expect(job).not.toBeNull()
+      expect(isThresholdCompactionInFlight(testConversationId)).toBe(true)
 
-      const second = LcmContext.scheduleCompaction({
+      const second = scheduleThresholdCompaction({
         conversationId: testConversationId,
         sessionID: "session-1",
         user,
@@ -112,6 +114,7 @@ if (!isLcmAvailable) {
 
       const summaries = await LcmContext.getSummariesInContext(testConversationId)
       expect(summaries.length).toBe(0)
+      expect(isThresholdCompactionInFlight(testConversationId)).toBe(false)
     })
   })
 }

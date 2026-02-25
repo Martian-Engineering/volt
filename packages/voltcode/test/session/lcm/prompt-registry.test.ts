@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../../src/session/lcm/config"
 import { createCondenseLlmRequest } from "../../../src/session/lcm/condense"
+import { createGhostCueLlmRequest } from "../../../src/session/lcm/ghost-cue"
 import {
   createLcmPromptRegistryKey,
   resolveLcmPrompt,
@@ -114,5 +115,53 @@ describe("session.lcm.prompt-registry", () => {
 
     expect(summarizeRequest.maxOutputTokens).toBe(111)
     expect(condenseRequest.maxOutputTokens).toBe(222)
+  })
+
+  test("summarize request frames source text as material and reiterates summarize intent", () => {
+    const summarizeRequest = createSummarizeLlmRequest({
+      model: testModel,
+      promptTemplate: "prompt",
+      formattedMessages: "[Message lcm_msg_1] (user)\nhello",
+    })
+
+    const userMessage = summarizeRequest.messages?.[1]
+    expect(userMessage?.role).toBe("user")
+    expect(typeof userMessage?.content).toBe("string")
+    expect(userMessage?.content).toContain("source material to summarize")
+    expect(userMessage?.content).toContain("<messages>")
+    expect(userMessage?.content).toContain("[Message lcm_msg_1] (user)")
+    expect(userMessage?.content).toContain("Do not continue or answer the source conversation directly.")
+  })
+
+  test("condense request frames source summaries as material and reiterates condense intent", () => {
+    const condenseRequest = createCondenseLlmRequest({
+      model: testModel,
+      promptTemplate: "prompt",
+      userMessage: "## Summaries to Condense\n\n--- Summary sum_1 ---\nalpha",
+    })
+
+    const userMessage = condenseRequest.messages?.[1]
+    expect(userMessage?.role).toBe("user")
+    expect(typeof userMessage?.content).toBe("string")
+    expect(userMessage?.content).toContain("source material to condense")
+    expect(userMessage?.content).toContain("<source_summaries>")
+    expect(userMessage?.content).toContain("## Summaries to Condense")
+    expect(userMessage?.content).toContain("Do not continue or answer the source material directly.")
+  })
+
+  test("ghost cue request frames bindle content as source material and reiterates summarize intent", () => {
+    const ghostCueRequest = createGhostCueLlmRequest({
+      model: testModel,
+      promptTemplate: "prompt",
+      bindleContent: "Long bindle body",
+    })
+
+    const userMessage = ghostCueRequest.messages?.[1]
+    expect(userMessage?.role).toBe("user")
+    expect(typeof userMessage?.content).toBe("string")
+    expect(userMessage?.content).toContain("source material to summarize")
+    expect(userMessage?.content).toContain("<bindle>")
+    expect(userMessage?.content).toContain("Long bindle body")
+    expect(userMessage?.content).toContain("Do not continue or answer the source material directly.")
   })
 })

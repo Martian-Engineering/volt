@@ -17,7 +17,7 @@ function run(target) {
   process.exit(code)
 }
 
-const envPath = process.env.VOLTCODE_BIN_PATH
+const envPath = process.env.VOLT_BIN_PATH || process.env.VOLTCODE_BIN_PATH
 if (envPath) {
   run(envPath)
 }
@@ -45,7 +45,7 @@ if (!arch) {
   arch = os.arch()
 }
 const base = "voltcode-" + platform + "-" + arch
-const binary = platform === "windows" ? "voltcode.exe" : "voltcode"
+const binary = platform === "windows" ? "volt.exe" : "volt"
 
 function findBinary(startDir) {
   let current = startDir
@@ -74,7 +74,7 @@ function findBinary(startDir) {
 const resolved = findBinary(scriptDir)
 if (!resolved) {
   console.error(
-    'It seems that your package manager failed to install the right version of the voltcode CLI for your platform. You can try manually installing the "' +
+    'It seems that your package manager failed to install the right version of the volt CLI for your platform. You can try manually installing the "' +
       base +
       '" package',
   )

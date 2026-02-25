@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../../src/session/lcm/config"
+import { LcmContext } from "../../../src/session/lcm/context"
 import type { LcmDb } from "../../../src/session/lcm/db"
 import type { LcmRetrieval } from "../../../src/session/lcm/retrieval"
 import {
@@ -156,6 +157,54 @@ describe("LCM runtime strategy", () => {
     expect(doltManualCalls).toBe(0)
   })
 
+  test("routes upward threshold compaction through forced-recursive handler", async () => {
+    setLcmRuntimeStrategyFactoriesForTesting(null)
+    setLcmPolicyConfigForTesting(makePolicy("upward"))
+
+    const originalIsOverThreshold = LcmContext.isOverThreshold
+    const originalForcedRecursive = LcmContext.compactForcedRecursive
+    const originalDoltThreshold = LcmContext.onContextThresholdReached
+    let forcedRecursiveCalls = 0
+    let doltThresholdCalls = 0
+
+    ;(LcmContext as any).isOverThreshold = async () => ({
+      overHard: false,
+      overSoft: true,
+      currentTokens: 1200,
+      hardLimit: 1000,
+      softThreshold: 600,
+      lanePolicy: {} as any,
+      laneTokens: {} as any,
+      laneDecisions: {} as any,
+    })
+    ;(LcmContext as any).compactForcedRecursive = async () => {
+      forcedRecursiveCalls += 1
+      return { actionTaken: true, condensed: true }
+    }
+    ;(LcmContext as any).onContextThresholdReached = async () => {
+      doltThresholdCalls += 1
+      return { actionTaken: true, condensed: false }
+    }
+
+    try {
+      const strategy = getActiveLcmRuntimeStrategy()
+      const result = await strategy.compactOnThreshold({
+        conversationId: 42,
+        overhead: 0,
+        reserve: 0,
+        contextWindow: 1000,
+      } as any)
+      expect(strategy.name).toBe("upward")
+      expect(result.condensed).toBe(true)
+      expect(forcedRecursiveCalls).toBe(1)
+      expect(doltThresholdCalls).toBe(0)
+    } finally {
+      ;(LcmContext as any).isOverThreshold = originalIsOverThreshold
+      ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
+      ;(LcmContext as any).onContextThresholdReached = originalDoltThreshold
+    }
+  })
+
   test("fails fast on unsupported mode", () => {
     setLcmPolicyConfigForTesting(makePolicy("legacy"))
     expect(() => getActiveLcmRuntimeStrategy()).toThrow("Unsupported LCM runtime mode")
@@ -226,6 +275,19 @@ describe("LCM runtime strategy", () => {
       },
       async getSummaryLineageIds() {
         return [summaryId]
+      },
+      async getLeafMessagesForSummary() {
+        return [
+          {
+            message_id: 8001,
+            conversation_id: 501,
+            seq: 1,
+            role: "user",
+            content: "leaf memory for strategy retrieval test",
+            token_count: 8,
+            created_at: new Date("2026-02-24T00:00:00.000Z"),
+          },
+        ]
       },
       async setSummaryQmdDocMapping() {},
     }
