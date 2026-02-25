@@ -601,6 +601,20 @@ export namespace LcmContext {
     }
   }
 
+  /**
+   * Resolve the context position where the protected fresh-tail messages start.
+   *
+   * Context items at or after this position are excluded from upward condensed
+   * candidate selection.
+   */
+  function resolveFreshTailStartPosition(messages: TurnMessageInContext[], protectedTailCount: number): number {
+    const normalizedTailCount = Math.max(0, Math.floor(protectedTailCount))
+    if (normalizedTailCount <= 0) return Number.POSITIVE_INFINITY
+    if (messages.length === 0) return Number.POSITIVE_INFINITY
+    const tailStartIndex = Math.max(0, messages.length - normalizedTailCount)
+    return messages[tailStartIndex]?.position ?? Number.POSITIVE_INFINITY
+  }
+
   async function evictOverflowBindles(input: {
     conversationId: number
     lanePolicy: TokenBudget.DoltLanePolicy
@@ -1328,32 +1342,39 @@ export namespace LcmContext {
 
     const fanoutNoOpReasonForOrder = (order: number) => (order === 1 ? "sprigs_below_min_fanout" : `d${order}_below_min_fanout`)
 
+    const freshTailStartPosition = resolveFreshTailStartPosition(messagesInContext, protectedTailCount)
+
     for (;;) {
-      const activeSummaries = await getActiveSummariesForCompaction(input.conversationId)
-      const candidateGroups = new Map<number, ActiveSummaryForCompaction[]>()
-      for (const summary of activeSummaries) {
-        if (summary.condensationOrder === 1 && summary.summaryType !== "sprig") continue
-        if (summary.condensationOrder >= 2 && summary.summaryType !== "bindle") continue
-        const existing = candidateGroups.get(summary.condensationOrder)
-        if (existing) {
-          existing.push(summary)
-        } else {
-          candidateGroups.set(summary.condensationOrder, [summary])
+      const activeOrders = await LcmDb.getDistinctActiveCondensationOrdersInContext({
+        conversationId: input.conversationId,
+        maxPositionExclusive: freshTailStartPosition,
+      })
+
+      let selectedOrder: number | null = null
+      let selectedChunk: LcmDb.UpwardSummaryChunkEntry[] = []
+      for (const order of activeOrders) {
+        const candidateChunk = await LcmDb.getOldestContiguousSummaryChunkAtCondensationOrder({
+          conversationId: input.conversationId,
+          condensationOrder: order,
+          maxPositionExclusive: freshTailStartPosition,
+        })
+        if (candidateChunk.length < minimumFanoutForOrder(order)) {
+          continue
         }
+        selectedOrder = order
+        selectedChunk = candidateChunk
+        break
       }
 
-      const eligibleOrders = [...candidateGroups.keys()]
-        .filter((order) => (candidateGroups.get(order)?.length ?? 0) >= minimumFanoutForOrder(order))
-        .sort((a, b) => a - b)
-      if (eligibleOrders.length === 0) {
-        const lowestOrder = [...candidateGroups.keys()].sort((a, b) => a - b)[0]
+      if (selectedOrder == null) {
+        const lowestOrder = activeOrders[0]
         if (lowestOrder != null) {
           noOpReasons.push(fanoutNoOpReasonForOrder(lowestOrder))
         }
         break
       }
-      const parentOrder = eligibleOrders[0]!
-      const candidates = candidateGroups.get(parentOrder)!
+
+      const candidates = await getActiveSummariesForCompaction(input.conversationId, selectedChunk)
 
       const condensationResult = await attemptCondensationForOrder({
         input,
@@ -1361,9 +1382,9 @@ export namespace LcmContext {
       })
       if (!condensationResult.actionTaken) {
         noOpReasons.push(
-          parentOrder === 1
+          selectedOrder === 1
             ? "sprig_condensation_not_smaller_than_input"
-            : `d${parentOrder}_condensation_not_smaller_than_input`,
+            : `d${selectedOrder}_condensation_not_smaller_than_input`,
         )
         break
       }
@@ -1441,11 +1462,12 @@ export namespace LcmContext {
     })
   }
 
-  async function getActiveSummariesForCompaction(conversationId: number): Promise<ActiveSummaryForCompaction[]> {
-    const entries = await LcmDb.getCurrentContextWithRefs(conversationId)
+  async function getActiveSummariesForCompaction(
+    conversationId: number,
+    chunk: LcmDb.UpwardSummaryChunkEntry[],
+  ): Promise<ActiveSummaryForCompaction[]> {
     const summaries: ActiveSummaryForCompaction[] = []
-    for (const entry of entries) {
-      if (entry.item_type !== "summary" || !entry.summary_id) continue
+    for (const entry of chunk) {
       const summary = await LcmDb.getSummaryById(entry.summary_id)
       if (!summary) continue
       const condensationOrder = summary.condensation_order

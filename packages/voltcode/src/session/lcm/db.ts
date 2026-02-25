@@ -217,6 +217,15 @@ export namespace LcmDb {
   })
   export type ActiveContextBindle = z.infer<typeof ActiveContextBindle>
 
+  /**
+   * Context-positioned summary ID selected for upward condensed passes.
+   */
+  export const UpwardSummaryChunkEntry = z.object({
+    position: z.number(),
+    summary_id: z.string(),
+  })
+  export type UpwardSummaryChunkEntry = z.infer<typeof UpwardSummaryChunkEntry>
+
   export const ContextItem = z.object({
     conversation_id: z.number(),
     position: z.number(),
@@ -2486,6 +2495,153 @@ export namespace LcmDb {
         token_count: row.token_count,
         created_at: row.created_at,
       }))
+  }
+
+  /**
+   * Return distinct active condensation orders in context before an optional
+   * fresh-tail position bound. Ordered shallowest-first.
+   */
+  export async function getDistinctActiveCondensationOrdersInContext(input: {
+    conversationId: number
+    maxPositionExclusive?: number
+  }): Promise<number[]> {
+    const conn = sql()
+    const maxPositionExclusive =
+      typeof input.maxPositionExclusive === "number" && Number.isFinite(input.maxPositionExclusive)
+        ? Math.floor(input.maxPositionExclusive)
+        : null
+
+    interface OrderRow {
+      summary_id: string | null
+      summary_kind: SummaryKind | null
+      summary_level: string | null
+      condensation_order: number | null
+    }
+
+    const rows = maxPositionExclusive == null
+      ? await conn<OrderRow[]>`
+          SELECT
+            ci.summary_id,
+            s.kind AS summary_kind,
+            s.summary_level,
+            s.condensation_order
+          FROM context_items ci
+          LEFT JOIN summaries s ON s.summary_id = ci.summary_id
+          WHERE ci.conversation_id = ${input.conversationId}
+            AND ci.item_type = 'summary'::context_item_type
+            AND ci.summary_id IS NOT NULL
+          ORDER BY ci.position
+        `
+      : await conn<OrderRow[]>`
+          SELECT
+            ci.summary_id,
+            s.kind AS summary_kind,
+            s.summary_level,
+            s.condensation_order
+          FROM context_items ci
+          LEFT JOIN summaries s ON s.summary_id = ci.summary_id
+          WHERE ci.conversation_id = ${input.conversationId}
+            AND ci.item_type = 'summary'::context_item_type
+            AND ci.summary_id IS NOT NULL
+            AND ci.position < ${maxPositionExclusive}
+          ORDER BY ci.position
+        `
+
+    const distinctOrders = new Set<number>()
+    for (const row of rows) {
+      if (!row.summary_id || row.summary_kind == null) continue
+      const condensationOrder = resolveCondensationOrder({
+        condensationOrder: row.condensation_order,
+        summaryLevel: row.summary_level,
+        kind: row.summary_kind,
+      })
+      distinctOrders.add(condensationOrder)
+    }
+
+    return [...distinctOrders].sort((a, b) => a - b)
+  }
+
+  /**
+   * Select the oldest contiguous in-context summary chunk at a specific
+   * condensation order before an optional fresh-tail position bound.
+   */
+  export async function getOldestContiguousSummaryChunkAtCondensationOrder(input: {
+    conversationId: number
+    condensationOrder: number
+    maxPositionExclusive?: number
+  }): Promise<UpwardSummaryChunkEntry[]> {
+    const targetOrder = CondensationOrder.parse(input.condensationOrder)
+    const conn = sql()
+    const maxPositionExclusive =
+      typeof input.maxPositionExclusive === "number" && Number.isFinite(input.maxPositionExclusive)
+        ? Math.floor(input.maxPositionExclusive)
+        : null
+
+    interface ChunkCandidateRow {
+      position: number
+      item_type: ContextItemType
+      summary_id: string | null
+      summary_kind: SummaryKind | null
+      summary_level: string | null
+      condensation_order: number | null
+    }
+
+    const rows = maxPositionExclusive == null
+      ? await conn<ChunkCandidateRow[]>`
+          SELECT
+            ci.position,
+            ci.item_type,
+            ci.summary_id,
+            s.kind AS summary_kind,
+            s.summary_level,
+            s.condensation_order
+          FROM context_items ci
+          LEFT JOIN summaries s ON s.summary_id = ci.summary_id
+          WHERE ci.conversation_id = ${input.conversationId}
+          ORDER BY ci.position
+        `
+      : await conn<ChunkCandidateRow[]>`
+          SELECT
+            ci.position,
+            ci.item_type,
+            ci.summary_id,
+            s.kind AS summary_kind,
+            s.summary_level,
+            s.condensation_order
+          FROM context_items ci
+          LEFT JOIN summaries s ON s.summary_id = ci.summary_id
+          WHERE ci.conversation_id = ${input.conversationId}
+            AND ci.position < ${maxPositionExclusive}
+          ORDER BY ci.position
+        `
+
+    const chunk: UpwardSummaryChunkEntry[] = []
+    let started = false
+
+    for (const row of rows) {
+      if (row.item_type !== "summary" || row.summary_id == null || row.summary_kind == null) {
+        if (started) break
+        continue
+      }
+
+      const condensationOrder = resolveCondensationOrder({
+        condensationOrder: row.condensation_order,
+        summaryLevel: row.summary_level,
+        kind: row.summary_kind,
+      })
+      if (condensationOrder !== targetOrder) {
+        if (started) break
+        continue
+      }
+
+      chunk.push({
+        position: row.position,
+        summary_id: row.summary_id,
+      })
+      started = true
+    }
+
+    return chunk
   }
 
   /**
