@@ -2016,18 +2016,6 @@ export namespace LcmDb {
       return { content, truncated: false, totalSize }
     }
 
-    // Backward-compatibility fallback for rows that predate storage_kind enforcement.
-    if (row.original_path) {
-      const file = Bun.file(row.original_path)
-      const exists = await file.exists()
-      if (!exists) {
-        log.warn("legacy large file path not found on disk", { fileId, path: row.original_path })
-        return null
-      }
-      const content = await file.text()
-      return { content, truncated: false, totalSize: content.length }
-    }
-
     return null
   }
 
