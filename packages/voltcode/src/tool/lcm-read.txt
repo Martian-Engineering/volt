@@ -6,5 +6,5 @@ Use this tool when you need the actual content of something stored in LCM — la
 - Returns the stored content directly (text payloads from DB, or file content from disk).
 - Supports optional byte limit to avoid overwhelming context with very large payloads.
 - IMPORTANT: Only callable by sub-agents spawned via the Task tool. Main agent gets an error with instructions to spawn a sub-agent.
-- To retrieve stored content from the main context, spawn a Task sub-agent:
-    Task(prompt="Use lcm_read on file_xxx to find <what you need>")
+- To retrieve stored content from the main context, spawn an explore sub-agent:
+    Task(subagent_type="explore", prompt="Use lcm_read on file_xxx to find <what you need>")

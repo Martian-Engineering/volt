@@ -59,7 +59,7 @@ The sub-agent will be able to call lcm_expand to see the full content.`,
             summaryId: params.summary_id,
             messageCount: 0,
           },
-          output: `ERROR: lcm_expand cannot be called on an LCM file ID. "${params.summary_id}" is a stored file, not a conversation summary.\n\nTo work with this file:\n- Call lcm_describe with ID "${params.summary_id}" for metadata and exploration summary\n- Spawn a Task sub-agent with lcm_read to retrieve the full stored content`,
+          output: `ERROR: lcm_expand cannot be called on an LCM file ID. "${params.summary_id}" is a stored file, not a conversation summary.\n\nTo work with this file:\n- Call lcm_describe with ID "${params.summary_id}" for metadata and exploration summary\n- Spawn an explore sub-agent to retrieve content: Task(subagent_type="explore", prompt="Use lcm_read on ${params.summary_id} to find <what you need>")`,
         }
       }
       throw new LcmDb.NotFoundError({

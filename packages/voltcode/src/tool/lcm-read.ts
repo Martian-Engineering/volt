@@ -48,10 +48,10 @@ export const LcmReadTool = Tool.define<typeof parameters, LcmReadMetadata>("lcm_
 The lcm_read tool can only be called by sub-agents spawned via the Task tool.
 This restriction protects the main context from uncontrolled expansion.
 
-To retrieve the content of "${params.file_id}", spawn a Task sub-agent:
-  Task(prompt="Use lcm_read on ${params.file_id} to find <your question>")
+To retrieve the content of "${params.file_id}", spawn an explore sub-agent:
+  Task(subagent_type="explore", prompt="Use lcm_read on ${params.file_id} to find <your question>")
 
-The sub-agent will be able to call lcm_read and return a focused answer.`,
+The explore sub-agent will call lcm_read and return a focused answer.`,
       }
     }
 
@@ -133,6 +133,8 @@ The sub-agent will be able to call lcm_read and return a focused answer.`,
         found: true,
         truncated: result.truncated,
         totalSize: result.totalSize,
+        // Signal to the processor that this is already LCM content — do not re-store.
+        lcm: { storedInLcm: true, fileId },
       },
       output: lines.join("\n"),
     }

@@ -536,7 +536,8 @@ export namespace SessionProcessor {
                     if (typeof toolResult.output === "string") {
                       const outputTokens = Token.estimate(toolResult.output)
 
-                      if (outputTokens > LARGE_TOOL_OUTPUT_THRESHOLD) {
+                      // Skip LCM re-storage if the output is already from LCM (e.g. lcm_read)
+                      if (outputTokens > LARGE_TOOL_OUTPUT_THRESHOLD && !lcmMetadata?.storedInLcm) {
                         // Large output: store in LCM and replace with reference
                         const lcmResult = await handleLargeToolOutput({
                           sessionID: input.sessionID,
