@@ -2,7 +2,7 @@
 
 **A terminal-based AI coding agent with Lossless Context Management.** 
 
-This is a research preview from Voltropy. For full details, read the [LCM technical paper](papers.voltropy.com/LCM).
+This is a research preview from Voltropy. For full details, read the [LCM technical paper](https://papers.voltropy.com/LCM).
 
 ---
 ## What is Volt?
@@ -45,7 +45,7 @@ In agentic coding sessions, tool results frequently include file contents that i
 
 Volt with LCM achieves higher scores than Claude Code on the OOLONG long-context benchmark, including at every context length between 32K and 1M tokens, using Opus 4.6. The architecture-centric approach yields reliability and cost advantages for production aggregation workloads while adding zero overhead for short tasks.
 
-For the full technical details, see the [LCM paper](papers.voltropy.com/LCM).
+For the full technical details, see the [LCM paper](https://papers.voltropy.com/LCM).
 
 ---
 
