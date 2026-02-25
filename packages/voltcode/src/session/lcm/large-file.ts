@@ -23,6 +23,8 @@ export namespace LargeFile {
       conversationId: z.string(),
       /** Original file path (if available) */
       originalPath: z.string().nullable(),
+      /** Storage mode for payload retrieval. */
+      storageKind: z.enum(["path", "inline_text", "inline_binary"]).default("path"),
       /** MIME type of the file */
       mimeType: z.string(),
       /** Estimated token count for the file content */
@@ -104,6 +106,7 @@ export namespace LargeFile {
       fileId: generateId(input.content),
       conversationId: input.conversationId,
       originalPath: input.originalPath ?? null,
+      storageKind: "inline_text",
       mimeType: input.mimeType,
       tokenCount: input.tokenCount,
       isBinary: false,
@@ -124,6 +127,7 @@ export namespace LargeFile {
       fileId: generateId(input.binaryContent),
       conversationId: input.conversationId,
       originalPath: input.originalPath ?? null,
+      storageKind: "inline_binary",
       mimeType: input.mimeType,
       tokenCount: input.tokenCount,
       isBinary: true,
@@ -150,7 +154,8 @@ export namespace LargeFile {
   export function formatForContext(file: Info): string {
     const lines: string[] = []
     lines.push(`[Large File ID: ${file.fileId}]`)
-    if (file.originalPath) {
+    lines.push(`[Storage: ${file.storageKind}]`)
+    if (file.storageKind === "path" && file.originalPath) {
       lines.push(`[Path: ${file.originalPath}]`)
     }
     lines.push(`[Type: ${file.mimeType}]`)

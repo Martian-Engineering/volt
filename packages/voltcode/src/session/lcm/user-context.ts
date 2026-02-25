@@ -221,14 +221,20 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
     CREATE TABLE IF NOT EXISTS large_files (
       file_id         text PRIMARY KEY,
       conversation_id bigint NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
-      original_path   text NOT NULL,
+      storage_kind    text NOT NULL DEFAULT 'path',
+      original_path   text,
       mime_type       text NOT NULL,
       content         text,
       binary_content  bytea,
       token_count     bigint NOT NULL,
       exploration_summary text,
       explorer_used   text,
-      created_at      timestamptz NOT NULL DEFAULT now()
+      created_at      timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT large_files_storage_shape_check CHECK (
+        (storage_kind = 'path' AND original_path IS NOT NULL AND content IS NULL AND binary_content IS NULL) OR
+        (storage_kind = 'inline_text' AND content IS NOT NULL AND binary_content IS NULL) OR
+        (storage_kind = 'inline_binary' AND binary_content IS NOT NULL AND content IS NULL)
+      )
     );
 
     CREATE INDEX IF NOT EXISTS large_files_conv_idx ON large_files(conversation_id);
