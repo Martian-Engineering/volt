@@ -35,8 +35,12 @@ describe("parseLcmPolicyConfig", () => {
       target: 10000,
       minFanout: 2,
     })
+    expect(config.strategies.dolt.ghostCueArchiveEnabled).toBe(true)
 
-    expect(config.strategies.upward).toEqual(config.strategies.dolt)
+    expect(config.strategies.upward).toEqual({
+      ...config.strategies.dolt,
+      ghostCueArchiveEnabled: false,
+    })
   })
 
   test("supports mode and lane overrides with typed output shape", () => {
@@ -62,6 +66,17 @@ describe("parseLcmPolicyConfig", () => {
       target: 12000,
       minFanout: 3,
     })
+    expect(config.strategies.upward.ghostCueArchiveEnabled).toBe(false)
+  })
+
+  test("supports mode-specific ghost cue archive toggle overrides", () => {
+    const config = parseLcmPolicyConfig({
+      VOLTCODE_LCM_DOLT_GHOST_CUE_ARCHIVE_ENABLED: "false",
+      VOLTCODE_LCM_UPWARD_GHOST_CUE_ARCHIVE_ENABLED: "true",
+    })
+
+    expect(config.strategies.dolt.ghostCueArchiveEnabled).toBe(false)
+    expect(config.strategies.upward.ghostCueArchiveEnabled).toBe(true)
   })
 
   test("fails fast on invalid mode", () => {
@@ -94,5 +109,13 @@ describe("parseLcmPolicyConfig", () => {
         VOLTCODE_LCM_DOLT_SPRIGS_MIN_FANOUT: "1",
       }),
     ).toThrow("VOLTCODE_LCM_DOLT_SPRIGS_MIN_FANOUT")
+  })
+
+  test("fails fast on invalid ghost cue archive boolean", () => {
+    expect(() =>
+      parseLcmPolicyConfig({
+        VOLTCODE_LCM_DOLT_GHOST_CUE_ARCHIVE_ENABLED: "maybe",
+      }),
+    ).toThrow("VOLTCODE_LCM_DOLT_GHOST_CUE_ARCHIVE_ENABLED")
   })
 })

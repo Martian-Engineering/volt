@@ -137,6 +137,7 @@ export interface LcmModePolicy {
   sprigs: LcmCondensationLanePolicy
   bindles: LcmCondensationLanePolicy
   hardLimitRiskBuffer: number
+  ghostCueArchiveEnabled: boolean
 }
 
 export interface LcmRuntimePolicy {
@@ -179,6 +180,8 @@ const DEFAULT_DOLT_LEAVES_DELTA = 5_000
 const DEFAULT_DOLT_LEAVES_TARGET = 50_000
 const DEFAULT_DOLT_LEAVES_FRESH_TAIL_FLOOR = 4
 const DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER = 0
+const DEFAULT_DOLT_GHOST_CUE_ARCHIVE_ENABLED = true
+const DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED = false
 
 /**
  * Parse LCM policy settings from env vars.
@@ -256,10 +259,14 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
       minFanout: 2,
     },
     hardLimitRiskBuffer: DEFAULT_DOLT_HARD_LIMIT_RISK_BUFFER,
+    ghostCueArchiveEnabled: DEFAULT_DOLT_GHOST_CUE_ARCHIVE_ENABLED,
   }
 
   const dolt = parseModePolicy(env, "DOLT", doltDefaults)
-  const upward = parseModePolicy(env, "UPWARD", dolt)
+  const upward = parseModePolicy(env, "UPWARD", {
+    ...dolt,
+    ghostCueArchiveEnabled: DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED,
+  })
 
   return {
     mode,
@@ -348,6 +355,11 @@ function parseModePolicy(
       `VOLTCODE_LCM_${modePrefix}_HARD_LIMIT_RISK_BUFFER`,
       defaults.hardLimitRiskBuffer,
     ),
+    ghostCueArchiveEnabled: readEnvBoolean(
+      env,
+      `VOLTCODE_LCM_${modePrefix}_GHOST_CUE_ARCHIVE_ENABLED`,
+      defaults.ghostCueArchiveEnabled,
+    ),
   }
 }
 
@@ -415,4 +427,12 @@ function readEnvNonNegativeInteger(env: Record<string, string | undefined>, key:
     throw new Error(`${key} must be a non-negative integer (received: ${raw})`)
   }
   return parsed
+}
+
+function readEnvBoolean(env: Record<string, string | undefined>, key: string, fallback: boolean): boolean {
+  const raw = env[key]
+  if (!raw) return fallback
+  if (raw === "true") return true
+  if (raw === "false") return false
+  throw new Error(`${key} must be one of: true, false (received: ${raw})`)
 }

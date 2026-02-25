@@ -1,9 +1,31 @@
+import path from "path"
 import { generateText } from "ai"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
-import GHOST_CUE_PROMPT from "./prompts/ghost-cue.txt"
 
 const GHOST_CUE_MAX_OUTPUT_TOKENS = 220
+let ghostCuePromptCache: string | null = null
+let ghostCuePromptLoaderOverride: (() => Promise<string>) | null = null
+
+async function readGhostCuePromptFromDisk(): Promise<string> {
+  const promptPath = path.join(path.dirname(import.meta.path), "prompts/ghost-cue.txt")
+  const file = Bun.file(promptPath)
+  if (!(await file.exists())) {
+    throw new Error(`ghost cue prompt file missing: ${promptPath}`)
+  }
+  return await file.text()
+}
+
+async function getGhostCuePrompt(): Promise<string> {
+  if (ghostCuePromptCache) return ghostCuePromptCache
+  const loader = ghostCuePromptLoaderOverride ?? readGhostCuePromptFromDisk
+  const prompt = (await loader()).trim()
+  if (!prompt) {
+    throw new Error("ghost cue prompt is empty")
+  }
+  ghostCuePromptCache = prompt
+  return prompt
+}
 
 export namespace LcmGhostCue {
   const log = Log.create({ service: "lcm.ghost-cue" })
@@ -14,6 +36,7 @@ export namespace LcmGhostCue {
     model: Provider.Model
     abort?: AbortSignal
   }): Promise<string> {
+    const prompt = await getGhostCuePrompt()
     const language = await Provider.getLanguage(input.model)
     const result = await generateText({
       model: language,
@@ -22,7 +45,7 @@ export namespace LcmGhostCue {
       messages: [
         {
           role: "system",
-          content: GHOST_CUE_PROMPT,
+          content: prompt,
         },
         {
           role: "user",
@@ -65,5 +88,13 @@ export namespace LcmGhostCue {
       })
       return withFrontmatter(input.bindleId, fallbackNarrative(input.bindleContent))
     }
+  }
+
+  /**
+   * Test-only helper to control prompt loading behavior.
+   */
+  export function setGhostCuePromptLoaderForTesting(loader: (() => Promise<string>) | null): void {
+    ghostCuePromptLoaderOverride = loader
+    ghostCuePromptCache = null
   }
 }

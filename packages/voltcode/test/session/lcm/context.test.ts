@@ -3,6 +3,7 @@ import { LcmDb } from "../../../src/session/lcm/db"
 import { ensureLcmReady } from "../../../src/session/lcm/runtime"
 import { isEmbeddedPostgresSupported } from "../../../src/session/lcm/embedded-postgres"
 import { LcmContext } from "../../../src/session/lcm/context"
+import { LcmGhostCue } from "../../../src/session/lcm/ghost-cue"
 import { parseLcmPolicyConfig, setLcmPolicyConfigForTesting } from "../../../src/session/lcm/config"
 import { Token } from "../../../src/util/token"
 
@@ -655,6 +656,7 @@ describe("session.lcm.context", () => {
           expect(stub).not.toBeNull()
           expect(stub!.summary_type).toBe("archive_stub")
           expect(stub!.is_off_context).toBe(true)
+          expect(stub!.content).toContain(`bindle_id: ${bindleId}`)
           const parentLeafIds = await LcmDb.getSummaryParentIds(bindleId)
           expect(parentLeafIds.length).toBeGreaterThan(0)
         }
@@ -685,6 +687,120 @@ describe("session.lcm.context", () => {
         `
         expect(bindleToBindleEdges[0]?.count ?? 0).toBe(0)
       } finally {
+        setLcmPolicyConfigForTesting(null)
+      }
+    })
+
+    test("skips ghost cue generation and archive stub writes in upward mode under bindle pressure", async () => {
+      setLcmPolicyConfigForTesting(
+        parseLcmPolicyConfig({
+          VOLTCODE_LCM_MODE: "upward",
+          VOLTCODE_LCM_UPWARD_BINDLES_SOFT: "20",
+          VOLTCODE_LCM_UPWARD_BINDLES_DELTA: "1",
+          VOLTCODE_LCM_UPWARD_BINDLES_TARGET: "15",
+        }),
+      )
+
+      const conn = LcmDb.getConnection()
+      let ghostCuePromptLoads = 0
+      LcmGhostCue.setGhostCuePromptLoaderForTesting(async () => {
+        ghostCuePromptLoads += 1
+        return "ghost cue prompt should not be loaded in upward mode"
+      })
+
+      async function appendBindleToContext(label: string): Promise<string> {
+        const leaf1 = nextSummaryId()
+        const leaf2 = nextSummaryId()
+        const bindleId = nextSummaryId()
+
+        await LcmDb.insertSprigSummary({
+          summaryId: leaf1,
+          conversationId: testConversationId,
+          content: `${label} sprig 1`,
+          tokenCount: 4,
+          messageIds: [],
+        })
+        await LcmDb.insertSprigSummary({
+          summaryId: leaf2,
+          conversationId: testConversationId,
+          content: `${label} sprig 2`,
+          tokenCount: 4,
+          messageIds: [],
+        })
+        await LcmDb.insertBindleSummary({
+          summaryId: bindleId,
+          conversationId: testConversationId,
+          content: `${label} bindle with longer content to ensure deterministic eviction behavior`,
+          tokenCount: 12,
+          parentSummaryIds: [leaf1, leaf2],
+        })
+
+        await LcmDb.appendMessage({
+          conversationId: testConversationId,
+          role: "user",
+          content: `placeholder for ${bindleId}`,
+          tokenCount: 1,
+        })
+        const contextBeforeReplacement = await LcmDb.getCurrentContext(testConversationId)
+        const insertedMessagePosition = contextBeforeReplacement.length - 1
+        await LcmDb.replaceContextWithSummary({
+          conversationId: testConversationId,
+          startPosition: insertedMessagePosition,
+          endPosition: insertedMessagePosition,
+          summaryId: bindleId,
+        })
+
+        return bindleId
+      }
+
+      try {
+        await appendBindleToContext("upward-batch-1")
+        await appendBindleToContext("upward-batch-2")
+        await appendBindleToContext("upward-batch-3")
+        await appendBindleToContext("upward-batch-4")
+
+        const user = {
+          id: "user-overflow-upward",
+          sessionID: "session-overflow-upward",
+          role: "user",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: Date.now() },
+        } as any
+        const model = { id: "test-model", providerID: "test" } as any
+
+        const result = await LcmContext.onContextThresholdReached({
+          conversationId: testConversationId,
+          sessionID: "session-overflow-upward",
+          user,
+          model,
+          overhead: 0,
+          reserve: 0,
+          contextWindow: MAX_TOKENS,
+        })
+
+        expect(result.actionTaken).toBe(true)
+        expect((result.evictedBindleIds ?? []).length).toBeGreaterThan(0)
+        expect(result.archiveStubIds ?? []).toEqual([])
+        expect(ghostCuePromptLoads).toBe(0)
+
+        const archiveStubCount = await conn<{ count: number }[]>`
+          SELECT COUNT(*)::int AS count
+          FROM summaries
+          WHERE conversation_id = ${testConversationId}
+            AND summary_type = 'archive_stub'
+        `
+        expect(archiveStubCount[0]?.count ?? 0).toBe(0)
+
+        const archivePointerCount = await conn<{ count: number }[]>`
+          SELECT COUNT(*)::int AS count
+          FROM summary_lineage_pointers sp
+          JOIN summaries s ON s.summary_id = sp.summary_id
+          WHERE s.conversation_id = ${testConversationId}
+            AND sp.pointer_kind = 'archive_stub'
+        `
+        expect(archivePointerCount[0]?.count ?? 0).toBe(0)
+      } finally {
+        LcmGhostCue.setGhostCuePromptLoaderForTesting(null)
         setLcmPolicyConfigForTesting(null)
       }
     })

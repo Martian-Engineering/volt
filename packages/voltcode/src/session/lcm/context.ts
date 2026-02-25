@@ -68,6 +68,15 @@ export namespace LcmContext {
         conversationId: z.number(),
       }),
     ),
+    GhostCueSkipped: BusEvent.define(
+      "lcm.ghost-cue.skipped",
+      z.object({
+        conversationId: z.number(),
+        mode: z.enum(["dolt", "upward"]),
+        reason: z.string(),
+        evictedBindleIds: z.array(z.string()),
+      }),
+    ),
   }
 
   /**
@@ -478,6 +487,32 @@ export namespace LcmContext {
     })
     await LcmDb.setSummariesOffContext(evictedBindleIds, true)
 
+    const policyConfig = getLcmPolicyConfig()
+    const activeMode = policyConfig.mode
+    const ghostCueArchiveEnabled =
+      activeMode === "dolt" && policyConfig.strategies[activeMode].ghostCueArchiveEnabled
+    if (!ghostCueArchiveEnabled) {
+      const newTokenCount = await LcmDb.getContextTokenCount(input.conversationId)
+      log.info("skipping ghost cue archive generation for evicted bindles", {
+        conversationId: input.conversationId,
+        mode: activeMode,
+        evictedBindleIds,
+      })
+      void Bus.publish(Event.GhostCueSkipped, {
+        conversationId: input.conversationId,
+        mode: activeMode,
+        reason: "mode_policy_disabled",
+        evictedBindleIds,
+      }).catch((error) => {
+        log.debug("failed to publish ghost cue skipped event", {
+          conversationId: input.conversationId,
+          mode: activeMode,
+          error,
+        })
+      })
+      return { evictedBindleIds, archiveStubIds: [], newTokenCount }
+    }
+
     const archiveStubIds: string[] = []
     for (const [index, bindle] of evictedBindles.entries()) {
       const ghostCueContent = await LcmGhostCue.generateWithFallback({
@@ -877,7 +912,7 @@ export namespace LcmContext {
    *    into one sprig (preserving the last N leaves in context).
    * 2. Condense all active sprigs into one bindle (ignores sprig lane pressure).
    * 3. If bindle lane is above target, evict exactly one oldest bindle and
-   *    generate/archive its ghost cue pointer.
+   *    in Dolt mode generate/archive its ghost cue pointer.
    */
   export async function compactShortBindle(input: {
     conversationId: number
