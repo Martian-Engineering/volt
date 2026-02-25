@@ -6,6 +6,7 @@ import { LcmDb } from "../../../src/session/lcm/db"
 import { isEmbeddedPostgresSupported } from "../../../src/session/lcm/embedded-postgres"
 import { ensureLcmReady } from "../../../src/session/lcm/runtime"
 import { getActiveLcmRuntimeStrategy, setLcmRuntimeStrategyFactoriesForTesting } from "../../../src/session/lcm/strategy"
+import { TokenBudget } from "../../../src/session/token-budget"
 import type { LcmRetrieval } from "../../../src/session/lcm/retrieval"
 import { Summary } from "../../../src/session/lcm/summary"
 
@@ -335,10 +336,16 @@ describe("session.lcm.cross-mode-matrix", () => {
     expect(strategy.name).toBe("upward")
 
     const originalForcedRecursive = LcmContext.compactForcedRecursive
+    const originalEvaluateDoltLaneDecisions = TokenBudget.evaluateDoltLaneDecisions
     let forcedRecursiveCalls = 0
+    let doltLaneDecisionCalls = 0
     ;(LcmContext as any).compactForcedRecursive = async () => {
       forcedRecursiveCalls += 1
       return { actionTaken: true, condensed: true }
+    }
+    ;(TokenBudget as any).evaluateDoltLaneDecisions = () => {
+      doltLaneDecisionCalls += 1
+      throw new Error("Upward trigger path must not evaluate Dolt lane decisions")
     }
 
     try {
@@ -359,8 +366,10 @@ describe("session.lcm.cross-mode-matrix", () => {
 
       expect(result.actionTaken).toBe(true)
       expect(forcedRecursiveCalls).toBe(1)
+      expect(doltLaneDecisionCalls).toBe(0)
     } finally {
       ;(LcmContext as any).compactForcedRecursive = originalForcedRecursive
+      ;(TokenBudget as any).evaluateDoltLaneDecisions = originalEvaluateDoltLaneDecisions
     }
   })
 

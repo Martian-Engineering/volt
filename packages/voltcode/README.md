@@ -707,6 +707,19 @@ Notes:
 - These tests require a reachable Postgres URL if embedded DB is unavailable.
 - `cross-mode-matrix.test.ts` validates deterministic seed behavior across Dolt and Upward.
 
+Regression lock suite (`volt-dc7.13.7`):
+
+```bash
+bun test ./test/session/lcm/dolt-validation.test.ts \
+  ./test/session/lcm/cross-mode-matrix.test.ts \
+  ./test/session/lcm/strategy.test.ts \
+  ./test/session/lcm/upward-phase1-chunk-loop.test.ts \
+  ./test/session/lcm/upward-depth-selectors.test.ts \
+  ./test/session/lcm/upward-phase2-shallowest-first.test.ts \
+  ./test/session/lcm/upward-hard-trigger-parity.test.ts \
+  ./test/session/lcm/runtime-invalid-mode.test.ts
+```
+
 ## Code Map (Where to Change What)
 
 LCM policy and dispatch:
