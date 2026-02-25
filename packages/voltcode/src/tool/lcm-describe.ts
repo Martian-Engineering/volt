@@ -66,7 +66,7 @@ async function describeFile(fileId: string, sessionID: string) {
   const lines: string[] = []
   lines.push(`## LCM File: ${fileId}`)
   lines.push("")
-  lines.push(`**Path:** ${file.original_path ?? "(no path)"}`)
+  lines.push(`**Path:** ${file.original_path ?? "(inline content — stored in LCM database, not on disk)"}`)
   lines.push(`**Type:** ${file.mime_type}`)
   lines.push(`**Tokens:** ~${file.token_count.toLocaleString()}`)
   lines.push(`**Created:** ${file.created_at.toISOString()}`)

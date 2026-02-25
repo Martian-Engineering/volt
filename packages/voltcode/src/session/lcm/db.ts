@@ -1724,8 +1724,9 @@ export namespace LcmDb {
     const tokenCount = LargeFileThreshold.estimateTokenCount(input.content)
     const fileId = generateFileId(input.conversationId, input.content)
 
-    // Use the label as original_path for identification (e.g., "user_prompt_12345")
-    const originalPath = input.label ?? `inline_content_${Date.now()}`
+    // Don't store labels as original_path — that field is for actual file paths on disk.
+    // Inline content is stored in the content column and read from there.
+    const originalPath = null
 
     await conn`
       INSERT INTO large_files (file_id, conversation_id, original_path, mime_type, content, binary_content, token_count)
@@ -1735,7 +1736,7 @@ export namespace LcmDb {
     log.debug("inserted large text content", {
       fileId,
       conversationId: input.conversationId,
-      label: originalPath,
+      label: input.label,
       tokenCount,
       contentLength: input.content.length,
     })
