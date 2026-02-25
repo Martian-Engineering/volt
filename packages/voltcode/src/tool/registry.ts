@@ -33,6 +33,7 @@ import { ApplyPatchTool } from "./apply_patch"
 import { LcmGrepTool } from "./lcm-grep"
 import { LcmExpandTool } from "./lcm-expand"
 import { LcmDescribeTool } from "./lcm-describe"
+import { LcmReadTool } from "./lcm-read"
 import { AgenticMapTool } from "./agentic-map"
 import { LlmMapTool } from "./llm-map"
 
@@ -142,6 +143,7 @@ export namespace ToolRegistry {
       LcmGrepTool,
       LcmExpandTool,
       LcmDescribeTool,
+      LcmReadTool,
       AgenticMapTool,
       LlmMapTool,
       ...custom,
