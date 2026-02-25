@@ -1151,9 +1151,13 @@ export const SessionRoutes = lazy(() =>
             reserve,
             contextWindow: model.limit.context,
           })
+          const status = compactResult.actionTaken ? "executed" : "no_op"
+          const mode = strategy.name === "upward" ? "forced_recursive" : "short_bindle"
           return c.json({
-            mode: "short_bindle",
+            mode,
             strategy: strategy.name,
+            status,
+            executed: compactResult.actionTaken,
             success: true,
             beforeTokenCount,
             newTokenCount: compactResult.newTokenCount ?? beforeTokenCount,

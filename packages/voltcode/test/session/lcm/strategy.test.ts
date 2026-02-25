@@ -25,6 +25,7 @@ function makePolicy(mode: string) {
 function makeStubStrategy(input: {
   name: "dolt" | "upward"
   compactOnThreshold?: LcmRuntimeStrategy["compactOnThreshold"]
+  compactManual?: LcmRuntimeStrategy["compactManual"]
 }): LcmRuntimeStrategy {
   return {
     name: input.name,
@@ -34,10 +35,12 @@ function makeStubStrategy(input: {
         actionTaken: false,
         condensed: false,
       })),
-    compactManual: async () => ({
-      actionTaken: false,
-      condensed: false,
-    }),
+    compactManual:
+      input.compactManual ??
+      (async () => ({
+        actionTaken: false,
+        condensed: false,
+      })),
     assembleContext: async () => [],
     resolveRetrieval: async (request) => ({
       query: request.query,
@@ -119,6 +122,38 @@ describe("LCM runtime strategy", () => {
     await strategy.compactOnThreshold({} as any)
     expect(upwardCalls).toBe(1)
     expect(doltCalls).toBe(0)
+  })
+
+  test("dispatches upward manual compaction to upward strategy", async () => {
+    let doltManualCalls = 0
+    let upwardManualCalls = 0
+
+    setLcmRuntimeStrategyFactoriesForTesting({
+      dolt: () =>
+        makeStubStrategy({
+          name: "dolt",
+          compactManual: async () => {
+            doltManualCalls += 1
+            return { actionTaken: true, condensed: true }
+          },
+        }),
+      upward: () =>
+        makeStubStrategy({
+          name: "upward",
+          compactManual: async () => {
+            upwardManualCalls += 1
+            return { actionTaken: true, condensed: true }
+          },
+        }),
+    })
+    setLcmPolicyConfigForTesting(makePolicy("upward"))
+
+    const strategy = getActiveLcmRuntimeStrategy()
+    expect(strategy.name).toBe("upward")
+
+    await strategy.compactManual({} as any)
+    expect(upwardManualCalls).toBe(1)
+    expect(doltManualCalls).toBe(0)
   })
 
   test("fails fast on unsupported mode", () => {

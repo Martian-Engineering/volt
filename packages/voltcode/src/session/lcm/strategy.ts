@@ -68,7 +68,7 @@ export interface LcmRuntimeStrategy {
 const upwardStrategy: LcmRuntimeStrategy = {
   name: "upward",
   compactOnThreshold: (input) => LcmContext.onContextThresholdReached(input),
-  compactManual: (input) => LcmContext.compactShortBindle(input),
+  compactManual: (input) => LcmContext.compactForcedRecursive(input),
   assembleContext: (conversationId) => LcmDb.getCurrentContext(conversationId),
   resolveRetrieval: (input) => LcmRetrievalFacade.resolveOffContextRetrieval(input, "upward"),
 }

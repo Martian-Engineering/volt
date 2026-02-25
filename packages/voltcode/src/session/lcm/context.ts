@@ -200,6 +200,12 @@ export namespace LcmContext {
     tokenCount: number
   }
 
+  interface ActiveSummaryForCompaction extends Summary.Info {
+    position: number
+    condensationOrder: number
+    summaryType: Summary.Type
+  }
+
   /**
    * Check if the current context exceeds the threshold.
    *
@@ -299,6 +305,8 @@ export namespace LcmContext {
               summaryId: summary.summary_id,
               content: summary.content,
               kind: summary.kind,
+              condensationOrder: summary.condensation_order,
+              summaryType: summary.summary_type,
               tokenCount: summary.token_count,
               conversationId: conversationId.toString(),
               parents: summary.kind === "bindle" ? await LcmDb.getSummaryParentIds(summary.summary_id) : [],
@@ -1053,6 +1061,145 @@ export namespace LcmContext {
   }
 
   /**
+   * Manual recursive compaction flow used by `/compact` in upward mode.
+   *
+   * Steps:
+   * 1. Summarize all eligible oldest leaves into one sprig (preserve fresh tail).
+   * 2. Force recursive condensation by level:
+   *    - d1 sprigs -> d2 bindle
+   *    - d2 bindles -> d3 bindle
+   *    - ... continue until fanout constraints block the next level.
+   * 3. Never evict bindles in this mode.
+   */
+  export async function compactForcedRecursive(input: {
+    conversationId: number
+    sessionID: string
+    user: MessageV2.User
+    model: Provider.Model
+    abort?: AbortSignal
+    overhead: number
+    reserve: number
+    contextWindow: number
+    softThresholdOverride?: number
+  }): Promise<ContextHandlerResult> {
+    const initialThreshold = await isOverThreshold({
+      conversationId: input.conversationId,
+      overhead: input.overhead,
+      reserve: input.reserve,
+      contextWindow: input.contextWindow,
+      softThresholdOverride: input.softThresholdOverride,
+    })
+    const baseResult = {
+      beforeTokenCount: initialThreshold.currentTokens,
+      maxTokens: input.contextWindow,
+      threshold: initialThreshold.softThreshold / input.contextWindow,
+    }
+
+    let actionTaken = false
+    let condensed = false
+    let messagesSummarized = 0
+    let createdSummary: Summary.Info | undefined
+    const noOpReasons: string[] = []
+
+    const protectedTailCount = Math.max(1, Math.floor(initialThreshold.lanePolicy.leaves.freshTailFloor))
+    const messagesInContext = await getMessagesInContext(input.conversationId)
+    const eligibleLeafCount = Math.max(0, messagesInContext.length - protectedTailCount)
+    if (eligibleLeafCount >= initialThreshold.lanePolicy.leaves.minFanout) {
+      const selectedMessages = messagesInContext.slice(0, eligibleLeafCount)
+      const inputTokens = selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0)
+      const messagesToSummarize = await convertToMessageV2(selectedMessages)
+      const dbMessageIds = selectedMessages.map((m) => m.messageId)
+      const sprigSummary = await LcmSummarize.summarize({
+        messages: messagesToSummarize,
+        conversationId: input.conversationId,
+        sessionID: input.sessionID,
+        user: input.user,
+        dbMessageIds,
+        model: input.model,
+        abort: input.abort,
+      })
+
+      if (sprigSummary.tokenCount < inputTokens) {
+        await LcmDb.replacePositionsWithSummary({
+          conversationId: input.conversationId,
+          positions: selectedMessages.map((m) => m.position),
+          summaryId: sprigSummary.summaryId,
+        })
+        actionTaken = true
+        messagesSummarized = selectedMessages.length
+        createdSummary = sprigSummary
+      } else {
+        log.warn("upward recursive leaf summarization was not smaller than input; skipping leaf replacement", {
+          conversationId: input.conversationId,
+          inputTokens,
+          summaryTokens: sprigSummary.tokenCount,
+        })
+        noOpReasons.push("leaf_summary_not_smaller_than_input")
+      }
+    } else {
+      log.info("upward recursive leaf step skipped: not enough leaves beyond protected tail", {
+        conversationId: input.conversationId,
+        totalLeaves: messagesInContext.length,
+        protectedTailCount,
+        eligibleLeafCount,
+        minimumLeavesPerSprig: initialThreshold.lanePolicy.leaves.minFanout,
+      })
+      noOpReasons.push("eligible_leaves_below_min")
+    }
+
+    let parentOrder = 1
+    for (;;) {
+      const activeSummaries = await getActiveSummariesForCompaction(input.conversationId)
+      const candidates = activeSummaries.filter((summary) => {
+        if (summary.condensationOrder !== parentOrder) return false
+        if (parentOrder === 1) return summary.summaryType === "sprig"
+        return summary.summaryType === "bindle"
+      })
+      const minimumFanout =
+        parentOrder === 1 ? initialThreshold.lanePolicy.sprigs.minFanout : initialThreshold.lanePolicy.bindles.minFanout
+
+      if (candidates.length < minimumFanout) {
+        noOpReasons.push(parentOrder === 1 ? "sprigs_below_min_fanout" : `d${parentOrder}_below_min_fanout`)
+        break
+      }
+
+      const condensationResult = await attemptCondensationForOrder({
+        input,
+        parentSummaries: candidates,
+      })
+      if (!condensationResult.actionTaken) {
+        noOpReasons.push(
+          parentOrder === 1
+            ? "sprig_condensation_not_smaller_than_input"
+            : `d${parentOrder}_condensation_not_smaller_than_input`,
+        )
+        break
+      }
+
+      actionTaken = true
+      condensed = true
+      if (condensationResult.createdSummary) {
+        createdSummary = condensationResult.createdSummary
+      }
+      parentOrder += 1
+    }
+
+    if (!actionTaken) {
+      noOpReasons.push("no_legal_compaction_group")
+    }
+
+    return {
+      actionTaken,
+      condensed,
+      createdSummary,
+      messagesSummarized,
+      newTokenCount: await LcmDb.getContextTokenCount(input.conversationId),
+      noOpReasons: [...new Set(noOpReasons)],
+      ...baseResult,
+    }
+  }
+
+  /**
    * Attempt to condense sprig summaries into a bindle.
    *
    * L2 bindles are only formed from L1 sprigs. Existing bindles are never
@@ -1077,7 +1224,18 @@ export namespace LcmContext {
       return { actionTaken: false, condensed: false }
     }
 
-    const sprigSummaries = summaries.filter((summary) => summary.kind === "sprig")
+    const sprigSummaries = summaries
+      .map((summary) => {
+        const condensationOrder = summary.condensationOrder ?? Summary.condensationOrderFromKind(summary.kind)
+        const summaryType = summary.summaryType ?? (summary.kind === "sprig" ? "sprig" : "bindle")
+        return {
+          ...summary,
+          position: -1,
+          condensationOrder,
+          summaryType,
+        } satisfies ActiveSummaryForCompaction
+      })
+      .filter((summary) => summary.condensationOrder === 1 && summary.summaryType === "sprig")
     if (sprigSummaries.length < 1) {
       log.info("attemptCondensation: skipping, no sprig summaries available", {
         conversationId: input.conversationId,
@@ -1086,30 +1244,83 @@ export namespace LcmContext {
       return { actionTaken: false, condensed: false }
     }
 
-    const inputTokens = sprigSummaries.reduce((sum, s) => sum + s.tokenCount, 0)
-    log.debug("attemptCondensation", {
-      conversationId: input.conversationId,
-      summaryCount: summaries.length,
-      sprigSummaryCount: sprigSummaries.length,
-      inputTokens,
-      summaryIds: sprigSummaries.map((s) => s.summaryId),
+    return await attemptCondensationForOrder({
+      input,
+      parentSummaries: sprigSummaries,
     })
-    const condenseParams = {
-      summaries: sprigSummaries,
-      conversationId: input.conversationId.toString(),
-      dbConversationId: input.conversationId,
-      model: input.model,
-      abort: input.abort,
+  }
+
+  async function getActiveSummariesForCompaction(conversationId: number): Promise<ActiveSummaryForCompaction[]> {
+    const entries = await LcmDb.getCurrentContextWithRefs(conversationId)
+    const summaries: ActiveSummaryForCompaction[] = []
+    for (const entry of entries) {
+      if (entry.item_type !== "summary" || !entry.summary_id) continue
+      const summary = await LcmDb.getSummaryById(entry.summary_id)
+      if (!summary) continue
+      const condensationOrder = summary.condensation_order
+      const summaryType = summary.summary_type
+      if (condensationOrder == null || summaryType == null) continue
+      summaries.push({
+        summaryId: summary.summary_id,
+        content: summary.content,
+        kind: summary.kind,
+        level: summary.summary_level,
+        condensationOrder,
+        summaryType,
+        tokenCount: summary.token_count,
+        conversationId: conversationId.toString(),
+        parents: summary.kind === "bindle" ? await LcmDb.getSummaryParentIds(summary.summary_id) : [],
+        fileIds: summary.file_ids,
+        createdAt: summary.created_at.getTime(),
+        position: entry.position,
+      })
+    }
+    return summaries
+  }
+
+  async function attemptCondensationForOrder(input: {
+    input: {
+      conversationId: number
+      sessionID: string
+      user: MessageV2.User
+      model: Provider.Model
+      abort?: AbortSignal
+    }
+    parentSummaries: ActiveSummaryForCompaction[]
+  }): Promise<ContextHandlerResult> {
+    if (input.parentSummaries.length < 1) {
+      return { actionTaken: false, condensed: false }
     }
 
-    const bindleSummary = await Condense.condenseSummaries(condenseParams)
+    const parentOrder = input.parentSummaries[0]!.condensationOrder
+    const condensationOrder = parentOrder + 1
+    const inputTokens = input.parentSummaries.reduce((sum, summary) => sum + summary.tokenCount, 0)
 
-    // Convergence check: bindle summary should be strictly smaller than input.
+    log.debug("attemptCondensationForOrder", {
+      conversationId: input.input.conversationId,
+      parentOrder,
+      condensationOrder,
+      parentCount: input.parentSummaries.length,
+      inputTokens,
+      summaryIds: input.parentSummaries.map((summary) => summary.summaryId),
+    })
+
+    const bindleSummary = await Condense.condenseSummaries({
+      summaries: input.parentSummaries,
+      conversationId: input.input.conversationId.toString(),
+      dbConversationId: input.input.conversationId,
+      model: input.input.model,
+      condensationOrder,
+      abort: input.input.abort,
+    })
+
     if (bindleSummary.tokenCount >= inputTokens) {
       log.warn("condensation not smaller than input; skipping condensation round", {
+        conversationId: input.input.conversationId,
+        parentOrder,
+        condensationOrder,
         bindleTokens: bindleSummary.tokenCount,
         inputTokens,
-        conversationId: input.conversationId,
       })
       return {
         actionTaken: false,
@@ -1117,46 +1328,25 @@ export namespace LcmContext {
       }
     }
 
-    log.info("created bindle summary", {
-      summaryId: bindleSummary.summaryId,
-      tokenCount: bindleSummary.tokenCount,
-      parentCount: sprigSummaries.length,
-    })
-
-    // Find positions of all sprig summaries in context and replace with bindle
-    const context = await LcmDb.getCurrentContext(input.conversationId)
-    const summaryIds = new Set(sprigSummaries.map((s) => s.summaryId))
-    const positions: number[] = []
-
-    for (const entry of context) {
-      if (entry.item_type === "summary") {
-        const match = entry.content.match(/\[Summary ID: (sum_[a-f0-9]{16})\]/)
-        if (match && summaryIds.has(match[1])) {
-          positions.push(entry.position)
-        }
-      }
-    }
-
+    const positions = input.parentSummaries.map((summary) => summary.position)
     if (positions.length > 0) {
-      // Use replacePositionsWithSummary to only remove the specific summary positions,
-      // preserving any messages that may be between them (fixes bd-1vx)
       await LcmDb.replacePositionsWithSummary({
-        conversationId: input.conversationId,
+        conversationId: input.input.conversationId,
         positions,
         summaryId: bindleSummary.summaryId,
       })
-
-      log.info("replaced summaries with bindle summary in context", {
-        conversationId: input.conversationId,
-        replacedCount: sprigSummaries.length,
+      log.info("replaced summaries with condensed summary in context", {
+        conversationId: input.input.conversationId,
+        condensationOrder,
+        parentOrder,
+        replacedCount: positions.length,
         summaryId: bindleSummary.summaryId,
       })
     }
 
-    const newTokenCount = await LcmDb.getContextTokenCount(input.conversationId)
     return {
       actionTaken: true,
-      newTokenCount,
+      newTokenCount: await LcmDb.getContextTokenCount(input.input.conversationId),
       createdSummary: bindleSummary,
       condensed: true,
     }

@@ -883,16 +883,26 @@ export function Session() {
             return
           }
           const result = JSON.parse(body) as {
+            strategy?: string
+            status?: "executed" | "no_op"
+            mode?: string
+            executed?: boolean
             actionTaken: boolean
             condensed: boolean
             beforeTokenCount?: number
             newTokenCount?: number
             maxTokens?: number
             messagesSummarized?: number
+            noOpReasons?: string[]
           }
-          if (!result.actionTaken) {
+          const strategy = result.strategy ?? "unknown"
+          const status = result.status ?? (result.actionTaken ? "executed" : "no_op")
+          const actionTaken = result.executed ?? result.actionTaken
+          if (!actionTaken) {
+            const noOpDetail =
+              result.noOpReasons && result.noOpReasons.length > 0 ? ` reasons=${result.noOpReasons.join(",")}` : ""
             toast.show({
-              message: `No compaction needed (${result.beforeTokenCount ?? "?"}/${result.maxTokens ?? "?"} tokens) → ${outPath}`,
+              message: `LCM compact [strategy=${strategy} status=${status}] no-op (${result.beforeTokenCount ?? "?"}/${result.maxTokens ?? "?"} tokens)${noOpDetail} → ${outPath}`,
               variant: "info",
             })
           } else {
@@ -900,7 +910,7 @@ export function Session() {
             const after = result.newTokenCount ?? "?"
             const msgs = result.messagesSummarized ?? "?"
             toast.show({
-              message: `Compacted: ${before}→${after} tokens, ${msgs} msgs summarized${result.condensed ? " +condensed" : ""} → ${outPath}`,
+              message: `LCM compact [strategy=${strategy} status=${status}] ${before}→${after} tokens, ${msgs} msgs summarized${result.condensed ? " +condensed" : ""} → ${outPath}`,
               variant: "success",
             })
             if (result.newTokenCount != null && result.maxTokens != null) {
