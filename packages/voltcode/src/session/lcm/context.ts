@@ -202,6 +202,13 @@ export namespace LcmContext {
     tokenCount: number
   }
 
+  interface UpwardLeafChunkSelection {
+    selectedMessages: TurnMessageInContext[]
+    totalLeafCount: number
+    eligibleLeafCount: number
+    protectedTailCount: number
+  }
+
   interface ActiveSummaryForCompaction extends Summary.Info {
     position: number
     condensationOrder: number
@@ -420,6 +427,84 @@ export namespace LcmContext {
     return messages
       .slice(0, freshTailStart)
       .reduce((sum, message) => sum + Math.max(0, Math.floor(message.tokenCount)), 0)
+  }
+
+  /**
+   * Select the oldest compactable contiguous leaf chunk outside fresh tail.
+   *
+   * Selection scans full context order (messages + summaries) and:
+   * - skips entries until the first eligible message,
+   * - stops at the first non-message once the chunk has started,
+   * - caps chunk tokens at `leafChunkTokens`,
+   * - always includes the first eligible message even when it exceeds the cap.
+   */
+  async function selectOldestCompactableRawChunk(input: {
+    conversationId: number
+    freshTailCount: number
+    leafChunkTokens: number
+  }): Promise<UpwardLeafChunkSelection> {
+    const contextEntries = await LcmDb.getCurrentContextWithRefs(input.conversationId)
+    const allMessages: TurnMessageInContext[] = contextEntries
+      .filter((entry) => entry.item_type === "message" && entry.message_id != null)
+      .map((entry) => ({
+        position: entry.position,
+        messageId: entry.message_id!,
+        role: entry.role as LcmDb.MessageRole,
+        content: entry.content,
+        tokenCount: Math.max(0, Math.floor(entry.token_count)),
+      }))
+
+    const protectedTailCount = Math.max(0, Math.floor(input.freshTailCount))
+    const freshTailStart = Math.max(0, allMessages.length - protectedTailCount)
+    const freshTailBoundaryPosition = allMessages[freshTailStart]?.position ?? Number.POSITIVE_INFINITY
+    const eligibleLeafCount = allMessages.filter((message) => message.position < freshTailBoundaryPosition).length
+    const messagesByPosition = new Map<number, TurnMessageInContext>(
+      allMessages.map((message) => [message.position, message]),
+    )
+
+    const selectedMessages: TurnMessageInContext[] = []
+    let selectedTokens = 0
+    let started = false
+
+    for (const entry of contextEntries) {
+      if (entry.position >= freshTailBoundaryPosition) {
+        break
+      }
+
+      if (entry.item_type !== "message" || entry.message_id == null) {
+        if (started) {
+          break
+        }
+        continue
+      }
+
+      const message = messagesByPosition.get(entry.position)
+      if (!message) {
+        if (started) {
+          break
+        }
+        continue
+      }
+
+      if (selectedMessages.length > 0 && selectedTokens + message.tokenCount > input.leafChunkTokens) {
+        break
+      }
+
+      selectedMessages.push(message)
+      selectedTokens += message.tokenCount
+      started = true
+
+      if (selectedTokens >= input.leafChunkTokens) {
+        break
+      }
+    }
+
+    return {
+      selectedMessages,
+      totalLeafCount: allMessages.length,
+      eligibleLeafCount,
+      protectedTailCount,
+    }
   }
 
   /**
@@ -1170,13 +1255,26 @@ export namespace LcmContext {
     const noOpReasons: string[] = []
 
     const protectedTailCount = Math.max(1, Math.floor(initialThreshold.lanePolicy.leaves.freshTailFloor))
-    const messagesInContext = await getMessagesInContext(input.conversationId)
-    const eligibleLeafCount = Math.max(0, messagesInContext.length - protectedTailCount)
-    if (eligibleLeafCount >= initialThreshold.lanePolicy.leaves.minFanout) {
-      const selectedMessages = messagesInContext.slice(0, eligibleLeafCount)
-      const inputTokens = selectedMessages.reduce((sum, m) => sum + m.tokenCount, 0)
+    const leafChunkTokens = resolveUpwardLeafChunkTokens()
+    let previousTokens = initialThreshold.currentTokens
+    let leafSelectionSnapshot: UpwardLeafChunkSelection | null = null
+
+    for (;;) {
+      const selection = await selectOldestCompactableRawChunk({
+        conversationId: input.conversationId,
+        freshTailCount: protectedTailCount,
+        leafChunkTokens,
+      })
+      leafSelectionSnapshot = selection
+      if (selection.selectedMessages.length < 1) {
+        break
+      }
+
+      const selectedMessages = selection.selectedMessages
+      const inputTokens = selectedMessages.reduce((sum, message) => sum + message.tokenCount, 0)
       const messagesToSummarize = await convertToMessageV2(selectedMessages)
-      const dbMessageIds = selectedMessages.map((m) => m.messageId)
+      const dbMessageIds = selectedMessages.map((message) => message.messageId)
+      const tokensBeforeLeafPass = await LcmDb.getContextTokenCount(input.conversationId)
       const sprigSummary = await LcmSummarize.summarize({
         messages: messagesToSummarize,
         conversationId: input.conversationId,
@@ -1187,30 +1285,40 @@ export namespace LcmContext {
         abort: input.abort,
       })
 
-      if (sprigSummary.tokenCount < inputTokens) {
-        await LcmDb.replacePositionsWithSummary({
-          conversationId: input.conversationId,
-          positions: selectedMessages.map((m) => m.position),
-          summaryId: sprigSummary.summaryId,
-        })
-        actionTaken = true
-        messagesSummarized = selectedMessages.length
-        createdSummary = sprigSummary
-      } else {
+      if (sprigSummary.tokenCount >= inputTokens) {
         log.warn("upward recursive leaf summarization was not smaller than input; skipping leaf replacement", {
           conversationId: input.conversationId,
           inputTokens,
           summaryTokens: sprigSummary.tokenCount,
+          selectedMessages: selectedMessages.length,
         })
         noOpReasons.push("leaf_summary_not_smaller_than_input")
+        break
       }
-    } else {
-      log.info("upward recursive leaf step skipped: not enough leaves beyond protected tail", {
+
+      await LcmDb.replacePositionsWithSummary({
         conversationId: input.conversationId,
-        totalLeaves: messagesInContext.length,
-        protectedTailCount,
-        eligibleLeafCount,
-        minimumLeavesPerSprig: initialThreshold.lanePolicy.leaves.minFanout,
+        positions: selectedMessages.map((message) => message.position),
+        summaryId: sprigSummary.summaryId,
+      })
+
+      actionTaken = true
+      messagesSummarized += selectedMessages.length
+      createdSummary = sprigSummary
+
+      const tokensAfterLeafPass = await LcmDb.getContextTokenCount(input.conversationId)
+      if (tokensAfterLeafPass >= tokensBeforeLeafPass || tokensAfterLeafPass >= previousTokens) {
+        break
+      }
+      previousTokens = tokensAfterLeafPass
+    }
+
+    if (!actionTaken && leafSelectionSnapshot && leafSelectionSnapshot.eligibleLeafCount < 1) {
+      log.info("upward recursive leaf step skipped: no eligible leaves beyond protected tail", {
+        conversationId: input.conversationId,
+        totalLeaves: leafSelectionSnapshot.totalLeafCount,
+        protectedTailCount: leafSelectionSnapshot.protectedTailCount,
+        eligibleLeafCount: leafSelectionSnapshot.eligibleLeafCount,
       })
       noOpReasons.push("eligible_leaves_below_min")
     }
