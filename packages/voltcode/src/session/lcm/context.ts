@@ -1342,6 +1342,7 @@ export namespace LcmContext {
 
     const fanoutNoOpReasonForOrder = (order: number) => (order === 1 ? "sprigs_below_min_fanout" : `d${order}_below_min_fanout`)
 
+    const messagesInContext = await getMessagesInContext(input.conversationId)
     const freshTailStartPosition = resolveFreshTailStartPosition(messagesInContext, protectedTailCount)
 
     for (;;) {
