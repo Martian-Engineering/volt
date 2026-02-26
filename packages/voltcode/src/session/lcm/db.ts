@@ -541,15 +541,16 @@ export namespace LcmDb {
         ) THEN
           EXECUTE 'ALTER TABLE large_files DROP CONSTRAINT large_files_storage_shape_check';
         END IF;
+
+        BEGIN
+          ALTER TABLE large_files
+            ADD CONSTRAINT large_files_storage_shape_check CHECK (
+              (storage_kind = 'path' AND original_path IS NOT NULL AND content IS NULL AND binary_content IS NULL) OR
+              (storage_kind = 'inline_text' AND content IS NOT NULL AND binary_content IS NULL) OR
+              (storage_kind = 'inline_binary' AND binary_content IS NOT NULL AND content IS NULL)
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL; END;
       END $$;
-      DO $$ BEGIN
-        ALTER TABLE large_files
-          ADD CONSTRAINT large_files_storage_shape_check CHECK (
-            (storage_kind = 'path' AND original_path IS NOT NULL AND content IS NULL AND binary_content IS NULL) OR
-            (storage_kind = 'inline_text' AND content IS NOT NULL AND binary_content IS NULL) OR
-            (storage_kind = 'inline_binary' AND binary_content IS NOT NULL AND content IS NULL)
-          );
-      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
       CREATE INDEX IF NOT EXISTS large_files_conv_idx ON large_files(conversation_id);
       CREATE INDEX IF NOT EXISTS large_files_path_idx ON large_files(original_path);
