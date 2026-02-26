@@ -17,6 +17,7 @@ const parameters = z.object({
   max_bytes: z
     .number()
     .min(1)
+    .max(100_000_000)
     .optional()
     .describe("Optional byte limit for very large payloads (default: 100000)"),
 })
