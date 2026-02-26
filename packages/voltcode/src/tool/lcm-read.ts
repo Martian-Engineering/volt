@@ -82,9 +82,22 @@ The explore sub-agent will call lcm_read and return a focused answer.`,
     const result = await LcmDb.getLargeFileContent(fileId, maxBytes, conversationId ?? undefined)
 
     if (!result) {
-      // Distinguish "ID not found" from "file on disk missing".
-      const exists = await LcmDb.largeFileExists(fileId, conversationId ?? undefined)
-      if (exists) {
+      // Distinguish "ID not found", "binary content", and "file on disk missing".
+      const file = await LcmDb.getLargeFile(fileId, conversationId ?? undefined)
+      if (file) {
+        if (file.storage_kind === "inline_binary") {
+          return {
+            title: `LCM read: ${fileId}`,
+            metadata: {
+              fileId,
+              found: true,
+              truncated: false,
+              totalSize: 0,
+            },
+            output: `File "${fileId}" contains binary content (${file.mime_type}) which cannot be displayed as text.\n\nUse lcm_describe with "${fileId}" for metadata about this file.`,
+          }
+        }
+
         return {
           title: `LCM read: ${fileId}`,
           metadata: {

@@ -2015,6 +2015,11 @@ export namespace LcmDb {
       }
     }
 
+    if (row.storage_kind === "inline_binary") {
+      // Binary content cannot be returned as text.
+      return null
+    }
+
     // Path-backed payloads are loaded from disk on demand.
     if (row.storage_kind === "path" && row.original_path) {
       const file = Bun.file(row.original_path)
