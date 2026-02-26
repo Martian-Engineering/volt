@@ -237,6 +237,93 @@ export async function ensureUserSchema(conn: postgres.Sql, userId: string): Prom
       )
     );
 
+    -- Migration: drop the old content check constraint to allow path-only storage (avoid NOTICE spam)
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'large_file_content_check'
+          AND conrelid = 'large_files'::regclass
+      ) THEN
+        EXECUTE 'ALTER TABLE large_files DROP CONSTRAINT large_file_content_check';
+      END IF;
+    END $$;
+
+    -- Migration: add storage_kind for explicit payload mode (path/inline_text/inline_binary)
+    DO $$ BEGIN
+      ALTER TABLE large_files ADD COLUMN storage_kind text;
+    EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+    -- Migration: backfill storage_kind from existing data
+    UPDATE large_files
+    SET storage_kind = CASE
+      WHEN content IS NOT NULL THEN 'inline_text'
+      WHEN binary_content IS NOT NULL THEN 'inline_binary'
+      ELSE 'path'
+    END
+    WHERE storage_kind IS NULL;
+
+    -- Migration: default + NOT NULL for storage_kind
+    DO $$ BEGIN
+      ALTER TABLE large_files ALTER COLUMN storage_kind SET DEFAULT 'path';
+    EXCEPTION WHEN others THEN NULL; END $$;
+    DO $$ BEGIN
+      ALTER TABLE large_files ALTER COLUMN storage_kind SET NOT NULL;
+    EXCEPTION WHEN others THEN NULL; END $$;
+
+    -- Migration: original_path is optional for inline payloads
+    DO $$ BEGIN
+      ALTER TABLE large_files ALTER COLUMN original_path DROP NOT NULL;
+    EXCEPTION WHEN others THEN NULL; END $$;
+
+    -- Migration: enforce coherent large_files row shape by storage_kind
+    DO $$ DECLARE
+      current_def text;
+      normalized_current_def text;
+      normalized_desired_def text := regexp_replace(
+        lower(
+          'CHECK (
+            (storage_kind = ''path'' AND original_path IS NOT NULL AND content IS NULL AND binary_content IS NULL) OR
+            (storage_kind = ''inline_text'' AND content IS NOT NULL AND binary_content IS NULL) OR
+            (storage_kind = ''inline_binary'' AND binary_content IS NOT NULL AND content IS NULL)
+          )'
+        ),
+        '[[:space:]()]',
+        '',
+        'g'
+      );
+    BEGIN
+      SELECT pg_get_constraintdef(oid)
+        INTO current_def
+      FROM pg_constraint
+      WHERE conname = 'large_files_storage_shape_check'
+        AND conrelid = 'large_files'::regclass;
+
+      IF current_def IS NOT NULL THEN
+        normalized_current_def := regexp_replace(
+          lower(replace(current_def, '::text', '')),
+          '[[:space:]()]',
+          '',
+          'g'
+        );
+      END IF;
+
+      IF current_def IS NULL OR normalized_current_def != normalized_desired_def THEN
+        IF current_def IS NOT NULL THEN
+          EXECUTE 'ALTER TABLE large_files DROP CONSTRAINT large_files_storage_shape_check';
+        END IF;
+
+        BEGIN
+          ALTER TABLE large_files
+            ADD CONSTRAINT large_files_storage_shape_check CHECK (
+              (storage_kind = 'path' AND original_path IS NOT NULL AND content IS NULL AND binary_content IS NULL) OR
+              (storage_kind = 'inline_text' AND content IS NOT NULL AND binary_content IS NULL) OR
+              (storage_kind = 'inline_binary' AND binary_content IS NOT NULL AND content IS NULL)
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL; END;
+      END IF;
+    END $$;
+
     CREATE INDEX IF NOT EXISTS large_files_conv_idx ON large_files(conversation_id);
     CREATE INDEX IF NOT EXISTS large_files_path_idx ON large_files(original_path);
 
