@@ -26,7 +26,6 @@ interface LcmReadMetadata {
   found: boolean
   truncated: boolean
   totalSize: number
-  storageKind?: string
   lcm?: LcmToolMetadata
 }
 
