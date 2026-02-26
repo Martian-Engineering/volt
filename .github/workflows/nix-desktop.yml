@@ -27,7 +27,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - ubuntu-latest-arm
+          - ubuntu-24.04-arm
           - macos-15-intel
           - macos-latest
     runs-on: ${{ matrix.os }}
