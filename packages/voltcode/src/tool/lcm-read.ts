@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { LcmDb } from "../session/lcm/db"
+import type { LcmToolMetadata } from "../session/lcm/types"
 import { Session } from "../session"
 import { SessionPrompt } from "../session/prompt"
 import { Log } from "../util/log"
@@ -26,6 +27,7 @@ interface LcmReadMetadata {
   truncated: boolean
   totalSize: number
   storageKind?: string
+  lcm?: LcmToolMetadata
 }
 
 export const LcmReadTool = Tool.define<typeof parameters, LcmReadMetadata>("lcm_read", {
