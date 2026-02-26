@@ -111,7 +111,7 @@ export async function handleLargeToolOutput(input: {
       preview,
       hasMore ? `\n...[${tokenCount - Token.estimate(preview)} more tokens]` : "",
       ``,
-      `To access the full output, use the Read tool with the original file path, or use lcm_describe with file_id "${fileId}" to see metadata about this stored output.`,
+      `The full output is stored in LCM. To retrieve it, spawn an explore sub-agent: Task(subagent_type="explore", prompt="Use lcm_read on ${fileId} to find <what you need>"). Use lcm_describe for metadata only. Do NOT attempt to read this content with the Read tool — it is stored in the LCM database, not as a file on disk.`,
     ].join("\n")
 
     return {

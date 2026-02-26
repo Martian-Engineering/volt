@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import postgres from "postgres"
 import z from "zod"
 import { Log } from "@/util/log"
@@ -108,6 +109,7 @@ export namespace LcmDb {
   export const LargeFile = z.object({
     file_id: z.string(),
     conversation_id: z.number(),
+    storage_kind: z.enum(["path", "inline_text", "inline_binary"]),
     original_path: z.string().nullable(),
     mime_type: z.string(),
     content: z.string().nullable(),
@@ -473,17 +475,17 @@ export namespace LcmDb {
       CREATE INDEX IF NOT EXISTS ctx_items_message_idx ON context_items(message_id);
 
       -- 7) Large files (for files too big to fit in context)
-      -- Stores path references to files on disk; content is read on demand
+      -- Stores path-backed files and inline payloads (text/binary) under one ID space.
       CREATE TABLE IF NOT EXISTS large_files (
         file_id         text PRIMARY KEY,
         conversation_id bigint NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
-        original_path   text NOT NULL,  -- Path to the file on disk (required for path-based storage)
+        storage_kind    text NOT NULL DEFAULT 'path', -- path | inline_text | inline_binary
+        original_path   text,           -- Path to the file on disk (for storage_kind='path')
         mime_type       text NOT NULL,
-        content         text,           -- Legacy: kept for backwards compatibility, not used for new files
-        binary_content  bytea,          -- Legacy: kept for backwards compatibility, not used for new files
+        content         text,           -- Inline text payload
+        binary_content  bytea,          -- Inline binary payload
         token_count     bigint NOT NULL, -- BIGINT to support files with billions of tokens
         created_at      timestamptz NOT NULL DEFAULT now()
-        -- Removed content check constraint to allow path-only storage
       );
 
       -- Migration: change token_count from integer to bigint if needed
@@ -503,8 +505,80 @@ export namespace LcmDb {
         END IF;
       END $$;
 
-      -- Migration: make original_path NOT NULL for new records (existing NULL paths grandfathered)
-      -- Note: Can't add NOT NULL constraint if existing rows have NULL, so we skip this
+      -- Migration: add storage_kind for explicit payload mode (path/inline_text/inline_binary)
+      DO $$ BEGIN
+        ALTER TABLE large_files ADD COLUMN storage_kind text;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+      -- Migration: backfill storage_kind from existing data
+      UPDATE large_files
+      SET storage_kind = CASE
+        WHEN content IS NOT NULL THEN 'inline_text'
+        WHEN binary_content IS NOT NULL THEN 'inline_binary'
+        ELSE 'path'
+      END
+      WHERE storage_kind IS NULL;
+
+      -- Migration: default + NOT NULL for storage_kind
+      DO $$ BEGIN
+        ALTER TABLE large_files ALTER COLUMN storage_kind SET DEFAULT 'path';
+      EXCEPTION WHEN others THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE large_files ALTER COLUMN storage_kind SET NOT NULL;
+      EXCEPTION WHEN others THEN NULL; END $$;
+
+      -- Migration: original_path is optional for inline payloads
+      DO $$ BEGIN
+        ALTER TABLE large_files ALTER COLUMN original_path DROP NOT NULL;
+      EXCEPTION WHEN others THEN NULL; END $$;
+
+      -- Migration: enforce coherent large_files row shape by storage_kind
+      DO $$ DECLARE
+        current_def text;
+        normalized_current_def text;
+        normalized_desired_def text := regexp_replace(
+          lower(
+            'CHECK (
+              (storage_kind = ''path'' AND original_path IS NOT NULL AND content IS NULL AND binary_content IS NULL) OR
+              (storage_kind = ''inline_text'' AND content IS NOT NULL AND binary_content IS NULL) OR
+              (storage_kind = ''inline_binary'' AND binary_content IS NOT NULL AND content IS NULL)
+            )'
+          ),
+          '[[:space:]()]',
+          '',
+          'g'
+        );
+      BEGIN
+        SELECT pg_get_constraintdef(oid)
+          INTO current_def
+        FROM pg_constraint
+        WHERE conname = 'large_files_storage_shape_check'
+          AND conrelid = 'large_files'::regclass;
+
+        IF current_def IS NOT NULL THEN
+          normalized_current_def := regexp_replace(
+            lower(replace(current_def, '::text', '')),
+            '[[:space:]()]',
+            '',
+            'g'
+          );
+        END IF;
+
+        IF current_def IS NULL OR normalized_current_def != normalized_desired_def THEN
+          IF current_def IS NOT NULL THEN
+            EXECUTE 'ALTER TABLE large_files DROP CONSTRAINT large_files_storage_shape_check';
+          END IF;
+
+          BEGIN
+            ALTER TABLE large_files
+              ADD CONSTRAINT large_files_storage_shape_check CHECK (
+                (storage_kind = 'path' AND original_path IS NOT NULL AND content IS NULL AND binary_content IS NULL) OR
+                (storage_kind = 'inline_text' AND content IS NOT NULL AND binary_content IS NULL) OR
+                (storage_kind = 'inline_binary' AND binary_content IS NOT NULL AND content IS NULL)
+              );
+          EXCEPTION WHEN duplicate_object THEN NULL; END;
+        END IF;
+      END $$;
 
       CREATE INDEX IF NOT EXISTS large_files_conv_idx ON large_files(conversation_id);
       CREATE INDEX IF NOT EXISTS large_files_path_idx ON large_files(original_path);
@@ -1650,8 +1724,7 @@ export namespace LcmDb {
    * Generate a deterministic file ID based on content hash and conversation ID.
    */
   export function generateFileId(conversationId: number, content: string): string {
-    const hash = require("crypto")
-      .createHash("sha256")
+    const hash = createHash("sha256")
       .update(`${conversationId}:${content}`)
       .digest("hex")
       .slice(0, 16)
@@ -1663,8 +1736,7 @@ export namespace LcmDb {
    * Generate a deterministic file ID for binary content scoped to a conversation.
    */
   export function generateBinaryFileId(conversationId: number, content: Uint8Array): string {
-    const hash = require("crypto")
-      .createHash("sha256")
+    const hash = createHash("sha256")
       .update(`${conversationId}:`)
       .update(content)
       .digest("hex")
@@ -1693,8 +1765,8 @@ export namespace LcmDb {
     const fileId = generateFileId(input.conversationId, input.content)
 
     await conn`
-      INSERT INTO large_files (file_id, conversation_id, original_path, mime_type, content, token_count)
-      VALUES (${fileId}, ${input.conversationId}, ${input.originalPath ?? null}, ${input.mimeType}, ${escNull(input.content)}, ${input.tokenCount})
+      INSERT INTO large_files (file_id, conversation_id, storage_kind, original_path, mime_type, content, token_count)
+      VALUES (${fileId}, ${input.conversationId}, 'inline_text', ${input.originalPath ?? null}, ${input.mimeType}, ${escNull(input.content)}, ${input.tokenCount})
       ON CONFLICT (file_id) DO NOTHING
     `
     log.debug("inserted large file", { fileId, conversationId: input.conversationId, originalPath: input.originalPath })
@@ -1724,18 +1796,19 @@ export namespace LcmDb {
     const tokenCount = LargeFileThreshold.estimateTokenCount(input.content)
     const fileId = generateFileId(input.conversationId, input.content)
 
-    // Use the label as original_path for identification (e.g., "user_prompt_12345")
-    const originalPath = input.label ?? `inline_content_${Date.now()}`
+    // Don't store labels as original_path — that field is for actual file paths on disk.
+    // Inline content is stored in the content column and read from there.
+    const originalPath = null
 
     await conn`
-      INSERT INTO large_files (file_id, conversation_id, original_path, mime_type, content, binary_content, token_count)
-      VALUES (${fileId}, ${input.conversationId}, ${originalPath}, ${input.mimeType ?? "text/plain"}, ${escNull(input.content)}, NULL, ${tokenCount})
+      INSERT INTO large_files (file_id, conversation_id, storage_kind, original_path, mime_type, content, binary_content, token_count)
+      VALUES (${fileId}, ${input.conversationId}, 'inline_text', ${originalPath}, ${input.mimeType ?? "text/plain"}, ${escNull(input.content)}, NULL, ${tokenCount})
       ON CONFLICT (file_id) DO NOTHING
     `
     log.debug("inserted large text content", {
       fileId,
       conversationId: input.conversationId,
-      label: originalPath,
+      label: input.label,
       tokenCount,
       contentLength: input.content.length,
     })
@@ -1779,8 +1852,8 @@ export namespace LcmDb {
     // Store only the path reference, never the content
     // Convert bigint to string for postgres since it handles numeric types correctly
     await conn`
-      INSERT INTO large_files (file_id, conversation_id, original_path, mime_type, content, binary_content, token_count)
-      VALUES (${fileId}, ${input.conversationId}, ${input.filePath}, ${input.mimeType}, NULL, NULL, ${tokenCount.toString()})
+      INSERT INTO large_files (file_id, conversation_id, storage_kind, original_path, mime_type, content, binary_content, token_count)
+      VALUES (${fileId}, ${input.conversationId}, 'path', ${input.filePath}, ${input.mimeType}, NULL, NULL, ${tokenCount.toString()})
       ON CONFLICT (file_id) DO NOTHING
     `
     log.debug("inserted large file path reference", {
@@ -1829,8 +1902,8 @@ export namespace LcmDb {
     const fileId = generateBinaryFileId(input.conversationId, input.binaryContent)
 
     await conn`
-      INSERT INTO large_files (file_id, conversation_id, original_path, mime_type, binary_content, token_count)
-      VALUES (${fileId}, ${input.conversationId}, ${input.originalPath ?? null}, ${input.mimeType}, ${input.binaryContent}, ${input.tokenCount})
+      INSERT INTO large_files (file_id, conversation_id, storage_kind, original_path, mime_type, binary_content, token_count)
+      VALUES (${fileId}, ${input.conversationId}, 'inline_binary', ${input.originalPath ?? null}, ${input.mimeType}, ${input.binaryContent}, ${input.tokenCount})
       ON CONFLICT (file_id) DO NOTHING
     `
     log.debug("inserted large binary file", {
@@ -1857,7 +1930,7 @@ export namespace LcmDb {
     // If no conversationId provided, just do a simple lookup (backwards compatible)
     if (conversationId === undefined) {
       const rows = await conn<LargeFile[]>`
-        SELECT file_id, conversation_id, original_path, mime_type, content, binary_content, token_count, created_at, exploration_summary, explorer_used
+        SELECT file_id, conversation_id, storage_kind, original_path, mime_type, content, binary_content, token_count, created_at, exploration_summary, explorer_used
         FROM large_files
         WHERE file_id = ${fileId}
       `
@@ -1875,7 +1948,7 @@ export namespace LcmDb {
         FROM conversations c
         JOIN ancestors a ON c.conversation_id = a.parent_conversation_id
       )
-      SELECT lf.file_id, lf.conversation_id, lf.original_path, lf.mime_type, lf.content, lf.binary_content, lf.token_count, lf.created_at
+      SELECT lf.file_id, lf.conversation_id, lf.storage_kind, lf.original_path, lf.mime_type, lf.content, lf.binary_content, lf.token_count, lf.created_at, lf.exploration_summary, lf.explorer_used
       FROM large_files lf
       JOIN ancestors a ON lf.conversation_id = a.conversation_id
       WHERE lf.file_id = ${fileId}
@@ -1904,12 +1977,12 @@ export namespace LcmDb {
     // If no conversationId provided, just do a simple lookup (backwards compatible)
     const rows =
       conversationId === undefined
-        ? await conn<{ content: string | null; original_path: string | null }[]>`
-            SELECT content, original_path
+        ? await conn<{ storage_kind: string; content: string | null; original_path: string | null }[]>`
+            SELECT storage_kind, content, original_path
             FROM large_files
             WHERE file_id = ${fileId}
           `
-        : await conn<{ content: string | null; original_path: string | null }[]>`
+        : await conn<{ storage_kind: string; content: string | null; original_path: string | null }[]>`
             WITH RECURSIVE ancestors AS (
               SELECT conversation_id, parent_conversation_id
               FROM conversations
@@ -1919,7 +1992,7 @@ export namespace LcmDb {
               FROM conversations c
               JOIN ancestors a ON c.conversation_id = a.parent_conversation_id
             )
-            SELECT lf.content, lf.original_path
+            SELECT lf.storage_kind, lf.content, lf.original_path
             FROM large_files lf
             JOIN ancestors a ON lf.conversation_id = a.conversation_id
             WHERE lf.file_id = ${fileId}
@@ -1927,8 +2000,11 @@ export namespace LcmDb {
     const row = rows[0]
     if (!row) return null
 
-    // If content is stored inline (legacy), return it
-    if (row.content !== null) {
+    // Inline text payloads are returned directly from the DB.
+    if (row.storage_kind === "inline_text" || (row.storage_kind !== "path" && row.content !== null)) {
+      if (row.content === null) {
+        return null
+      }
       const limit = maxBytes ?? row.content.length
       const truncated = row.content.length > limit
       return {
@@ -1938,8 +2014,13 @@ export namespace LcmDb {
       }
     }
 
-    // Read content from disk using the stored path
-    if (row.original_path) {
+    if (row.storage_kind === "inline_binary") {
+      // Binary content cannot be returned as text.
+      return null
+    }
+
+    // Path-backed payloads are loaded from disk on demand.
+    if (row.storage_kind === "path" && row.original_path) {
       const file = Bun.file(row.original_path)
       const exists = await file.exists()
       if (!exists) {
@@ -1979,7 +2060,7 @@ export namespace LcmDb {
   export async function getLargeFilesByConversation(conversationId: number): Promise<LargeFile[]> {
     const conn = sql()
     const rows = await conn<LargeFile[]>`
-      SELECT file_id, conversation_id, original_path, mime_type, content, binary_content, token_count, created_at, exploration_summary, explorer_used
+      SELECT file_id, conversation_id, storage_kind, original_path, mime_type, content, binary_content, token_count, created_at, exploration_summary, explorer_used
       FROM large_files
       WHERE conversation_id = ${conversationId}
       ORDER BY created_at

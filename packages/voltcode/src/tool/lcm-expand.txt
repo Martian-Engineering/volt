@@ -1,7 +1,7 @@
 - Expand a summary to see its full underlying content
 - Retrieves the original messages or summaries that were compressed
 - Adds the expanded content to your current context
-- IMPORTANT: Only works with summary IDs (sum_xxx). Does NOT work with file IDs (file_xxx). For file content, use the Read tool with the file path instead.
+- IMPORTANT: Only works with summary IDs (sum_xxx). Does NOT work with file IDs (file_xxx). For file content, use lcm_read via an explore sub-agent.
 - IMPORTANT: Only callable by sub-agents spawned via the Task tool
 - Main agent gets error: "Only sub-agents can expand summaries"
 - Spawn a Task sub-agent if you need to expand summaries from the main context

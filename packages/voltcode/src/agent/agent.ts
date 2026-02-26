@@ -156,6 +156,7 @@ export namespace Agent {
             lcm_describe: "allow",
             lcm_expand: "allow",
             lcm_grep: "allow",
+            lcm_read: "allow",
             external_directory: {
               [Truncate.DIR]: "allow",
               [Truncate.GLOB]: "allow",

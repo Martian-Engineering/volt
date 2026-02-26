@@ -48,6 +48,7 @@ import type { TasksTool } from "@/tool/tasks"
 import type { QuestionTool } from "@/tool/question"
 import type { LcmExpandTool } from "@/tool/lcm-expand"
 import type { LcmGrepTool } from "@/tool/lcm-grep"
+import type { LcmReadTool } from "@/tool/lcm-read"
 import { useKeyboard, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "@tui/context/sdk"
 import { useCommandDialog } from "@tui/component/dialog-command"
@@ -86,6 +87,8 @@ import { useArgs } from "../../context/args"
 import "opentui-spinner/solid"
 
 addDefaultParsers(parsers.parsers)
+
+const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_grep", "lcm_read"]
 
 class CustomSpeedScroll implements ScrollAcceleration {
   constructor(private speed: number) {}
@@ -1557,9 +1560,6 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const { theme } = useTheme()
   const ctx = use()
 
-  // Internal LCM tools that are always hidden (not in dev mode)
-  const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_grep"]
-
   // Check if there are hidden tools with no visible content
   const hasHiddenToolsOnly = createMemo(() => {
     // Check if there are any tool parts
@@ -1582,6 +1582,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
       .filter((p) => p.type === "tool")
       .every((p) => {
         const toolPart = p as ToolPart
+        // See LCM_INTERNAL_TOOLS definition above
         // Internal LCM tools are always hidden when not in dev mode
         if (!ctx.devMode() && LCM_INTERNAL_TOOLS.includes(toolPart.tool)) return true
         // Other tools are hidden when showDetails=false and completed
@@ -1835,12 +1836,10 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
   const ctx = use()
   const sync = useSync()
 
-  // Internal LCM tools that should only be visible in dev mode
-  const LCM_INTERNAL_TOOLS = ["lcm_expand", "lcm_grep"]
-
   // Hide tool if showDetails is false and tool completed successfully
   // Hide internal LCM tools (lcm_expand, lcm_grep) when not in dev mode
   const shouldHide = createMemo(() => {
+    // See LCM_INTERNAL_TOOLS definition above
     // Hide internal LCM tools when not in dev mode
     if (!ctx.devMode() && LCM_INTERNAL_TOOLS.includes(props.part.tool)) return true
     if (ctx.showDetails()) return false
@@ -1888,6 +1887,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         </Match>
         <Match when={props.part.tool === "lcm_grep"}>
           <LcmGrep {...toolprops} />
+        </Match>
+        <Match when={props.part.tool === "lcm_read"}>
+          <LcmRead {...toolprops} />
         </Match>
         <Match when={props.part.tool === "grep"}>
           <Grep {...toolprops} />
@@ -2234,6 +2236,14 @@ function LcmGrep(props: ToolProps<typeof LcmGrepTool>) {
   return (
     <InlineTool icon="⌕" pending="Searching LCM..." complete={props.input.pattern} part={props.part}>
       LCM grep "{props.input.pattern}" {input(props.input, ["pattern"])}
+    </InlineTool>
+  )
+}
+
+function LcmRead(props: ToolProps<typeof LcmReadTool>) {
+  return (
+    <InlineTool icon="↥" pending="Reading LCM content..." complete={props.input.file_id} part={props.part}>
+      LCM read {props.input.file_id}
     </InlineTool>
   )
 }

@@ -42,6 +42,12 @@ export const LcmDescribeTool = Tool.define<typeof parameters, LcmDescribeMetadat
   },
 })
 
+function formatStorageKind(storageKind: "path" | "inline_text" | "inline_binary"): string {
+  if (storageKind === "path") return "path-backed file (on disk)"
+  if (storageKind === "inline_text") return "inline text payload (in LCM DB)"
+  return "inline binary payload (in LCM DB)"
+}
+
 async function describeFile(fileId: string, sessionID: string) {
   // Get conversation ID for this session to enable ancestor lookup
   const conversationId = await SessionPrompt.getLcmConversationId(sessionID)
@@ -61,12 +67,13 @@ async function describeFile(fileId: string, sessionID: string) {
     }
   }
 
-  log.info("describing LCM file", { fileId, originalPath: file.original_path })
+  log.info("describing LCM file", { fileId, storageKind: file.storage_kind, originalPath: file.original_path })
 
   const lines: string[] = []
   lines.push(`## LCM File: ${fileId}`)
   lines.push("")
-  lines.push(`**Path:** ${file.original_path ?? "(no path)"}`)
+  lines.push(`**Storage:** ${formatStorageKind(file.storage_kind)}`)
+  lines.push(`**Path:** ${file.storage_kind === "path" ? file.original_path ?? "(missing path)" : "(inline payload — not on disk)"}`)
   lines.push(`**Type:** ${file.mime_type}`)
   lines.push(`**Tokens:** ~${file.token_count.toLocaleString()}`)
   lines.push(`**Created:** ${file.created_at.toISOString()}`)

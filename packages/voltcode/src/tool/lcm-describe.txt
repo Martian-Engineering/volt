@@ -6,3 +6,6 @@ This tool retrieves information about items stored in LCM (Lossless Context Mana
 - For summary IDs (sum_xxx): Returns the summary content, kind (leaf/condensed), token count, and parent summaries if condensed.
 
 Use this tool when you have an LCM ID and need to understand what it refers to before deciding how to work with it.
+
+This tool returns metadata only — NOT the full stored content. To retrieve the actual content, use lcm_read via an explore sub-agent:
+  Task(subagent_type="explore", prompt="Use lcm_read on <file_id> to find <what you need>")

@@ -18,6 +18,7 @@ import { Question } from "@/question"
 import { ReadCoordinator } from "@/tool/read"
 import { Flag } from "@/flag/flag"
 import { handleLargeToolOutput, LARGE_TOOL_OUTPUT_THRESHOLD } from "./large-tool-output"
+import type { LcmToolMetadata } from "./lcm/types"
 import { Token } from "@/util/token"
 
 export namespace SessionProcessor {
@@ -531,12 +532,13 @@ export namespace SessionProcessor {
                     )
                     // Handle large tool outputs by storing in LCM
                     let finalOutput = toolResult.output
-                    let lcmMetadata = toolResult.metadata?.lcm
+                    let lcmMetadata: LcmToolMetadata | undefined = toolResult.metadata?.lcm
 
                     if (typeof toolResult.output === "string") {
                       const outputTokens = Token.estimate(toolResult.output)
 
-                      if (outputTokens > LARGE_TOOL_OUTPUT_THRESHOLD) {
+                      // Skip LCM re-storage if the output is already from LCM (e.g. lcm_read)
+                      if (outputTokens > LARGE_TOOL_OUTPUT_THRESHOLD && !lcmMetadata?.storedInLcm) {
                         // Large output: store in LCM and replace with reference
                         const lcmResult = await handleLargeToolOutput({
                           sessionID: input.sessionID,
