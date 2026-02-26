@@ -11,6 +11,8 @@ on:
       - "package.json"
       - "packages/*/package.json"
       - "flake.lock"
+      - "flake.nix"
+      - "nix/node_modules.nix"
       - ".github/workflows/update-nix-hashes.yml"
   pull_request:
     paths:
@@ -18,6 +20,8 @@ on:
       - "package.json"
       - "packages/*/package.json"
       - "flake.lock"
+      - "flake.nix"
+      - "nix/node_modules.nix"
       - ".github/workflows/update-nix-hashes.yml"
 
 jobs:
