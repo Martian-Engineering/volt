@@ -1,10 +1,11 @@
-# Volt 
+# Volt
 
-**A terminal-based AI coding agent with Lossless Context Management.** 
+**A terminal-based AI coding agent with Lossless Context Management.**
 
 This is a research preview from Voltropy. For full details, read the [LCM technical paper](https://papers.voltropy.com/LCM).
 
 ---
+
 ## What is Volt?
 
 Volt is an open-source AI coding agent that introduces **Lossless Context Management (LCM)**, a deterministic architecture for LLM memory that outperforms frontier coding agents on long-context tasks. In practice, this means:
@@ -23,7 +24,7 @@ LCM addresses this by shifting the burden of memory architecture from the model 
 LCM achieves lossless retrievability via a dual-state memory architecture:
 
 - **Immutable Store** — The source of truth. Every user message, assistant response, and tool result produced during a session is persisted verbatim and never modified.
-- **Active Context** — The window actually sent to the LLM on each turn. It is assembled from a mix of recent raw messages and precomputed *summary nodes* — compressed representations derived from older messages via LLM summarization. Summary nodes function as materialized views over the immutable history: they are a cache, not a source of truth.
+- **Active Context** — The window actually sent to the LLM on each turn. It is assembled from a mix of recent raw messages and precomputed _summary nodes_ — compressed representations derived from older messages via LLM summarization. Summary nodes function as materialized views over the immutable history: they are a cache, not a source of truth.
 
 The core data structure is a Directed Acyclic Graph (DAG) maintained in a persistent store that supports transactional writes, foreign-key integrity, and indexed search. As the active context window fills, older messages are not discarded. Instead, they are compacted into **Summary Nodes** and the originals are saved.
 

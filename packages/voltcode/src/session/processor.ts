@@ -337,7 +337,10 @@ export namespace SessionProcessor {
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const llmStreamStart = performance.now()
             stream = await LLM.stream(streamInput)
-            log.trace("process.timing.llmStreamCreated", { sessionID: input.sessionID, ms: Math.round(performance.now() - llmStreamStart) })
+            log.trace("process.timing.llmStreamCreated", {
+              sessionID: input.sessionID,
+              ms: Math.round(performance.now() - llmStreamStart),
+            })
 
             // Use dedicated chunk timeout from Flag, separate from fetch timeout
             // Set to 0 to disable chunk timeout entirely
@@ -357,7 +360,10 @@ export namespace SessionProcessor {
             let firstChunk = true
             for await (const value of timedStream) {
               if (firstChunk) {
-                log.trace("process.timing.ttft", { sessionID: input.sessionID, ms: Math.round(performance.now() - llmStreamStart) })
+                log.trace("process.timing.ttft", {
+                  sessionID: input.sessionID,
+                  ms: Math.round(performance.now() - llmStreamStart),
+                })
                 firstChunk = false
               }
               input.abort.throwIfAborted()

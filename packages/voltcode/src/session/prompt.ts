@@ -761,12 +761,18 @@ export namespace SessionPrompt {
     try {
       const syncStart = performance.now()
       await syncSessionMessagesToLcm(conversationId, input.sessionID, input.sessionMessages)
-      log.trace("buildLcm.timing.syncToLcm", { sessionID: input.sessionID, ms: Math.round(performance.now() - syncStart) })
+      log.trace("buildLcm.timing.syncToLcm", {
+        sessionID: input.sessionID,
+        ms: Math.round(performance.now() - syncStart),
+      })
 
       // Two-tier threshold: measure system prompt overhead
       const measureStart = performance.now()
       const systemPromptTokens = await SystemPrompt.measureSystemPromptTokens()
-      log.trace("buildLcm.timing.measureSystemTokens", { sessionID: input.sessionID, ms: Math.round(performance.now() - measureStart) })
+      log.trace("buildLcm.timing.measureSystemTokens", {
+        sessionID: input.sessionID,
+        ms: Math.round(performance.now() - measureStart),
+      })
       const toolTokens = input.toolTokenEstimate ?? 0
       const budget = TokenBudget.computeBudget({
         model: input.model,
@@ -779,7 +785,13 @@ export namespace SessionPrompt {
       const reserve = budget.reserve
       const contextWindow = input.model.limit.context
       const softThresholdOverride = Number(process.env.VOLTCODE_LCM_CONTEXT_THRESHOLD) || undefined
-      const thresholdCheck = await LcmContext.isOverThreshold({ conversationId, overhead, reserve, contextWindow, softThresholdOverride })
+      const thresholdCheck = await LcmContext.isOverThreshold({
+        conversationId,
+        overhead,
+        reserve,
+        contextWindow,
+        softThresholdOverride,
+      })
       const compactionInFlight = LcmContext.isCompactionInFlight(conversationId)
 
       log.info("building LCM context", {
@@ -970,7 +982,10 @@ export namespace SessionPrompt {
 
       const contextStart = performance.now()
       const context = await LcmDb.getCurrentContext(conversationId)
-      log.trace("buildLcm.timing.getCurrentContext", { sessionID: input.sessionID, ms: Math.round(performance.now() - contextStart) })
+      log.trace("buildLcm.timing.getCurrentContext", {
+        sessionID: input.sessionID,
+        ms: Math.round(performance.now() - contextStart),
+      })
 
       log.debug("LCM context fetched", {
         conversationId,

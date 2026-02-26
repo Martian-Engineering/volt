@@ -73,7 +73,9 @@ async function describeFile(fileId: string, sessionID: string) {
   lines.push(`## LCM File: ${fileId}`)
   lines.push("")
   lines.push(`**Storage:** ${formatStorageKind(file.storage_kind)}`)
-  lines.push(`**Path:** ${file.storage_kind === "path" ? file.original_path ?? "(missing path)" : "(inline payload — not on disk)"}`)
+  lines.push(
+    `**Path:** ${file.storage_kind === "path" ? (file.original_path ?? "(missing path)") : "(inline payload — not on disk)"}`,
+  )
   lines.push(`**Type:** ${file.mime_type}`)
   lines.push(`**Tokens:** ~${file.token_count.toLocaleString()}`)
   lines.push(`**Created:** ${file.created_at.toISOString()}`)
