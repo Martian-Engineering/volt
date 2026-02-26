@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import postgres from "postgres"
 import z from "zod"
 import { Log } from "@/util/log"
@@ -1723,8 +1724,7 @@ export namespace LcmDb {
    * Generate a deterministic file ID based on content hash and conversation ID.
    */
   export function generateFileId(conversationId: number, content: string): string {
-    const hash = require("crypto")
-      .createHash("sha256")
+    const hash = createHash("sha256")
       .update(`${conversationId}:${content}`)
       .digest("hex")
       .slice(0, 16)
@@ -1736,8 +1736,7 @@ export namespace LcmDb {
    * Generate a deterministic file ID for binary content scoped to a conversation.
    */
   export function generateBinaryFileId(conversationId: number, content: Uint8Array): string {
-    const hash = require("crypto")
-      .createHash("sha256")
+    const hash = createHash("sha256")
       .update(`${conversationId}:`)
       .update(content)
       .digest("hex")
