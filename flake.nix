@@ -39,9 +39,6 @@
           voltcode = pkgs.callPackage ./nix/voltcode.nix {
             inherit node_modules;
           };
-          desktop = pkgs.callPackage ./nix/desktop.nix {
-            inherit voltcode;
-          };
           # nixpkgs cpu naming to bun cpu naming
           cpuMap = { x86_64 = "x64"; aarch64 = "arm64"; };
           # matrix of node_modules builds - these will always fail due to fakeHash usage
@@ -62,7 +59,7 @@
         in
         {
           default = voltcode;
-          inherit voltcode desktop;
+          inherit voltcode;
         } // moduleUpdaters
       );
     };
