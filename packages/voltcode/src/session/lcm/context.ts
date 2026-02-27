@@ -1037,6 +1037,7 @@ export namespace LcmContext {
       sessionID: input.sessionID,
       user: input.user,
       dbMessageIds,
+      inputTokenCountHint: inputTokens,
       model: input.model,
       abort: input.abort,
     }
@@ -1201,6 +1202,7 @@ export namespace LcmContext {
         sessionID: input.sessionID,
         user: input.user,
         dbMessageIds,
+        inputTokenCountHint: inputTokens,
         model: input.model,
         abort: input.abort,
       })
@@ -1368,6 +1370,7 @@ export namespace LcmContext {
         sessionID: input.sessionID,
         user: input.user,
         dbMessageIds,
+        inputTokenCountHint: inputTokens,
         previousSummaryContext,
         model: input.model,
         abort: input.abort,

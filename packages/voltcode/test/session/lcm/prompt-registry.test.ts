@@ -117,6 +117,53 @@ describe("session.lcm.prompt-registry", () => {
     expect(condenseRequest.maxOutputTokens).toBe(222)
   })
 
+  test("aggressive summarize/condense requests use lower output-token caps", () => {
+    setLcmPolicyConfigForTesting(
+      parseLcmPolicyConfig({
+        VOLTCODE_LCM_SUMMARY_MAX_OUTPUT_TOKENS: "1000",
+        VOLTCODE_LCM_CONDENSE_MAX_OUTPUT_TOKENS: "900",
+      }),
+    )
+
+    const summarizeRequest = createSummarizeLlmRequest({
+      model: testModel,
+      promptTemplate: "prompt",
+      formattedMessages: "messages",
+      aggressive: true,
+    })
+    const condenseRequest = createCondenseLlmRequest({
+      model: testModel,
+      promptTemplate: "prompt",
+      userMessage: "summary inputs",
+      aggressive: true,
+    })
+
+    expect(summarizeRequest.maxOutputTokens).toBe(600)
+    expect(condenseRequest.maxOutputTokens).toBe(540)
+  })
+
+  test("aggressive requests append escalation directive to system prompt", () => {
+    const summarizeRequest = createSummarizeLlmRequest({
+      model: testModel,
+      promptTemplate: "base summarize prompt",
+      formattedMessages: "messages",
+      aggressive: true,
+    })
+    const condenseRequest = createCondenseLlmRequest({
+      model: testModel,
+      promptTemplate: "base condense prompt",
+      userMessage: "summary inputs",
+      aggressive: true,
+    })
+
+    const summarizeSystem = summarizeRequest.messages?.[0]
+    const condenseSystem = condenseRequest.messages?.[0]
+    expect(typeof summarizeSystem?.content).toBe("string")
+    expect(typeof condenseSystem?.content).toBe("string")
+    expect(summarizeSystem?.content).toContain("## Aggressive Compression Override")
+    expect(condenseSystem?.content).toContain("## Aggressive Compression Override")
+  })
+
   test("summarize request frames source text as material and reiterates summarize intent", () => {
     const summarizeRequest = createSummarizeLlmRequest({
       model: testModel,

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { extractFileIds } from "../../../src/session/lcm/summarize"
-import * as SummarizeModule from "../../../src/session/lcm/summarize"
-import * as CondenseModule from "../../../src/session/lcm/condense"
+import {
+  buildDeterministicFallbackCompaction,
+  shouldAcceptCompactionOutput,
+} from "../../../src/session/lcm/compaction-escalation"
 import { LcmContext } from "../../../src/session/lcm/context"
 
 // ---------------------------------------------------------------------------
@@ -102,16 +104,26 @@ describe("extractFileIds", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 2. no deterministic fallback tier
+// 2. deterministic fallback tier
 // ---------------------------------------------------------------------------
 
 describe("compaction tiering policy", () => {
-  test("summarize module no longer exports summarizeFallback", () => {
-    expect("summarizeFallback" in SummarizeModule).toBe(false)
+  test("deterministic fallback truncates source text to enforce strict reduction", () => {
+    const source = Array.from({ length: 500 }, (_, i) => `token-${i}`).join(" ")
+    const inputTokens = 400
+    const fallback = buildDeterministicFallbackCompaction({
+      sourceText: source,
+      inputTokens,
+      suffixLabel: "test fallback",
+    })
+
+    expect(fallback.length).toBeGreaterThan(0)
+    expect(shouldAcceptCompactionOutput(fallback, inputTokens)).toBe(true)
   })
 
-  test("condense module no longer exports condenseFallback", () => {
-    expect("condenseFallback" in CondenseModule).toBe(false)
+  test("acceptance gate rejects empty and non-shrinking output", () => {
+    expect(shouldAcceptCompactionOutput("", 100)).toBe(false)
+    expect(shouldAcceptCompactionOutput("same size", 1)).toBe(false)
   })
 })
 

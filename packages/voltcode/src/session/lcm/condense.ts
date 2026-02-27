@@ -7,6 +7,11 @@ import { LcmDb } from "./db"
 import { extractFileIds } from "./summarize"
 import { getLcmPolicyConfig } from "./config"
 import { resolveLcmPrompt } from "./prompt-registry"
+import {
+  buildDeterministicFallbackCompaction,
+  shouldAcceptCompactionOutput,
+  withAggressiveCompactionDirective,
+} from "./compaction-escalation"
 
 type GenerateTextInput = Parameters<typeof generateText>[0]
 
@@ -18,6 +23,7 @@ export function createCondenseLlmRequest(input: {
   promptTemplate: string
   userMessage: string
   previousSummaryContext?: string
+  aggressive?: boolean
   abort?: AbortSignal
 }): GenerateTextInput {
   const priorContext = input.previousSummaryContext?.trim()
@@ -52,11 +58,14 @@ export function createCondenseLlmRequest(input: {
   return {
     model: input.model,
     abortSignal: input.abort,
-    maxOutputTokens: getLcmPolicyConfig().runtime.condenseMaxOutputTokens,
+    maxOutputTokens: resolveCondenseMaxOutputTokens(input.aggressive === true),
     messages: [
       {
         role: "system",
-        content: input.promptTemplate,
+        content:
+          input.aggressive === true
+            ? withAggressiveCompactionDirective(input.promptTemplate)
+            : input.promptTemplate,
       },
       {
         role: "user",
@@ -64,6 +73,15 @@ export function createCondenseLlmRequest(input: {
       },
     ],
   }
+}
+
+/**
+ * Resolve condense output-token cap for normal vs aggressive passes.
+ */
+function resolveCondenseMaxOutputTokens(aggressive: boolean): number {
+  const base = getLcmPolicyConfig().runtime.condenseMaxOutputTokens
+  if (!aggressive) return base
+  return Math.max(128, Math.floor(base * 0.6))
 }
 
 /**
@@ -182,18 +200,36 @@ ${formattedSummaries}
     // Get language model for the provider
     const language = await Provider.getLanguage(input.model)
 
-    // Call the LLM to generate the bindle summary
-    const result = await generateText(
-      createCondenseLlmRequest({
-        model: language,
-        promptTemplate,
-        userMessage,
-        previousSummaryContext: input.previousSummaryContext,
-        abort: input.abort,
-      }),
-    )
+    const runPass = async (aggressive: boolean): Promise<string> => {
+      const result = await generateText(
+        createCondenseLlmRequest({
+          model: language,
+          promptTemplate,
+          userMessage,
+          previousSummaryContext: input.previousSummaryContext,
+          aggressive,
+          abort: input.abort,
+        }),
+      )
+      return result.text.trim()
+    }
 
-    const finalContent = result.text.trim()
+    const normalSummary = await runPass(false)
+    let finalContent = normalSummary
+    let tier: "normal" | "aggressive" | "fallback" = "normal"
+    if (!shouldAcceptCompactionOutput(normalSummary, inputTokens)) {
+      const aggressiveSummary = await runPass(true)
+      finalContent = aggressiveSummary
+      tier = "aggressive"
+      if (!shouldAcceptCompactionOutput(aggressiveSummary, inputTokens)) {
+        finalContent = buildDeterministicFallbackCompaction({
+          sourceText: formattedSummaries,
+          inputTokens,
+          suffixLabel: "LCM condense fallback",
+        })
+        tier = "fallback"
+      }
+    }
 
     // Propagate file IDs through structured metadata only; do not emit
     // programmatic metadata in summary text.
@@ -232,6 +268,7 @@ ${formattedSummaries}
       tokenCount: summary.tokenCount,
       inputTokens,
       reduction: inputTokens - summary.tokenCount,
+      tier,
       condensationOrder,
       parentCount: parentIds.length,
     })

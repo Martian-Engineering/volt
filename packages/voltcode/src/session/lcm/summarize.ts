@@ -7,6 +7,11 @@ import { Summary } from "./summary"
 import { LcmDb } from "./db"
 import { getLcmPolicyConfig } from "./config"
 import { resolveLcmPrompt } from "./prompt-registry"
+import {
+  buildDeterministicFallbackCompaction,
+  shouldAcceptCompactionOutput,
+  withAggressiveCompactionDirective,
+} from "./compaction-escalation"
 
 type GenerateTextInput = Parameters<typeof generateText>[0]
 
@@ -18,6 +23,7 @@ export function createSummarizeLlmRequest(input: {
   promptTemplate: string
   formattedMessages: string
   previousSummaryContext?: string
+  aggressive?: boolean
   abort?: AbortSignal
 }): GenerateTextInput {
   const priorContext = input.previousSummaryContext?.trim()
@@ -52,11 +58,14 @@ export function createSummarizeLlmRequest(input: {
   return {
     model: input.model,
     abortSignal: input.abort,
-    maxOutputTokens: getLcmPolicyConfig().runtime.summaryMaxOutputTokens,
+    maxOutputTokens: resolveSummaryMaxOutputTokens(input.aggressive === true),
     messages: [
       {
         role: "system",
-        content: input.promptTemplate,
+        content:
+          input.aggressive === true
+            ? withAggressiveCompactionDirective(input.promptTemplate)
+            : input.promptTemplate,
       },
       {
         role: "user",
@@ -64,6 +73,15 @@ export function createSummarizeLlmRequest(input: {
       },
     ],
   }
+}
+
+/**
+ * Resolve summarize output-token cap for normal vs aggressive passes.
+ */
+function resolveSummaryMaxOutputTokens(aggressive: boolean): number {
+  const base = getLcmPolicyConfig().runtime.summaryMaxOutputTokens
+  if (!aggressive) return base
+  return Math.max(128, Math.floor(base * 0.6))
 }
 
 /**
@@ -115,6 +133,8 @@ export namespace LcmSummarize {
     model?: Provider.Model
     /** Upward-only prior chain context for narrative continuity */
     previousSummaryContext?: string
+    /** Optional source-token hint for strict size-reduction checks. */
+    inputTokenCountHint?: number
     /** Abort signal for cancellation */
     abort?: AbortSignal
   }): Promise<Summary.WithMessages> {
@@ -143,19 +163,38 @@ export namespace LcmSummarize {
       condensationOrder: 1,
     })
 
-    // Call the LLM to generate the summary (use generateText directly to avoid
-    // streaming/reasoning middleware issues with thinking models)
-    const result = await generateText(
-      createSummarizeLlmRequest({
-        model: language,
-        promptTemplate,
-        formattedMessages,
-        previousSummaryContext: input.previousSummaryContext,
-        abort: input.abort,
-      }),
-    )
+    const sourceTokens = Math.max(2, Math.floor(input.inputTokenCountHint ?? Token.estimate(formattedMessages)))
+    const runPass = async (aggressive: boolean): Promise<string> => {
+      const result = await generateText(
+        createSummarizeLlmRequest({
+          model: language,
+          promptTemplate,
+          formattedMessages,
+          previousSummaryContext: input.previousSummaryContext,
+          aggressive,
+          abort: input.abort,
+        }),
+      )
+      return result.text.trim()
+    }
 
-    const summaryContent = result.text.trim()
+    const normalSummary = await runPass(false)
+    let summaryContent = normalSummary
+    let tier: "normal" | "aggressive" | "fallback" = "normal"
+
+    if (!shouldAcceptCompactionOutput(normalSummary, sourceTokens)) {
+      const aggressiveSummary = await runPass(true)
+      summaryContent = aggressiveSummary
+      tier = "aggressive"
+      if (!shouldAcceptCompactionOutput(aggressiveSummary, sourceTokens)) {
+        summaryContent = buildDeterministicFallbackCompaction({
+          sourceText: formattedMessages,
+          inputTokens: sourceTokens,
+          suffixLabel: "LCM summarize fallback",
+        })
+        tier = "fallback"
+      }
+    }
 
     // Extract file IDs from input messages for structured DB metadata only.
     // We do not append programmatic metadata to summary text.
@@ -167,6 +206,8 @@ export namespace LcmSummarize {
       contentLength: finalContent.length,
       outputTokens: Token.estimate(finalContent),
       inputTokens,
+      sourceTokens,
+      tier,
       fileIdCount: fileIds.length,
     })
 
