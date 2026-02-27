@@ -573,17 +573,17 @@ URL precedence:
 
 ### Mode and Runtime Policy
 
-| Variable | Default | Type constraint |
-|---|---|---|
-| `VOLTCODE_LCM_MODE` | `upward` | enum: `dolt|upward` |
-| `VOLTCODE_LCM_DEFAULT_CTX_CUTOFF_THRESHOLD` | `0.6` | finite float in `[0,1]` |
-| `VOLTCODE_LCM_TARGET_FREE_PERCENTAGE` | `0.25` | finite float in `[0,1]` |
-| `VOLTCODE_LCM_MIN_MESSAGES_TO_SUMMARIZE` | `3` | integer `>=1` |
-| `VOLTCODE_LCM_MIN_PROTECTED_TAIL_LEAVES` | `2` | integer `>=1` |
-| `VOLTCODE_LCM_CRITICAL_THRESHOLD_MULTIPLIER` | `1.2` | finite float `>0` |
-| `VOLTCODE_LCM_MAX_COMPACTION_ROUNDS` | `10` | integer `>=1` |
-| `VOLTCODE_LCM_SUMMARY_MAX_OUTPUT_TOKENS` | `2200` | integer `>=1` |
-| `VOLTCODE_LCM_CONDENSE_MAX_OUTPUT_TOKENS` | `2200` | integer `>=1` |
+| Variable                                     | Default  | Type constraint         |
+| -------------------------------------------- | -------- | ----------------------- | ------- |
+| `VOLTCODE_LCM_MODE`                          | `upward` | enum: `dolt             | upward` |
+| `VOLTCODE_LCM_DEFAULT_CTX_CUTOFF_THRESHOLD`  | `0.6`    | finite float in `[0,1]` |
+| `VOLTCODE_LCM_TARGET_FREE_PERCENTAGE`        | `0.25`   | finite float in `[0,1]` |
+| `VOLTCODE_LCM_MIN_MESSAGES_TO_SUMMARIZE`     | `3`      | integer `>=1`           |
+| `VOLTCODE_LCM_MIN_PROTECTED_TAIL_LEAVES`     | `2`      | integer `>=1`           |
+| `VOLTCODE_LCM_CRITICAL_THRESHOLD_MULTIPLIER` | `1.2`    | finite float `>0`       |
+| `VOLTCODE_LCM_MAX_COMPACTION_ROUNDS`         | `10`     | integer `>=1`           |
+| `VOLTCODE_LCM_SUMMARY_MAX_OUTPUT_TOKENS`     | `2200`   | integer `>=1`           |
+| `VOLTCODE_LCM_CONDENSE_MAX_OUTPUT_TOKENS`    | `2200`   | integer `>=1`           |
 
 ### Upward Recursive Controls (Exact)
 
