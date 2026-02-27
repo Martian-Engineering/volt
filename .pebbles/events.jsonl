@@ -401,3 +401,4 @@
 {"type":"rename","timestamp":"2026-02-27T20:22:21.402433Z","issue_id":"volt-b4a","payload":{"new_id":"volt-81f.5"}}
 {"type":"dep_add","timestamp":"2026-02-27T20:22:21.402433Z","issue_id":"volt-81f.5","payload":{"dep_type":"parent-child","depends_on":"volt-81f"}}
 {"type":"comment","timestamp":"2026-02-27T20:22:29.148839Z","issue_id":"volt-81f.5","payload":{"body":"Findings from 2026-02-27 run: OpenAI assistant message token/caching fields are always zero (gpt-4o, gpt-5-mini, gpt-5.2-codex), while Anthropic/Minimax show non-zero usage and cache read/write. In the same run, session-level LCM input token count is non-zero, so prompts are being built. Suspect usage propagation gap for @ai-sdk/openai path (includeUsage forced only for @ai-sdk/openai-compatible today)."}}
+{"type":"status_update","timestamp":"2026-02-27T23:45:40.07027Z","issue_id":"volt-04f","payload":{"status":"in_progress"}}
