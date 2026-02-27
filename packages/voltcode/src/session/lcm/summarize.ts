@@ -63,9 +63,7 @@ export function createSummarizeLlmRequest(input: {
       {
         role: "system",
         content:
-          input.aggressive === true
-            ? withAggressiveCompactionDirective(input.promptTemplate)
-            : input.promptTemplate,
+          input.aggressive === true ? withAggressiveCompactionDirective(input.promptTemplate) : input.promptTemplate,
       },
       {
         role: "user",

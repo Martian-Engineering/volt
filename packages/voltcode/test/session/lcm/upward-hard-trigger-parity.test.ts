@@ -59,7 +59,11 @@ async function cleanupConversation(id: number) {
   await conn`DELETE FROM conversations WHERE conversation_id = ${id}`.catch(() => {})
 }
 
-async function insertSummaryAtPosition(input: { conversationId: number; position: number; summaryId: string }): Promise<void> {
+async function insertSummaryAtPosition(input: {
+  conversationId: number
+  position: number
+  summaryId: string
+}): Promise<void> {
   const conn = LcmDb.getConnection()
   await conn`
     INSERT INTO context_items (conversation_id, position, item_type, message_id, summary_id)
@@ -179,7 +183,12 @@ describe("session.lcm.upward-hard-trigger-parity", () => {
     })
     await insertSummaryAtPosition({ conversationId: input.conversationId, position: 0, summaryId: d2a })
     await insertSummaryAtPosition({ conversationId: input.conversationId, position: 1, summaryId: d2b })
-    await LcmDb.appendMessage({ conversationId: input.conversationId, role: "user", content: "fresh tail", tokenCount: 10 })
+    await LcmDb.appendMessage({
+      conversationId: input.conversationId,
+      role: "user",
+      content: "fresh tail",
+      tokenCount: 10,
+    })
     return [d2a, d2b]
   }
 

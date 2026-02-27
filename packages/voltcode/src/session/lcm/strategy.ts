@@ -70,9 +70,10 @@ const upwardStrategy: LcmRuntimeStrategy = {
   compactOnThreshold: async (input) => {
     const policy = getLcmPolicyConfig()
     const tokenBudget = Math.max(0, input.contextWindow - input.overhead - input.reserve)
-    const threshold = input.softThresholdOverride != null
-      ? Math.max(0, Math.min(tokenBudget, Math.floor(input.softThresholdOverride - input.overhead)))
-      : Math.floor(policy.upward.contextThreshold * tokenBudget)
+    const threshold =
+      input.softThresholdOverride != null
+        ? Math.max(0, Math.min(tokenBudget, Math.floor(input.softThresholdOverride - input.overhead)))
+        : Math.floor(policy.upward.contextThreshold * tokenBudget)
     const currentTokens = await LcmDb.getContextTokenCount(input.conversationId)
     const rawTokensOutsideTail = await LcmContext.countRawTokensOutsideFreshTail({
       conversationId: input.conversationId,

@@ -198,8 +198,7 @@ export namespace TokenBudget {
     const contextWindow = input.model.limit.context
     const hardLimit = contextWindow - overhead - reserve
     const softRaw =
-      (input.softThresholdOverride ??
-        Math.floor(contextWindow * policyConfig.runtime.defaultCtxCutoffThreshold)) -
+      (input.softThresholdOverride ?? Math.floor(contextWindow * policyConfig.runtime.defaultCtxCutoffThreshold)) -
       overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
     const lanePolicy = computeLanePolicy({ hardLimit, mode: policyConfig.mode })
@@ -302,10 +301,7 @@ export namespace TokenBudget {
       },
       sprigs,
       bindles,
-      hardLimitRiskBuffer: Math.min(
-        hardLimit,
-        nonNegativeInteger(modePolicy.hardLimitRiskBuffer),
-      ),
+      hardLimitRiskBuffer: Math.min(hardLimit, nonNegativeInteger(modePolicy.hardLimitRiskBuffer)),
     }
   }
 
@@ -451,7 +447,13 @@ export namespace TokenBudget {
     return Math.min(nonNegativeInteger(cap), nonNegativeInteger(value))
   }
 
-  function clampLane(input: { soft: number; delta: number; target: number; minFanout: number; cap: number }): LaneThreshold {
+  function clampLane(input: {
+    soft: number
+    delta: number
+    target: number
+    minFanout: number
+    cap: number
+  }): LaneThreshold {
     const cap = nonNegativeInteger(input.cap)
     const soft = Math.min(nonNegativeInteger(input.soft), cap)
     const delta = nonNegativeInteger(input.delta)

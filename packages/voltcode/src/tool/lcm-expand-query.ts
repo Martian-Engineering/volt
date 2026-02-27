@@ -17,7 +17,10 @@ const parameters = z.object({
   prompt: z.string().describe("Focused question to answer using expanded summary context"),
   summary_ids: z.array(z.string()).optional().describe("Optional list of summary IDs (sum_xxx) to expand"),
   query: z.string().optional().describe("Optional text query used to find candidate summaries before expansion"),
-  conversation_id: z.number().optional().describe("Optional conversation scope. Defaults to current session conversation."),
+  conversation_id: z
+    .number()
+    .optional()
+    .describe("Optional conversation scope. Defaults to current session conversation."),
   max_tokens: z.number().int().positive().optional().describe("Target maximum answer tokens (default: 2000)."),
 })
 
@@ -221,9 +224,7 @@ function parseDelegatedReply(raw: string, summaryIds: string[]): ExpandQueryRepl
       const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : fallback.answer
       const citedSummaryIds =
         Array.isArray(parsed.cited_summary_ids) && parsed.cited_summary_ids.length > 0
-          ? normalizeSummaryIds(
-              parsed.cited_summary_ids.filter((value): value is string => typeof value === "string"),
-            )
+          ? normalizeSummaryIds(parsed.cited_summary_ids.filter((value): value is string => typeof value === "string"))
           : []
       const expandedSummaryCount =
         typeof parsed.expanded_summary_count === "number" && Number.isFinite(parsed.expanded_summary_count)

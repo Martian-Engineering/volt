@@ -29,7 +29,11 @@ async function cleanupConversation(id: number): Promise<void> {
   await conn`DELETE FROM conversations WHERE conversation_id = ${id}`.catch(() => {})
 }
 
-async function insertSummaryAtPosition(input: { conversationId: number; position: number; summaryId: string }): Promise<void> {
+async function insertSummaryAtPosition(input: {
+  conversationId: number
+  position: number
+  summaryId: string
+}): Promise<void> {
   const conn = LcmDb.getConnection()
   await conn`
     INSERT INTO context_items (conversation_id, position, item_type, message_id, summary_id)

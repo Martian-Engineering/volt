@@ -89,4 +89,3 @@ export function buildDeterministicFallbackCompaction(input: {
   // Last resort for pathological tiny inputs.
   return source.slice(0, 1)
 }
-

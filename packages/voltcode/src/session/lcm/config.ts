@@ -214,11 +214,7 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
       "VOLTCODE_LCM_DEFAULT_CTX_CUTOFF_THRESHOLD",
       DEFAULT_CTX_CUTOFF_THRESHOLD,
     ),
-    targetFreePercentage: readEnvUnitFloat(
-      env,
-      "VOLTCODE_LCM_TARGET_FREE_PERCENTAGE",
-      DEFAULT_TARGET_FREE_PERCENTAGE,
-    ),
+    targetFreePercentage: readEnvUnitFloat(env, "VOLTCODE_LCM_TARGET_FREE_PERCENTAGE", DEFAULT_TARGET_FREE_PERCENTAGE),
     minMessagesToSummarize: readEnvIntegerAtLeast(
       env,
       "VOLTCODE_LCM_MIN_MESSAGES_TO_SUMMARIZE",
@@ -257,11 +253,7 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
   }
 
   const upward: LcmUpwardPolicy = {
-    contextThreshold: readEnvUnitFloat(
-      env,
-      "VOLTCODE_LCM_UPWARD_CONTEXT_THRESHOLD",
-      DEFAULT_UPWARD_CONTEXT_THRESHOLD,
-    ),
+    contextThreshold: readEnvUnitFloat(env, "VOLTCODE_LCM_UPWARD_CONTEXT_THRESHOLD", DEFAULT_UPWARD_CONTEXT_THRESHOLD),
     freshTailCount: readEnvIntegerAtLeast(
       env,
       "VOLTCODE_LCM_UPWARD_FRESH_TAIL_COUNT",
@@ -273,11 +265,7 @@ export function parseLcmPolicyConfig(env: Record<string, string | undefined>): L
       "VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS",
       DEFAULT_UPWARD_LEAF_CHUNK_TOKENS,
     ),
-    leafMinFanout: readEnvPositiveInteger(
-      env,
-      "VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT",
-      DEFAULT_UPWARD_LEAF_MIN_FANOUT,
-    ),
+    leafMinFanout: readEnvPositiveInteger(env, "VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT", DEFAULT_UPWARD_LEAF_MIN_FANOUT),
     condensedMinFanout: readEnvPositiveInteger(
       env,
       "VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT",
@@ -401,11 +389,7 @@ function parseModePolicy(
   const ghostCueArchiveEnabled =
     modePrefix === "UPWARD"
       ? DEFAULT_UPWARD_GHOST_CUE_ARCHIVE_ENABLED
-      : readEnvBoolean(
-          env,
-          `VOLTCODE_LCM_${modePrefix}_GHOST_CUE_ARCHIVE_ENABLED`,
-          defaults.ghostCueArchiveEnabled,
-        )
+      : readEnvBoolean(env, `VOLTCODE_LCM_${modePrefix}_GHOST_CUE_ARCHIVE_ENABLED`, defaults.ghostCueArchiveEnabled)
 
   return {
     leaves: {

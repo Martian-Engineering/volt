@@ -7989,6 +7989,38 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.lcm.ghost-cue.skipped": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lcm.ghost-cue.skipped"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "conversationId": {
+                "type": "number"
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["dolt", "upward"]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "evictedBindleIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["conversationId", "mode", "reason", "evictedBindleIds"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "PermissionAction": {
         "type": "string",
         "enum": ["allow", "deny", "ask"]
@@ -8536,6 +8568,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.lcm.compaction.ended"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lcm.ghost-cue.skipped"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"
@@ -9113,7 +9148,7 @@
         "enum": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]
       },
       "ServerConfig": {
-        "description": "Server configuration for voltcode serve and web commands",
+        "description": "Server configuration for volt serve and web commands",
         "type": "object",
         "properties": {
           "port": {

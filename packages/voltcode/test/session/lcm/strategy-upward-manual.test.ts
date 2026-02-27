@@ -227,7 +227,9 @@ describe("session.lcm.strategy.upward-manual", () => {
       const context = await LcmDb.getCurrentContextWithRefs(conversationId)
       expect(context.some((entry) => entry.summary_type === "archive_stub")).toBe(false)
       expect(
-        context.some((entry) => entry.item_type === "summary" && entry.summary_type === "bindle" && entry.condensation_order === 3),
+        context.some(
+          (entry) => entry.item_type === "summary" && entry.summary_type === "bindle" && entry.condensation_order === 3,
+        ),
       ).toBe(true)
     } finally {
       ;(Condense as any).condenseSummaries = originalCondense

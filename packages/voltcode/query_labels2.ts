@@ -12,9 +12,7 @@ function hasFlag(name: string): boolean {
 }
 
 function usageAndExit(): never {
-  console.error(
-    "Usage: bun packages/voltcode/query_labels2.ts --db <labels.db> [--table <labels>] [--show-null]",
-  )
+  console.error("Usage: bun packages/voltcode/query_labels2.ts --db <labels.db> [--table <labels>] [--show-null]")
   process.exit(1)
 }
 

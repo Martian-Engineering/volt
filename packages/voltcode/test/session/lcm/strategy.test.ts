@@ -167,7 +167,6 @@ describe("LCM runtime strategy", () => {
     let forcedRecursiveCalls = 0
     let observedSweepMode: string | undefined
     let observedFreshTailCount: number | undefined
-
     ;(LcmDb as any).getContextTokenCount = async () => 1200
     ;(LcmContext as any).countRawTokensOutsideFreshTail = async (input: any) => {
       observedFreshTailCount = input.freshTailCount

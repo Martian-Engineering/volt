@@ -266,7 +266,8 @@ export namespace Summary {
   export function createBindle(input: CreateBindleInput, timestamp?: number): Info {
     const ts = timestamp ?? Date.now()
     const condensationOrder = CondensationOrder.parse(input.condensationOrder ?? 2)
-    if (condensationOrder < 2) throw new Error(`Bindle summaries require condensation order >= 2 (received ${condensationOrder})`)
+    if (condensationOrder < 2)
+      throw new Error(`Bindle summaries require condensation order >= 2 (received ${condensationOrder})`)
     return {
       summaryId: generateId(input.content, ts),
       content: input.content,

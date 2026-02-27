@@ -2001,7 +2001,9 @@ export namespace LcmDb {
     positions: number[]
     summaryId: string
   }): Promise<void> {
-    const positions = [...new Set(input.positions.map((position) => Math.floor(position)).filter((position) => position >= 0))]
+    const positions = [
+      ...new Set(input.positions.map((position) => Math.floor(position)).filter((position) => position >= 0)),
+    ]
     if (positions.length === 0) return
 
     const conn = sql()
@@ -2097,11 +2099,10 @@ export namespace LcmDb {
    * Used by bindle overflow eviction to drop active bindles from context while
    * preserving the relative order of all remaining items.
    */
-  export async function removeContextPositions(input: {
-    conversationId: number
-    positions: number[]
-  }): Promise<void> {
-    const positions = [...new Set(input.positions.map((position) => Math.floor(position)).filter((position) => position >= 0))]
+  export async function removeContextPositions(input: { conversationId: number; positions: number[] }): Promise<void> {
+    const positions = [
+      ...new Set(input.positions.map((position) => Math.floor(position)).filter((position) => position >= 0)),
+    ]
     if (positions.length === 0) return
 
     const positionsSet = new Set(positions)
@@ -2518,8 +2519,9 @@ export namespace LcmDb {
       condensation_order: number | null
     }
 
-    const rows = maxPositionExclusive == null
-      ? await conn<OrderRow[]>`
+    const rows =
+      maxPositionExclusive == null
+        ? await conn<OrderRow[]>`
           SELECT
             ci.summary_id,
             s.kind AS summary_kind,
@@ -2532,7 +2534,7 @@ export namespace LcmDb {
             AND ci.summary_id IS NOT NULL
           ORDER BY ci.position
         `
-      : await conn<OrderRow[]>`
+        : await conn<OrderRow[]>`
           SELECT
             ci.summary_id,
             s.kind AS summary_kind,
@@ -2586,8 +2588,9 @@ export namespace LcmDb {
       condensation_order: number | null
     }
 
-    const rows = maxPositionExclusive == null
-      ? await conn<ChunkCandidateRow[]>`
+    const rows =
+      maxPositionExclusive == null
+        ? await conn<ChunkCandidateRow[]>`
           SELECT
             ci.position,
             ci.item_type,
@@ -2600,7 +2603,7 @@ export namespace LcmDb {
           WHERE ci.conversation_id = ${input.conversationId}
           ORDER BY ci.position
         `
-      : await conn<ChunkCandidateRow[]>`
+        : await conn<ChunkCandidateRow[]>`
           SELECT
             ci.position,
             ci.item_type,

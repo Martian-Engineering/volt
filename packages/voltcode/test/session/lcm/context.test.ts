@@ -987,7 +987,15 @@ describe("session.lcm.context", () => {
         if (entry.item_type === "message") return entry.content
         return extractSummaryIdFromContextContent(entry.content) ?? "unknown-summary"
       })
-      expect(afterLabels).toEqual([bindle, compactedBindle, "Message 0", "Message 2", "Message 4", "Message 6", "Message 7"])
+      expect(afterLabels).toEqual([
+        bindle,
+        compactedBindle,
+        "Message 0",
+        "Message 2",
+        "Message 4",
+        "Message 6",
+        "Message 7",
+      ])
     })
 
     test("replacePositionsWithSummary normalizes duplicate and unsorted positions", async () => {

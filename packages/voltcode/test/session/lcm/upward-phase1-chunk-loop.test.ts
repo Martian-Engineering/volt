@@ -59,10 +59,7 @@ async function cleanupConversation(id: number) {
 
 async function overwriteContextOrder(input: {
   conversationId: number
-  orderedItems: Array<
-    | { itemType: "message"; messageId: number }
-    | { itemType: "summary"; summaryId: string }
-  >
+  orderedItems: Array<{ itemType: "message"; messageId: number } | { itemType: "summary"; summaryId: string }>
 }): Promise<void> {
   const conn = LcmDb.getConnection()
   await conn.begin(async (tx) => {
@@ -231,9 +228,19 @@ describe("session.lcm.upward-phase1-chunk-loop", () => {
 
     const conversationId = await createConversation("[Test] Upward phase1 non-message boundary")
     const firstMessageId = await LcmDb.appendMessage({ conversationId, role: "user", content: "m1", tokenCount: 1_000 })
-    const secondMessageId = await LcmDb.appendMessage({ conversationId, role: "user", content: "m2", tokenCount: 1_000 })
+    const secondMessageId = await LcmDb.appendMessage({
+      conversationId,
+      role: "user",
+      content: "m2",
+      tokenCount: 1_000,
+    })
     const thirdMessageId = await LcmDb.appendMessage({ conversationId, role: "user", content: "m3", tokenCount: 1_000 })
-    const fourthMessageId = await LcmDb.appendMessage({ conversationId, role: "user", content: "m4", tokenCount: 1_000 })
+    const fourthMessageId = await LcmDb.appendMessage({
+      conversationId,
+      role: "user",
+      content: "m4",
+      tokenCount: 1_000,
+    })
     const tailMessageId = await LcmDb.appendMessage({ conversationId, role: "user", content: "tail", tokenCount: 500 })
 
     const boundarySummaryId = nextSummaryId("sum_boundary")

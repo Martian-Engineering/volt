@@ -287,8 +287,7 @@ export namespace LcmContext {
     const hardLimit = input.contextWindow - input.overhead - input.reserve
     const softRaw =
       (input.softThresholdOverride ??
-        Math.floor(input.contextWindow * getLcmPolicyConfig().runtime.defaultCtxCutoffThreshold)) -
-      input.overhead
+        Math.floor(input.contextWindow * getLcmPolicyConfig().runtime.defaultCtxCutoffThreshold)) - input.overhead
     const softThreshold = Math.max(0, Math.min(softRaw, hardLimit))
     const lanePolicy = TokenBudget.computeLanePolicy({ hardLimit })
     const laneTokens: TokenBudget.LaneTokenCounts = {
@@ -381,9 +380,7 @@ export namespace LcmContext {
    * @param conversationId - The LCM conversation ID
    * @returns List of message entries with their positions
    */
-  export async function getMessagesInContext(
-    conversationId: number,
-  ): Promise<TurnMessageInContext[]> {
+  export async function getMessagesInContext(conversationId: number): Promise<TurnMessageInContext[]> {
     const messages: TurnMessageInContext[] = []
 
     // Get the context items to find message IDs
@@ -568,7 +565,10 @@ export namespace LcmContext {
     })
 
     const lookbackWindow = lookbackCount != null ? priorSummaries.slice(-lookbackCount) : priorSummaries
-    const selected = lookbackWindow.slice(-limit).map((entry) => entry.content.trim()).filter(Boolean)
+    const selected = lookbackWindow
+      .slice(-limit)
+      .map((entry) => entry.content.trim())
+      .filter(Boolean)
     if (selected.length < 1) return undefined
     return selected.join("\n\n")
   }
@@ -726,8 +726,7 @@ export namespace LcmContext {
 
     const policyConfig = getLcmPolicyConfig()
     const activeMode = policyConfig.mode
-    const ghostCueArchiveEnabled =
-      activeMode === "dolt" && policyConfig.strategies[activeMode].ghostCueArchiveEnabled
+    const ghostCueArchiveEnabled = activeMode === "dolt" && policyConfig.strategies[activeMode].ghostCueArchiveEnabled
     if (!ghostCueArchiveEnabled) {
       const newTokenCount = await LcmDb.getContextTokenCount(input.conversationId)
       log.info("skipping ghost cue archive generation for evicted bindles", {
@@ -1403,7 +1402,8 @@ export namespace LcmContext {
       noOpReasons.push("eligible_leaves_below_min")
     }
 
-    const fanoutNoOpReasonForOrder = (order: number) => (order === 1 ? "sprigs_below_min_fanout" : `d${order}_below_min_fanout`)
+    const fanoutNoOpReasonForOrder = (order: number) =>
+      order === 1 ? "sprigs_below_min_fanout" : `d${order}_below_min_fanout`
     const chunkTokenFloorNoOpReasonForOrder = (order: number) =>
       order === 1 ? "sprigs_below_min_chunk_tokens" : `d${order}_below_min_chunk_tokens`
     const sweepMode: UpwardSweepMode =
@@ -1563,10 +1563,7 @@ export namespace LcmContext {
     return summaries
   }
 
-  function resolveUpwardFanoutForDepth(input: {
-    condensationOrder: number
-    hardTrigger: boolean
-  }): number {
+  function resolveUpwardFanoutForDepth(input: { condensationOrder: number; hardTrigger: boolean }): number {
     if (input.hardTrigger) {
       return resolveUpwardCondensedMinFanout(true)
     }
@@ -1664,15 +1661,16 @@ export namespace LcmContext {
     const parentOrder = input.parentSummaries[0]!.condensationOrder
     const condensationOrder = parentOrder + 1
     const inputTokens = input.parentSummaries.reduce((sum, summary) => sum + summary.tokenCount, 0)
-    const previousSummaryContext = input.includePriorSummaryContext === true
-      ? await resolveUpwardPriorSummaryContext({
-          conversationId: input.input.conversationId,
-          maxPositionExclusive: Math.min(...input.parentSummaries.map((summary) => summary.position)),
-          lookbackCount: 4,
-          limit: 2,
-          condensationOrder: parentOrder,
-        })
-      : undefined
+    const previousSummaryContext =
+      input.includePriorSummaryContext === true
+        ? await resolveUpwardPriorSummaryContext({
+            conversationId: input.input.conversationId,
+            maxPositionExclusive: Math.min(...input.parentSummaries.map((summary) => summary.position)),
+            lookbackCount: 4,
+            limit: 2,
+            condensationOrder: parentOrder,
+          })
+        : undefined
 
     log.debug("attemptCondensationForOrder", {
       conversationId: input.input.conversationId,
@@ -1743,9 +1741,7 @@ export namespace LcmContext {
    * - "system" -> "user" (system prompts are user-side)
    * - "tool" -> "assistant" (tool results are part of assistant turns)
    */
-  async function convertToMessageV2(
-    messages: TurnMessageInContext[],
-  ): Promise<MessageV2.WithParts[]> {
+  async function convertToMessageV2(messages: TurnMessageInContext[]): Promise<MessageV2.WithParts[]> {
     return messages.map((msg) => {
       // Map LcmDb roles to MessageV2 roles (only "user" | "assistant" supported)
       const mappedRole: "user" | "assistant" = msg.role === "user" || msg.role === "system" ? "user" : "assistant"
@@ -1773,5 +1769,4 @@ export namespace LcmContext {
       }
     })
   }
-
 }

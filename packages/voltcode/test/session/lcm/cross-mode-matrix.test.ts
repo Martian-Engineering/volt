@@ -5,7 +5,10 @@ import { LcmContext } from "../../../src/session/lcm/context"
 import { LcmDb } from "../../../src/session/lcm/db"
 import { isEmbeddedPostgresSupported } from "../../../src/session/lcm/embedded-postgres"
 import { ensureLcmReady } from "../../../src/session/lcm/runtime"
-import { getActiveLcmRuntimeStrategy, setLcmRuntimeStrategyFactoriesForTesting } from "../../../src/session/lcm/strategy"
+import {
+  getActiveLcmRuntimeStrategy,
+  setLcmRuntimeStrategyFactoriesForTesting,
+} from "../../../src/session/lcm/strategy"
 import { TokenBudget } from "../../../src/session/token-budget"
 import type { LcmRetrieval } from "../../../src/session/lcm/retrieval"
 import { Summary } from "../../../src/session/lcm/summary"
@@ -69,7 +72,9 @@ async function cleanupConversation(id: number) {
   await conn`DELETE FROM conversations WHERE conversation_id = ${id}`.catch(() => {})
 }
 
-function classifyLane(entry: Awaited<ReturnType<typeof LcmDb.getCurrentContextWithRefs>>[number]): "bindle" | "sprig" | "other" {
+function classifyLane(
+  entry: Awaited<ReturnType<typeof LcmDb.getCurrentContextWithRefs>>[number],
+): "bindle" | "sprig" | "other" {
   return LcmDb.classifySummaryForDoltLane({
     condensationOrder: entry.condensation_order,
     summaryLevel: entry.summary_level,

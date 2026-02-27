@@ -9,7 +9,9 @@ if (!isLcmAvailable) {
 } else {
   const { LcmDb } = await import("../../../src/session/lcm/db")
   const { LcmContext } = await import("../../../src/session/lcm/context")
-  const { scheduleThresholdCompaction, isThresholdCompactionInFlight } = await import("../../../src/session/lcm/strategy")
+  const { scheduleThresholdCompaction, isThresholdCompactionInFlight } = await import(
+    "../../../src/session/lcm/strategy"
+  )
 
   let testConversationId: number
   const createdConversationIds: number[] = []

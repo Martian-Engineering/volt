@@ -30,7 +30,12 @@ function makeSummary(input: {
           ? Number.parseInt(input.summaryLevel.slice(1), 10)
           : 2)
   const summaryLevel =
-    input.summaryLevel ?? (condensationOrder === 1 ? "sprig" : condensationOrder === 2 ? "bindle" : (`d${condensationOrder}` as LcmDb.SummaryLevel))
+    input.summaryLevel ??
+    (condensationOrder === 1
+      ? "sprig"
+      : condensationOrder === 2
+        ? "bindle"
+        : (`d${condensationOrder}` as LcmDb.SummaryLevel))
   return {
     summary_id: input.summaryId,
     conversation_id: 1001,
@@ -199,8 +204,7 @@ describe("dolt v1 validation suite", () => {
         requestedSummaryLevel = input.summaryLevel
         return summaries.filter(
           (summary) =>
-            summary.is_off_context &&
-            (input.summaryLevel == null || input.summaryLevel === summary.summary_level),
+            summary.is_off_context && (input.summaryLevel == null || input.summaryLevel === summary.summary_level),
         )
       },
       async getSummaryParentIds() {

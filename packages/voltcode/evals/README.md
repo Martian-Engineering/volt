@@ -6,7 +6,7 @@ Internal evaluation benchmarks for testing VoltCode agent capabilities. **These 
 
 | Benchmark              | Description                       | Tasks | Source                                                    |
 | ---------------------- | --------------------------------- | ----- | --------------------------------------------------------- |
-| **OOLONG**             | Long-context semantic aggregation | 50    | [arxiv](https://arxiv.org/abs/2511.02817)                |
+| **OOLONG**             | Long-context semantic aggregation | 50    | [arxiv](https://arxiv.org/abs/2511.02817)                 |
 | **SWE-bench Verified** | Real GitHub issue resolution      | 500   | [swebench.com](https://www.swebench.com/)                 |
 | **MCP Atlas**          | Multi-tool MCP server tasks       | 1000  | [scale.com](https://scale.com/blog/mcp-atlas)             |
 | **LoCoBench-Agent**    | Long-context software engineering | 8000  | [arxiv](https://arxiv.org/abs/2511.13998)                 |
@@ -95,11 +95,11 @@ Overlay row fields:
 Markdown table schema:
 
 ```md
-| System | Score % | Pass Rate % | Tasks (pass/total) | Duration (s) | Model | Artifact |
-| --- | ---: | ---: | ---: | ---: | --- | --- |
-| Claude Code | ... | ... | ... | ... | ... | ... |
-| Volt | ... | ... | ... | ... | ... | ... |
-| Dolt | ... | ... | ... | ... | ... | ... |
+| System      | Score % | Pass Rate % | Tasks (pass/total) | Duration (s) | Model | Artifact |
+| ----------- | ------: | ----------: | -----------------: | -----------: | ----- | -------- |
+| Claude Code |     ... |         ... |                ... |          ... | ...   | ...      |
+| Volt        |     ... |         ... |                ... |          ... | ...   | ...      |
+| Dolt        |     ... |         ... |                ... |          ... | ...   | ...      |
 ```
 
 ## Benchmark Details

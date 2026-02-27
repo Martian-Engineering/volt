@@ -771,6 +771,16 @@ export type EventLcmCompactionEnded = {
   }
 }
 
+export type EventLcmGhostCueSkipped = {
+  type: "lcm.ghost-cue.skipped"
+  properties: {
+    conversationId: number
+    mode: "dolt" | "upward"
+    reason: string
+    evictedBindleIds: Array<string>
+  }
+}
+
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -960,6 +970,7 @@ export type Event =
   | EventSessionIdle
   | EventLcmCompactionStarted
   | EventLcmCompactionEnded
+  | EventLcmGhostCueSkipped
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -1382,7 +1393,7 @@ export type KeybindsConfig = {
 export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR"
 
 /**
- * Server configuration for voltcode serve and web commands
+ * Server configuration for volt serve and web commands
  */
 export type ServerConfig = {
   /**

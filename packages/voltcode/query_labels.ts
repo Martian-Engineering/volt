@@ -30,12 +30,8 @@ const sql = userId
   ? `SELECT COUNT(*) as c FROM ${table} WHERE user = ? AND label = ?`
   : `SELECT COUNT(*) as c FROM ${table} WHERE label = ?`
 
-const lhsRow = userId
-  ? (db.query(sql).get(userId, lhs) as { c: number })
-  : (db.query(sql).get(lhs) as { c: number })
-const rhsRow = userId
-  ? (db.query(sql).get(userId, rhs) as { c: number })
-  : (db.query(sql).get(rhs) as { c: number })
+const lhsRow = userId ? (db.query(sql).get(userId, lhs) as { c: number }) : (db.query(sql).get(lhs) as { c: number })
+const rhsRow = userId ? (db.query(sql).get(userId, rhs) as { c: number }) : (db.query(sql).get(rhs) as { c: number })
 
 db.close()
 

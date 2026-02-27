@@ -114,13 +114,13 @@ cp dist/voltcode-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/aa
 
 Volt has two independent "mode" axes. They control different things and are configured separately:
 
-| Axis | Values | What it controls | How to change |
-|------|--------|-------------------|---------------|
-| **Agent UI mode** | `build` / `plan` | Agent permissions in the TUI (read-write vs read-only) | Press `Tab` in the TUI |
+| Axis                 | Values            | What it controls                                                    | How to change                               |
+| -------------------- | ----------------- | ------------------------------------------------------------------- | ------------------------------------------- |
+| **Agent UI mode**    | `build` / `plan`  | Agent permissions in the TUI (read-write vs read-only)              | Press `Tab` in the TUI                      |
 | **LCM runtime mode** | `dolt` / `upward` | How the context engine compresses and retrieves long-session memory | Set `VOLTCODE_LCM_MODE` env var and restart |
 
 **Agent UI mode** is a TUI-level toggle — it has nothing to do with how memory works.
-**LCM runtime mode** controls the compaction and retrieval engine under the hood. Both modes use the same immutable Postgres store; they differ in *how* they compress old messages and whether archived memory is searchable.
+**LCM runtime mode** controls the compaction and retrieval engine under the hood. Both modes use the same immutable Postgres store; they differ in _how_ they compress old messages and whether archived memory is searchable.
 
 ### Agent UI Modes
 
@@ -236,14 +236,14 @@ Both modes use the same immutable Postgres store and the same summary DAG struct
 
 **Upward** compacts context by recursively condensing summaries bottom-up at unbounded depth (d1 → d2 → d3 → dN, reusing the d3 prompt for all orders ≥ 3) without ever evicting bindles. This keeps all summaries on-context but the off-context retrieval adapter is disabled — `lcm_expand_query` will skip off-context candidates with an `off_context_unavailable` diagnostic, and pre-response hook cues will not surface evicted bindles (because none are evicted). Note that `lcm_grep` is unaffected by this limitation: it queries raw messages in the database directly and works identically in both modes. Upward is simpler and avoids ghost-cue overhead, but structured off-context recall is unavailable.
 
-| Behavior | `dolt` | `upward` |
-|---|---|---|
-| Compaction approach | Evict oldest bindles when over budget | Recursively condense summaries bottom-up (unbounded depth) |
-| Off-context retrieval adapter (`lcm_expand_query`, pre-response cues) | Available — evicted bindles are searchable | Disabled — returns `off_context_unavailable` diagnostic |
-| `lcm_grep` (raw message search) | Works | Works (not mode-gated) |
-| Ghost cue archival | Enabled — evicted bindles leave lineage pointers | Disabled |
-| Manual `/compact` | Creates one new bindle from oldest leaves | Forces full recursive condensation pass |
-| Bindle eviction | Yes (max 1 per compaction cycle) | Never |
+| Behavior                                                              | `dolt`                                           | `upward`                                                   |
+| --------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
+| Compaction approach                                                   | Evict oldest bindles when over budget            | Recursively condense summaries bottom-up (unbounded depth) |
+| Off-context retrieval adapter (`lcm_expand_query`, pre-response cues) | Available — evicted bindles are searchable       | Disabled — returns `off_context_unavailable` diagnostic    |
+| `lcm_grep` (raw message search)                                       | Works                                            | Works (not mode-gated)                                     |
+| Ghost cue archival                                                    | Enabled — evicted bindles leave lineage pointers | Disabled                                                   |
+| Manual `/compact`                                                     | Creates one new bindle from oldest leaves        | Forces full recursive condensation pass                    |
+| Bindle eviction                                                       | Yes (max 1 per compaction cycle)                 | Never                                                      |
 
 **Which to choose:** Use `dolt` if you want the agent to be able to recall anything from any point in a long session. Use `upward` if you prefer a simpler compaction model and don't need retroactive search over archived context.
 

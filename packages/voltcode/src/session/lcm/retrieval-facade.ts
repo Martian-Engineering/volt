@@ -65,7 +65,9 @@ export namespace LcmRetrievalFacade {
   /**
    * Resolve lcm_expand_query summary candidates against the active mode.
    */
-  export async function resolveExpandQueryCandidates(input: CandidateResolutionInput): Promise<CandidateResolutionResult> {
+  export async function resolveExpandQueryCandidates(
+    input: CandidateResolutionInput,
+  ): Promise<CandidateResolutionResult> {
     const db = input.db ?? LcmDb
     const mode = input.mode ?? getLcmPolicyConfig().mode
     const query = input.query?.trim()
@@ -104,7 +106,9 @@ export namespace LcmRetrievalFacade {
       for (const summaryId of input.explicitSummaryIds) {
         const summary = await db.getSummaryById(summaryId, input.requestedConversationId)
         if (!summary) {
-          throw new Error(`Summary "${summaryId}" was not found in conversation ${input.requestedConversationId} or its ancestors.`)
+          throw new Error(
+            `Summary "${summaryId}" was not found in conversation ${input.requestedConversationId} or its ancestors.`,
+          )
         }
         includeCandidate({
           summaryId: summary.summary_id,
@@ -186,7 +190,9 @@ export namespace LcmRetrievalFacade {
       new Set(Array.from(candidates.values()).map((candidate) => candidate.conversationId)),
     )
     if (candidateConversationIds.length !== 1) {
-      throw new Error("Matched summaries span multiple conversations. Provide conversation_id to disambiguate expansion scope.")
+      throw new Error(
+        "Matched summaries span multiple conversations. Provide conversation_id to disambiguate expansion scope.",
+      )
     }
 
     return {

@@ -148,7 +148,9 @@ export namespace OolongOverlay {
     const resultJsonPath = path.join(inputPath, "result.json")
     const entries = await fs.readdir(inputPath, { withFileTypes: true })
     const benchmarkFiles = entries
-      .filter((entry) => entry.isFile() && /^oolong(?:-(?:bare|claude-code))?-\d{4}-\d{2}-\d{2}T.*\.json$/.test(entry.name))
+      .filter(
+        (entry) => entry.isFile() && /^oolong(?:-(?:bare|claude-code))?-\d{4}-\d{2}-\d{2}T.*\.json$/.test(entry.name),
+      )
       .map((entry) => path.join(inputPath, entry.name))
 
     if (benchmarkFiles.length > 0) {

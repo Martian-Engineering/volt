@@ -173,10 +173,7 @@ export const SessionLcmWatchCommand = cmd({
   },
 })
 
-async function buildLcmWatchView(input: {
-  snapshotPath: string
-  conversationIdOverride?: number
-}): Promise<string> {
+async function buildLcmWatchView(input: { snapshotPath: string; conversationIdOverride?: number }): Promise<string> {
   const snapshot = await LcmContextSnapshot.read(input.snapshotPath)
   const conversationId = input.conversationIdOverride ?? snapshot?.conversationId
   if (!conversationId || conversationId <= 0) {
@@ -235,18 +232,14 @@ async function buildLcmWatchView(input: {
   lines.push("Bindles (active, in-context)")
   if (bindles.length === 0) lines.push("  (none)")
   for (const row of bindles) {
-    lines.push(
-      `  [pos ${row.position}] ${row.summary_id} tok=${row.token_count} ${singleLine(row.content, 120)}`,
-    )
+    lines.push(`  [pos ${row.position}] ${row.summary_id} tok=${row.token_count} ${singleLine(row.content, 120)}`)
   }
   lines.push("")
 
   lines.push("Sprigs (active, in-context)")
   if (sprigs.length === 0) lines.push("  (none)")
   for (const row of sprigs) {
-    lines.push(
-      `  [pos ${row.position}] ${row.summary_id} tok=${row.token_count} ${singleLine(row.content, 120)}`,
-    )
+    lines.push(`  [pos ${row.position}] ${row.summary_id} tok=${row.token_count} ${singleLine(row.content, 120)}`)
   }
   lines.push("")
 

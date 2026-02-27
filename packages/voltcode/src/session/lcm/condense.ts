@@ -63,9 +63,7 @@ export function createCondenseLlmRequest(input: {
       {
         role: "system",
         content:
-          input.aggressive === true
-            ? withAggressiveCompactionDirective(input.promptTemplate)
-            : input.promptTemplate,
+          input.aggressive === true ? withAggressiveCompactionDirective(input.promptTemplate) : input.promptTemplate,
       },
       {
         role: "user",
@@ -108,8 +106,7 @@ export namespace Condense {
       return summary.kind !== "bindle" || summaryOrder !== requiredParentOrder
     })
     if (invalidParents.length > 0) {
-      const expected =
-        requiredParentOrder === 1 ? "d1 sprig summaries" : `d${requiredParentOrder} bindle summaries`
+      const expected = requiredParentOrder === 1 ? "d1 sprig summaries" : `d${requiredParentOrder} bindle summaries`
       throw new Error(
         `Cannot condense into d${condensationOrder}; expected ${expected}. Invalid parents: ${invalidParents
           .map((s) => s.summaryId)

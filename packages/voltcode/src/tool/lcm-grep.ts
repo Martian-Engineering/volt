@@ -53,7 +53,9 @@ export const LcmGrepTool = Tool.define<typeof parameters, LcmGrepMetadata>("lcm_
     const matches = results.slice(0, 50)
 
     const coveringSummaryIds = Array.from(
-      new Set(matches.map((match) => match.coveringSummaryId).filter((summaryId): summaryId is string => Boolean(summaryId))),
+      new Set(
+        matches.map((match) => match.coveringSummaryId).filter((summaryId): summaryId is string => Boolean(summaryId)),
+      ),
     )
     const coveringSummaryMetadata = new Map<
       string,

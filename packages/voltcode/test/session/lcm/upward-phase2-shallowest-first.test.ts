@@ -57,7 +57,11 @@ async function cleanupConversation(id: number) {
   await conn`DELETE FROM conversations WHERE conversation_id = ${id}`.catch(() => {})
 }
 
-async function insertSummaryAtPosition(input: { conversationId: number; position: number; summaryId: string }): Promise<void> {
+async function insertSummaryAtPosition(input: {
+  conversationId: number
+  position: number
+  summaryId: string
+}): Promise<void> {
   const conn = LcmDb.getConnection()
   await conn`
     INSERT INTO context_items (conversation_id, position, item_type, message_id, summary_id)
@@ -220,8 +224,20 @@ describe("session.lcm.upward-phase2-shallowest-first", () => {
 
     const d1a = nextSummaryId("d1")
     const d1b = nextSummaryId("d1")
-    await insertSummary({ conversationId, summaryId: d1a, condensationOrder: 1, tokenCount: 900, content: "d1 small A" })
-    await insertSummary({ conversationId, summaryId: d1b, condensationOrder: 1, tokenCount: 900, content: "d1 small B" })
+    await insertSummary({
+      conversationId,
+      summaryId: d1a,
+      condensationOrder: 1,
+      tokenCount: 900,
+      content: "d1 small A",
+    })
+    await insertSummary({
+      conversationId,
+      summaryId: d1b,
+      condensationOrder: 1,
+      tokenCount: 900,
+      content: "d1 small B",
+    })
     await insertSummaryAtPosition({ conversationId, position: 0, summaryId: d1a })
     await insertSummaryAtPosition({ conversationId, position: 1, summaryId: d1b })
     await LcmDb.appendMessage({ conversationId, role: "assistant", content: "fresh tail", tokenCount: 10 })

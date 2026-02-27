@@ -27,7 +27,12 @@ function makeSummary(input: {
           ? Number.parseInt(input.summaryLevel.slice(1), 10)
           : 2)
   const summaryLevel =
-    input.summaryLevel ?? (condensationOrder === 1 ? "sprig" : condensationOrder === 2 ? "bindle" : (`d${condensationOrder}` as LcmDb.SummaryLevel))
+    input.summaryLevel ??
+    (condensationOrder === 1
+      ? "sprig"
+      : condensationOrder === 2
+        ? "bindle"
+        : (`d${condensationOrder}` as LcmDb.SummaryLevel))
   return {
     summary_id: input.summaryId,
     conversation_id: 101,
@@ -85,9 +90,7 @@ function makeFakeDb(input: {
     },
     async getOffContextSummaries(query) {
       return Array.from(summaries.values()).filter(
-        (summary) =>
-          summary.is_off_context &&
-          (!query.summaryLevel || query.summaryLevel === summary.summary_level),
+        (summary) => summary.is_off_context && (!query.summaryLevel || query.summaryLevel === summary.summary_level),
       )
     },
     async getSummaryParentIds(summaryId) {
@@ -116,7 +119,9 @@ function makeFakeDb(input: {
   }
 }
 
-function makeFakeQmdClient(hits: Array<{ docid: string; score: number; file: string; title: string }>): LcmRetrieval.QmdClient {
+function makeFakeQmdClient(
+  hits: Array<{ docid: string; score: number; file: string; title: string }>,
+): LcmRetrieval.QmdClient {
   return {
     async ensureCollection() {},
     async updateIndex() {},
