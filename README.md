@@ -70,7 +70,7 @@ Volt is forked from [OpenCode](https://github.com/anomalyco/opencode) by [Anomal
 ### Installation
 
 ```bash
-curl -fsSL https://www.voltropy.com/install | sh
+curl -fsSL https://raw.githubusercontent.com/Martian-Engineering/volt/dev/install | bash
 ```
 
 #### Installation Directory
@@ -84,8 +84,8 @@ The install script respects the following priority order for the installation pa
 
 ```bash
 # Examples
-VOLTCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://www.voltropy.com/install | sh
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://www.voltropy.com/install | sh
+VOLTCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/Martian-Engineering/volt/dev/install | bash
+XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://raw.githubusercontent.com/Martian-Engineering/volt/dev/install | bash
 ```
 
 ### Building From Source
@@ -186,10 +186,10 @@ VOLTCODE_LCM_MODE=upward
 **For installed binary or CI**, export the variable in your shell:
 
 ```bash
-export VOLTCODE_LCM_MODE=dolt   # or: upward
+export VOLTCODE_LCM_MODE=upward   # or: dolt
 ```
 
-Default is `dolt` if unset. See "Dolt vs Upward" below for what each mode does.
+Default is `upward` if unset. See "Dolt vs Upward" below for what each mode does.
 
 #### 3) Pick Database Backend (Embedded vs External)
 
@@ -211,7 +211,7 @@ bun dev
 
 # Confirm which LCM mode will be used (mode is read from env at startup)
 echo $VOLTCODE_LCM_MODE
-# Expected: "dolt" (or "upward", or empty — empty means dolt by default)
+# Expected: "upward" (or "dolt", or empty — empty means upward by default)
 
 # For local dev, check what packages/voltcode/.env has:
 grep VOLTCODE_LCM_MODE packages/voltcode/.env
@@ -232,9 +232,9 @@ If the TUI starts in the wrong LCM mode, verify your env var is set in the right
 
 Both modes use the same immutable Postgres store and the same summary DAG structure. They differ in compaction strategy and retrieval capability:
 
-**Dolt** (default) compacts context by evicting the oldest top-level summary nodes (bindles) when the context window fills. Evicted bindles are archived with "ghost cue" pointers, so the agent can search and retrieve them on demand via the off-context retrieval adapter (`lcm_expand_query` candidate resolution, pre-response hook cues). This gives the agent the broadest possible recall at the cost of slightly larger metadata overhead.
+**Dolt** compacts context by evicting the oldest top-level summary nodes (bindles) when the context window fills. Evicted bindles are archived with "ghost cue" pointers, so the agent can search and retrieve them on demand via the off-context retrieval adapter (`lcm_expand_query` candidate resolution, pre-response hook cues). This gives the agent the broadest possible recall at the cost of slightly larger metadata overhead.
 
-**Upward** compacts context by recursively condensing summaries bottom-up at unbounded depth (d1 → d2 → d3 → dN, reusing the d3 prompt for all orders ≥ 3) without ever evicting bindles. This keeps all summaries on-context but the off-context retrieval adapter is disabled — `lcm_expand_query` will skip off-context candidates with an `off_context_unavailable` diagnostic, and pre-response hook cues will not surface evicted bindles (because none are evicted). Note that `lcm_grep` is unaffected by this limitation: it queries raw messages in the database directly and works identically in both modes. Upward is simpler and avoids ghost-cue overhead, but structured off-context recall is unavailable.
+**Upward** (default) compacts context by recursively condensing summaries bottom-up at unbounded depth (d1 → d2 → d3 → dN, reusing the d3 prompt for all orders ≥ 3) without ever evicting bindles. This keeps all summaries on-context but the off-context retrieval adapter is disabled — `lcm_expand_query` will skip off-context candidates with an `off_context_unavailable` diagnostic, and pre-response hook cues will not surface evicted bindles (because none are evicted). Note that `lcm_grep` is unaffected by this limitation: it queries raw messages in the database directly and works identically in both modes. Upward is simpler and avoids ghost-cue overhead, but structured off-context recall is unavailable.
 
 | Behavior                                                              | `dolt`                                           | `upward`                                                   |
 | --------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------- |

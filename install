@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Volt installer (repo-hosted).
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/Martian-Engineering/volt/dev/install | bash
+#
+# Optional env vars:
+#   VERSION / VOLT_VERSION        Version to install (default: latest)
+#   VOLTCODE_INSTALL_DIR          Install directory override
+#   VOLT_INSTALL_DIR              Legacy alias for install directory override
+#   VOLTCODE_RELEASE_REPO         GitHub repo for releases (default: Martian-Engineering/volt)
+#
+# Optional flags:
+#   --version <version>           Version to install (same as VERSION env)
+#   --binary <path>               Install from an existing local binary
+#   --install-dir <path>          Install directory override
+#   --help                        Print usage
+
+APP_NAME="volt"
+DEFAULT_RELEASE_REPO="Martian-Engineering/volt"
+
+requested_version="${VERSION:-${VOLT_VERSION:-latest}}"
+binary_path=""
+install_dir_override="${VOLTCODE_INSTALL_DIR:-${VOLT_INSTALL_DIR:-}}"
+release_repo="${VOLTCODE_RELEASE_REPO:-$DEFAULT_RELEASE_REPO}"
+
+usage() {
+  cat <<'EOF'
+Volt Installer
+
+Usage:
+  install [--version <version>] [--binary <path>] [--install-dir <path>]
+
+Examples:
+  curl -fsSL https://raw.githubusercontent.com/Martian-Engineering/volt/dev/install | bash
+  curl -fsSL https://raw.githubusercontent.com/Martian-Engineering/volt/dev/install | bash -s -- --version 0.6.0
+  ./install --binary ./dist/voltcode-darwin-arm64/bin/volt
+EOF
+}
+
+info() {
+  printf "==> %s\n" "$1"
+}
+
+warn() {
+  printf "warning: %s\n" "$1" >&2
+}
+
+die() {
+  printf "error: %s\n" "$1" >&2
+  exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -v|--version)
+      [ -n "${2:-}" ] || die "--version requires a value"
+      requested_version="${2#v}"
+      shift 2
+      ;;
+    -b|--binary)
+      [ -n "${2:-}" ] || die "--binary requires a path"
+      binary_path="$2"
+      shift 2
+      ;;
+    --install-dir)
+      [ -n "${2:-}" ] || die "--install-dir requires a path"
+      install_dir_override="$2"
+      shift 2
+      ;;
+    *)
+      warn "unknown option: $1"
+      shift
+      ;;
+  esac
+done
+
+detect_os() {
+  case "$(uname -s)" in
+    Darwin) echo "darwin" ;;
+    Linux) echo "linux" ;;
+    *) die "unsupported operating system: $(uname -s) (supported: darwin, linux)" ;;
+  esac
+}
+
+detect_arch() {
+  case "$(uname -m)" in
+    arm64|aarch64) echo "arm64" ;;
+    x86_64|amd64) echo "x64" ;;
+    *) die "unsupported architecture: $(uname -m) (supported: arm64, x64)" ;;
+  esac
+}
+
+detect_musl() {
+  [ "$1" = "linux" ] || return 1
+  if [ -f /etc/alpine-release ]; then
+    return 0
+  fi
+  if command -v ldd >/dev/null 2>&1; then
+    ldd --version 2>&1 | grep -qi musl
+    return $?
+  fi
+  return 1
+}
+
+supports_avx2() {
+  if [ "$1" = "linux" ]; then
+    grep -qwi avx2 /proc/cpuinfo 2>/dev/null
+    return $?
+  fi
+
+  if [ "$1" = "darwin" ]; then
+    [ "$(sysctl -n hw.optional.avx2_0 2>/dev/null || echo 0)" = "1" ]
+    return $?
+  fi
+
+  return 1
+}
+
+resolve_install_dir() {
+  if [ -n "$install_dir_override" ]; then
+    printf "%s\n" "$install_dir_override"
+    return
+  fi
+
+  if [ -n "${XDG_BIN_DIR:-}" ]; then
+    printf "%s\n" "${XDG_BIN_DIR}"
+    return
+  fi
+
+  if [ -d "$HOME/bin" ]; then
+    printf "%s\n" "$HOME/bin"
+    return
+  fi
+
+  if mkdir -p "$HOME/bin" 2>/dev/null; then
+    printf "%s\n" "$HOME/bin"
+    return
+  fi
+
+  printf "%s\n" "$HOME/.voltcode/bin"
+}
+
+tmpdir="$(mktemp -d)"
+cleanup() {
+  rm -rf "$tmpdir"
+}
+trap cleanup EXIT
+
+binary_to_install=""
+installed_version="$requested_version"
+
+if [ -n "$binary_path" ]; then
+  [ -f "$binary_path" ] || die "binary not found at: $binary_path"
+  binary_to_install="$binary_path"
+  installed_version="local"
+else
+  os="$(detect_os)"
+  arch="$(detect_arch)"
+  target="${os}-${arch}"
+
+  if [ "$arch" = "x64" ] && ! supports_avx2 "$os"; then
+    target="${target}-baseline"
+  fi
+  if detect_musl "$os"; then
+    target="${target}-musl"
+  fi
+
+  if [ "$os" = "linux" ]; then
+    archive_ext=".tar.gz"
+    archive_path="$tmpdir/volt.tar.gz"
+  else
+    archive_ext=".zip"
+    archive_path="$tmpdir/volt.zip"
+  fi
+
+  filename="voltcode-${target}${archive_ext}"
+  if [ "$requested_version" = "latest" ] || [ -z "$requested_version" ]; then
+    info "resolving latest version for ${release_repo}"
+    installed_version="$(curl -fsSL "https://api.github.com/repos/${release_repo}/releases/latest" \
+      | sed -n 's/.*"tag_name":[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)"
+    [ -n "$installed_version" ] || die "failed to resolve latest release version"
+    download_url="https://github.com/${release_repo}/releases/latest/download/${filename}"
+  else
+    installed_version="${requested_version#v}"
+    download_url="https://github.com/${release_repo}/releases/download/v${installed_version}/${filename}"
+  fi
+
+  info "downloading ${filename} (${installed_version})"
+  curl -fL "$download_url" -o "$archive_path" >/dev/null
+
+  info "extracting ${filename}"
+  if [ "$os" = "linux" ]; then
+    command -v tar >/dev/null 2>&1 || die "tar is required for linux archives"
+    tar -xzf "$archive_path" -C "$tmpdir"
+  else
+    command -v unzip >/dev/null 2>&1 || die "unzip is required for macOS archives"
+    unzip -q "$archive_path" -d "$tmpdir"
+  fi
+
+  binary_to_install="$(find "$tmpdir" -type f -name "$APP_NAME" | head -n 1)"
+  [ -n "$binary_to_install" ] || die "could not find ${APP_NAME} binary in extracted archive"
+fi
+
+install_dir="$(resolve_install_dir)"
+install_target="${install_dir}/${APP_NAME}"
+mkdir -p "$install_dir"
+
+if [ -w "$install_dir" ]; then
+  install -m 755 "$binary_to_install" "$install_target"
+else
+  info "install directory requires elevated privileges: $install_dir"
+  sudo install -m 755 "$binary_to_install" "$install_target"
+fi
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  xattr -d com.apple.quarantine "$install_target" 2>/dev/null || true
+fi
+
+info "installed ${APP_NAME} ${installed_version} -> ${install_target}"
+
+case ":$PATH:" in
+  *":$install_dir:"*) ;;
+  *)
+    warn "${install_dir} is not currently on PATH"
+    printf "add this to your shell profile:\n"
+    printf "  export PATH=\"%s:\$PATH\"\n" "$install_dir"
+    ;;
+esac
+
+printf "\n"
+printf "run to verify:\n"
+printf "  %s --version\n" "$install_target"

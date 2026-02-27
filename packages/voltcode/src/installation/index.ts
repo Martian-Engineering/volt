@@ -14,6 +14,8 @@ declare global {
 
 export namespace Installation {
   const log = Log.create({ service: "installation" })
+  const DEFAULT_INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/Martian-Engineering/volt/dev/install"
+  const DEFAULT_RELEASE_REPO = "Martian-Engineering/volt"
 
   export type Method = Awaited<ReturnType<typeof method>>
 
@@ -132,9 +134,10 @@ export namespace Installation {
     let cmd
     switch (method) {
       case "curl":
-        cmd = $`curl -fsSL https://opencode.ai/install | bash`.env({
+        cmd = $`curl -fsSL ${process.env.VOLTCODE_INSTALL_SCRIPT_URL ?? DEFAULT_INSTALL_SCRIPT_URL} | bash`.env({
           ...process.env,
           VERSION: target,
+          VOLTCODE_RELEASE_REPO: process.env.VOLTCODE_RELEASE_REPO ?? DEFAULT_RELEASE_REPO,
         })
         break
       case "npm":
@@ -236,7 +239,7 @@ export namespace Installation {
         .then((data: any) => data.version)
     }
 
-    return fetch("https://api.github.com/repos/anomalyco/opencode/releases/latest")
+    return fetch(`https://api.github.com/repos/${process.env.VOLTCODE_RELEASE_REPO ?? DEFAULT_RELEASE_REPO}/releases/latest`)
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText)
         return res.json()

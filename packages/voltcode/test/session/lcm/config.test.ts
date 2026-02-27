@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test"
 import { parseLcmPolicyConfig } from "../../../src/session/lcm/config"
 
 describe("parseLcmPolicyConfig", () => {
-  test("parses defaults with dolt mode and explicit upward controls", () => {
+  test("parses defaults with upward mode and explicit upward controls", () => {
     const config = parseLcmPolicyConfig({})
 
-    expect(config.mode).toBe("dolt")
+    expect(config.mode).toBe("upward")
     expect(config.runtime.defaultCtxCutoffThreshold).toBe(0.6)
     expect(config.runtime.targetFreePercentage).toBe(0.25)
     expect(config.runtime.minMessagesToSummarize).toBe(3)

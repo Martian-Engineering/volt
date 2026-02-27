@@ -168,7 +168,7 @@ export interface LcmPolicyConfig {
   upward: LcmUpwardPolicy
 }
 
-const DEFAULT_LCM_MODE: LcmMode = "dolt"
+const DEFAULT_LCM_MODE: LcmMode = "upward"
 const DEFAULT_CTX_CUTOFF_THRESHOLD = 0.6
 const DEFAULT_TARGET_FREE_PERCENTAGE = 0.25
 const DEFAULT_MIN_MESSAGES_TO_SUMMARIZE = 3
