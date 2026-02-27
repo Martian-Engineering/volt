@@ -23,8 +23,18 @@ const log = Log.create({ service: "lcm.postgres" })
 
 const SUPPORTED_PLATFORMS = new Set(["darwin", "linux"])
 const SUPPORTED_ARCHES = new Set(["x64", "arm64"])
+const REQUIRED_BINARIES = ["postgres", "initdb", "pg_ctl"] as const
+const REQUIRED_LINUX_LIB_PREFIXES = ["libicuuc.so", "libicudata.so", "libicui18n.so"] as const
+const REQUIRED_LINUX_LIB_EXACT = ["libpq.so.5"] as const
+const SHARED_LIBRARY_ERROR_PATTERNS = [
+  "error while loading shared libraries",
+  "cannot open shared object file",
+  "dyld: library not loaded",
+  "image not found",
+]
 
 type ArchiveType = "zip" | "targz"
+type InstallValidation = { valid: true } | { valid: false; reason: string }
 
 export function isEmbeddedPostgresSupported() {
   return SUPPORTED_PLATFORMS.has(process.platform) && SUPPORTED_ARCHES.has(process.arch)
@@ -97,8 +107,8 @@ export async function ensurePostgresBinaries() {
  */
 export async function needsPostgresDownload(): Promise<boolean> {
   if (!isEmbeddedPostgresSupported()) return false
-  const postgresPath = postgresBinary("postgres")
-  return !(await exists(postgresPath))
+  const validation = await validatePostgresInstall()
+  return !validation.valid
 }
 
 /**
@@ -107,29 +117,39 @@ export async function needsPostgresDownload(): Promise<boolean> {
  */
 export async function downloadPostgresWithProgress(onProgress?: (percent: number) => void): Promise<void> {
   if (!isEmbeddedPostgresSupported()) return
-
-  const postgresPath = postgresBinary("postgres")
-  if (await exists(postgresPath)) return
-
-  await fs.mkdir(LCM_POSTGRES_ROOT, { recursive: true })
-  await withInstallLock(async () => {
-    if (await exists(postgresPath)) return
-    const { url, archiveType } = await downloadSpec()
-    log.info("downloading embedded postgres", { url })
-    await downloadAndExtractWithProgress(url, archiveType, onProgress)
-  })
+  await ensureBinaries(onProgress)
 }
 
-async function ensureBinaries() {
-  const postgresPath = postgresBinary("postgres")
-  if (await exists(postgresPath)) return
+async function ensureBinaries(onProgress?: (percent: number) => void) {
+  const validation = await validatePostgresInstall()
+  if (validation.valid) return
 
   await fs.mkdir(LCM_POSTGRES_ROOT, { recursive: true })
   await withInstallLock(async () => {
-    if (await exists(postgresPath)) return
+    const lockValidation = await validatePostgresInstall()
+    if (lockValidation.valid) return
+
+    log.warn("embedded postgres install invalid, repairing", { reason: lockValidation.reason })
+    await removeInvalidInstallArtifacts()
+
     const { url, archiveType } = await downloadSpec()
     log.info("downloading embedded postgres", { url })
-    await downloadAndExtract(url, archiveType)
+    if (onProgress) {
+      await downloadAndExtractWithProgress(url, archiveType, onProgress)
+    } else {
+      await downloadAndExtract(url, archiveType)
+    }
+
+    const repairedValidation = await validatePostgresInstall()
+    if (!repairedValidation.valid) {
+      throw new Error(
+        [
+          "embedded postgres install validation failed after download",
+          repairedValidation.reason,
+          `delete '${LCM_POSTGRES_ROOT}' and retry, or set LCM_DATABASE_URL to use an external Postgres database`,
+        ].join(": "),
+      )
+    }
   })
 }
 
@@ -178,7 +198,7 @@ async function ensureClusterInitialized() {
     ])
     if (exitCode !== 0) {
       log.error("initdb failed", { exitCode, stdout, stderr })
-      throw new Error(`initdb failed: ${stderr || stdout}`)
+      throw new Error(formatInitdbFailure(stderr || stdout))
     }
 
     await configureCluster()
@@ -413,7 +433,7 @@ async function downloadAndExtractWithProgress(
     for (const entry of entries) {
       const src = path.join(root, entry)
       const dest = path.join(LCM_POSTGRES_ROOT, entry)
-      await fs.cp(src, dest, { recursive: true, force: true })
+      await copyInstallEntry(src, dest)
     }
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true })
@@ -444,6 +464,147 @@ async function findPostgresRoot(base: string) {
     }
   }
   return null
+}
+
+async function copyInstallEntry(src: string, dest: string) {
+  await fs.rm(dest, { recursive: true, force: true })
+  await copyEntryRecursive(src, dest)
+}
+
+async function copyEntryRecursive(src: string, dest: string) {
+  const stat = await fs.lstat(src)
+  if (stat.isDirectory()) {
+    await fs.mkdir(dest, { recursive: true })
+    const entries = await fs.readdir(src)
+    for (const entry of entries) {
+      await copyEntryRecursive(path.join(src, entry), path.join(dest, entry))
+    }
+    return
+  }
+
+  if (stat.isSymbolicLink()) {
+    const linkTarget = await fs.readlink(src)
+    await fs.symlink(linkTarget, dest)
+    return
+  }
+
+  await fs.copyFile(src, dest)
+  await fs.chmod(dest, stat.mode)
+}
+
+async function validatePostgresInstall(): Promise<InstallValidation> {
+  for (const binary of REQUIRED_BINARIES) {
+    const binaryPath = postgresBinary(binary)
+    if (!(await exists(binaryPath))) {
+      return { valid: false, reason: `missing required binary '${binaryPath}'` }
+    }
+  }
+
+  if (process.platform === "linux") {
+    const libDir = path.join(LCM_POSTGRES_ROOT, "lib")
+    const entries = await fs.readdir(libDir).catch(() => null)
+    if (!entries) {
+      return { valid: false, reason: `missing required library directory '${libDir}'` }
+    }
+
+    for (const exactName of REQUIRED_LINUX_LIB_EXACT) {
+      if (!(await hasResolvableSharedLibrary(libDir, entries, exactName, { exact: true }))) {
+        return { valid: false, reason: `missing required shared library '${exactName}' in '${libDir}'` }
+      }
+    }
+
+    for (const prefix of REQUIRED_LINUX_LIB_PREFIXES) {
+      if (!(await hasResolvableSharedLibrary(libDir, entries, prefix))) {
+        return { valid: false, reason: `missing required shared library '${prefix}*' in '${libDir}'` }
+      }
+    }
+  }
+
+  const probe = await probeInitdbVersion()
+  if (!probe.ok) {
+    return { valid: false, reason: `initdb probe failed: ${probe.output}` }
+  }
+
+  return { valid: true }
+}
+
+async function hasResolvableSharedLibrary(
+  libDir: string,
+  entries: string[],
+  name: string,
+  opts?: { exact?: boolean },
+) {
+  const candidates = opts?.exact
+    ? entries.filter((entry) => entry === name)
+    : entries.filter((entry) => entry === name || entry.startsWith(`${name}.`))
+  if (candidates.length === 0) return false
+
+  for (const entry of candidates) {
+    const candidatePath = path.join(libDir, entry)
+    if (await isResolvablePath(candidatePath)) {
+      return true
+    }
+  }
+  return false
+}
+
+async function isResolvablePath(filepath: string) {
+  try {
+    const stats = await fs.lstat(filepath)
+    if (stats.isSymbolicLink()) {
+      const resolvedPath = await fs.realpath(filepath)
+      await fs.access(resolvedPath)
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function probeInitdbVersion(): Promise<{ ok: true; output: string } | { ok: false; output: string }> {
+  const initdb = postgresBinary("initdb")
+  const proc = Bun.spawn({
+    cmd: [initdb, "--version"],
+    env: postgresEnv(),
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode === 0) {
+    return { ok: true, output: stdout.trim() }
+  }
+  return { ok: false, output: (stderr || stdout || `exit code ${exitCode}`).trim() }
+}
+
+async function removeInvalidInstallArtifacts() {
+  const entries = await fs.readdir(LCM_POSTGRES_ROOT).catch(() => [])
+  const preserve = new Set(["data", path.basename(LCM_POSTGRES_LOCK)])
+  for (const entry of entries) {
+    if (preserve.has(entry)) continue
+    await fs.rm(path.join(LCM_POSTGRES_ROOT, entry), { recursive: true, force: true })
+  }
+}
+
+function formatInitdbFailure(output: string) {
+  const detail = output.trim()
+  if (!isSharedLibraryLoadError(detail)) {
+    return `initdb failed: ${detail}`
+  }
+
+  return [
+    "initdb failed because embedded Postgres libraries could not be loaded.",
+    `details: ${detail}`,
+    `delete '${LCM_POSTGRES_ROOT}' to force a clean download, or set LCM_DATABASE_URL to use an external Postgres database.`,
+  ].join(" ")
+}
+
+function isSharedLibraryLoadError(output: string) {
+  const normalized = output.toLowerCase()
+  return SHARED_LIBRARY_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern))
 }
 
 async function withInstallLock<T>(fn: () => Promise<T>) {

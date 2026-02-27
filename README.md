@@ -107,7 +107,10 @@ bun dev
 ./packages/voltcode/script/build.ts --single
 
 # Install it
-cp dist/voltcode-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/aarch64/arm64/')/bin/volt ~/.voltcode/bin/volt
+ARCH="$(uname -m | sed -e 's/x86_64/x64/' -e 's/aarch64/arm64/')"
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+mkdir -p ~/.voltcode/bin
+cp "packages/voltcode/dist/voltcode-${OS}-${ARCH}/bin/volt" ~/.voltcode/bin/volt
 ```
 
 ### Setup Guide
