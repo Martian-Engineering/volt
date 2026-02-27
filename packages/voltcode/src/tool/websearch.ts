@@ -37,12 +37,18 @@ interface McpSearchResponse {
   }
 }
 
-const CURRENT_YEAR = new Date().getUTCFullYear().toString()
-
 export const WebSearchTool = Tool.define("websearch", async () => {
   return {
     get description() {
-      return DESCRIPTION.replace("{{date}}", CURRENT_YEAR)
+      const now = new Date()
+      const localDate = now.toDateString()
+      const month = new Intl.DateTimeFormat("en-US", { month: "long" }).format(now)
+      const year = now.getFullYear().toString()
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      return DESCRIPTION.replace("{{date}}", localDate)
+        .replace("{{month}}", month)
+        .replace("{{year}}", year)
+        .replace("{{timezone}}", timezone)
     },
     parameters: z.object({
       query: z.string().describe("Websearch query"),
