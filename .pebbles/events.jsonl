@@ -374,3 +374,6 @@
 {"type":"close","timestamp":"2026-02-27T17:06:42.511796Z","issue_id":"volt-2b7.4","payload":{}}
 {"type":"close","timestamp":"2026-02-27T17:06:42.623191Z","issue_id":"volt-2b7.5","payload":{}}
 {"type":"close","timestamp":"2026-02-27T17:06:42.729775Z","issue_id":"volt-2b7","payload":{}}
+{"type":"create","timestamp":"2026-02-27T17:29:44.965933Z","issue_id":"volt-6408","payload":{"description":"User can remain in 'Waiting for compaction...' for minutes when hard-limit blocking compaction stalls during prompt build.\\n\\nFix: add a hard timeout around blocking compaction in SessionPrompt and proceed fail-open if timeout is hit, clearing compaction state so turns are not frozen indefinitely.\\n\\nAcceptance:\\n1. Hard-limit blocking compaction cannot block prompt build indefinitely.\\n2. Timeout path logs explicit diagnostic with timeout duration and conversation/session IDs.\\n3. Build continues after timeout and compaction indicator clears.","priority":"1","title":"Fail-open hard-limit compaction when blocking pass stalls","type":"bug"}}
+{"type":"status_update","timestamp":"2026-02-27T17:29:48.974842Z","issue_id":"volt-6408","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-02-27T17:29:49.08336Z","issue_id":"volt-6408","payload":{}}
