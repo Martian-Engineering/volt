@@ -173,9 +173,14 @@ Set the LCM runtime mode before starting Volt. The mode is read once at startup 
 
 **For local development** (using `bun dev`), edit `packages/voltcode/.env`:
 
+```bash
+cp packages/voltcode/.env.example packages/voltcode/.env
+```
+
 ```env
-# LCM mode: change this line to switch strategies.
-VOLTCODE_LCM_MODE=dolt
+# Copy packages/voltcode/.env.example -> packages/voltcode/.env
+# Then pick one profile by setting mode:
+VOLTCODE_LCM_MODE=upward
 ```
 
 **For installed binary or CI**, export the variable in your shell:
@@ -255,25 +260,33 @@ Fast recall helper:
 
 #### 7) Key LCM Environment Variables
 
-Most common controls:
+Use one profile at a time. `packages/voltcode/.env.example` includes both profiles with comments and defaults.
 
-- `VOLTCODE_LCM_MODE` = `dolt|upward`
+Shared runtime controls (both profiles):
+
 - `VOLTCODE_LCM_DEFAULT_CTX_CUTOFF_THRESHOLD`
 - `VOLTCODE_LCM_TARGET_FREE_PERCENTAGE`
+- `VOLTCODE_LCM_MIN_MESSAGES_TO_SUMMARIZE`
+- `VOLTCODE_LCM_MIN_PROTECTED_TAIL_LEAVES`
+- `VOLTCODE_LCM_CRITICAL_THRESHOLD_MULTIPLIER`
+- `VOLTCODE_LCM_MAX_COMPACTION_ROUNDS`
 - `VOLTCODE_LCM_SUMMARY_MAX_OUTPUT_TOKENS`
 - `VOLTCODE_LCM_CONDENSE_MAX_OUTPUT_TOKENS`
-- `VOLTCODE_LCM_RETRIEVAL_TOP_K`
-- `VOLTCODE_LCM_RETRIEVAL_MIN_SCORE`
-- `VOLTCODE_LCM_PRE_RESPONSE_HOOK_TOP_K`
-- `VOLTCODE_LCM_PRE_RESPONSE_HOOK_MIN_SCORE`
 
-Mode-specific policy prefixes:
+Use these variables for Dolt:
 
-- `VOLTCODE_LCM_DOLT_*`
-- `VOLTCODE_LCM_UPWARD_*`
+- `VOLTCODE_LCM_MODE=dolt`
+- `VOLTCODE_LCM_DOLT_LEAVES_*`
+- `VOLTCODE_LCM_DOLT_SPRIGS_*`
+- `VOLTCODE_LCM_DOLT_BINDLES_*`
+- `VOLTCODE_LCM_DOLT_HARD_LIMIT_RISK_BUFFER`
+- `VOLTCODE_LCM_DOLT_GHOST_CUE_ARCHIVE_ENABLED`
+- `VOLTCODE_LCM_RETRIEVAL_*`
+- `VOLTCODE_LCM_PRE_RESPONSE_HOOK_*`
 
-Upward-specific recursive controls:
+Use these variables for Upward:
 
+- `VOLTCODE_LCM_MODE=upward`
 - `VOLTCODE_LCM_UPWARD_CONTEXT_THRESHOLD`
 - `VOLTCODE_LCM_UPWARD_FRESH_TAIL_COUNT`
 - `VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS`
