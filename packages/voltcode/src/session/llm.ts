@@ -252,8 +252,18 @@ export namespace LLM {
             specificationVersion: "v3" as const,
             async transformParams(args) {
               if (args.type === "stream") {
+                const prompt = ProviderTransform.message(args.params.prompt as any, input.model, options) as ModelMessage[]
                 // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options)
+                args.params.prompt = prompt
+
+                const prefix = prompt.slice(0, Math.max(0, prompt.length - 1))
+                const prefixHash = Bun.hash.xxHash32(JSON.stringify(prefix))
+                l.info("prompt-prefix", {
+                  prefixHash,
+                  prefixMessages: prefix.length,
+                  totalMessages: prompt.length,
+                  lastRole: prompt[prompt.length - 1]?.role,
+                })
               }
               return args.params
             },

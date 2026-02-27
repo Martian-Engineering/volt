@@ -63,34 +63,8 @@ export namespace SystemPrompt {
         `  Working directory: ${Instance.directory}`,
         `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
         `  Platform: ${process.platform}`,
-        `  Local time: ${(() => {
-          const now = new Date()
-          const offset = -now.getTimezoneOffset()
-          const sign = offset >= 0 ? "+" : "-"
-          const absOffsetH = Math.floor(Math.abs(offset) / 60)
-            .toString()
-            .padStart(2, "0")
-          const absOffsetM = (Math.abs(offset) % 60).toString().padStart(2, "0")
-          const pad = (n: number) => n.toString().padStart(2, "0")
-          const local =
-            now.getFullYear() +
-            "-" +
-            pad(now.getMonth() + 1) +
-            "-" +
-            pad(now.getDate()) +
-            "T" +
-            pad(now.getHours()) +
-            ":" +
-            pad(now.getMinutes()) +
-            ":" +
-            pad(now.getSeconds()) +
-            sign +
-            absOffsetH +
-            ":" +
-            absOffsetM
-          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-          return `${local} (${tz})`
-        })()}`,
+        `  Local date: ${new Date().toDateString()}`,
+        `  Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
         `</env>`,
         `<directories>`,
         `  ${

@@ -22,6 +22,7 @@ export namespace ProviderTransform {
   function sdkKey(npm: string): string | undefined {
     switch (npm) {
       case "@ai-sdk/github-copilot":
+        return "copilot"
       case "@ai-sdk/openai":
       case "@ai-sdk/azure":
         return "openai"
@@ -183,7 +184,7 @@ export namespace ProviderTransform {
     return msgs
   }
 
-  function applyCaching(msgs: ModelMessage[], providerID: string): ModelMessage[] {
+  function applyCaching(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
     const system = msgs.filter((msg) => msg.role === "system").slice(0, 2)
     const final = msgs.filter((msg) => msg.role !== "system").slice(-2)
 
@@ -195,19 +196,23 @@ export namespace ProviderTransform {
         cacheControl: { type: "ephemeral" },
       },
       bedrock: {
-        cachePoint: { type: "ephemeral" },
+        cachePoint: { type: "default" },
       },
       openaiCompatible: {
         cache_control: { type: "ephemeral" },
       },
+      copilot: {
+        copilot_cache_control: { type: "ephemeral" },
+      },
     }
 
     for (const msg of unique([...system, ...final])) {
-      const shouldUseContentOptions = providerID !== "anthropic" && Array.isArray(msg.content) && msg.content.length > 0
+      const useMessageLevelOptions = model.providerID === "anthropic" || model.providerID.includes("bedrock")
+      const shouldUseContentOptions = !useMessageLevelOptions && Array.isArray(msg.content) && msg.content.length > 0
 
       if (shouldUseContentOptions) {
         const lastContent = msg.content[msg.content.length - 1]
-        if (lastContent && typeof lastContent === "object" && "providerOptions" in lastContent) {
+        if (lastContent && typeof lastContent === "object") {
           ;(lastContent as any).providerOptions = mergeDeep((lastContent as any).providerOptions ?? {}, providerOptions)
           continue
         }
@@ -273,12 +278,15 @@ export namespace ProviderTransform {
     msgs = unsupportedParts(msgs, model)
     msgs = normalizeMessages(msgs, model, options)
     if (
-      model.providerID === "anthropic" ||
-      model.api.id.includes("anthropic") ||
-      model.api.id.includes("claude") ||
-      model.api.npm === "@ai-sdk/anthropic"
+      (model.providerID === "anthropic" ||
+        model.api.id.includes("anthropic") ||
+        model.api.id.includes("claude") ||
+        model.id.includes("anthropic") ||
+        model.id.includes("claude") ||
+        model.api.npm === "@ai-sdk/anthropic") &&
+      model.api.npm !== "@ai-sdk/gateway"
     ) {
-      msgs = applyCaching(msgs, model.providerID)
+      msgs = applyCaching(msgs, model)
     }
 
     // Remap providerOptions keys from stored providerID to expected SDK key
@@ -620,6 +628,14 @@ export namespace ProviderTransform {
     if (input.model.providerID === "openai" || input.providerOptions?.setCacheKey) {
       result["promptCacheKey"] = input.sessionID
     }
+    if (input.model.providerID === "openrouter") {
+      result["prompt_cache_key"] = input.sessionID
+    }
+    if (input.model.api.npm === "@ai-sdk/gateway") {
+      result["gateway"] = {
+        caching: "auto",
+      }
+    }
 
     if (input.model.api.npm === "@ai-sdk/google" || input.model.api.npm === "@ai-sdk/google-vertex") {
       result["thinkingConfig"] = {
@@ -653,11 +669,18 @@ export namespace ProviderTransform {
   }
 
   export function smallOptions(model: Provider.Model) {
-    if (model.providerID === "openai" || model.api.id.includes("gpt-5")) {
-      if (model.api.id.includes("5.")) {
-        return { reasoningEffort: "low" }
+    if (
+      model.providerID === "openai" ||
+      model.api.npm === "@ai-sdk/openai" ||
+      model.api.npm === "@ai-sdk/github-copilot"
+    ) {
+      if (model.api.id.includes("gpt-5")) {
+        if (model.api.id.includes("5.")) {
+          return { store: false, reasoningEffort: "low" }
+        }
+        return { store: false, reasoningEffort: "minimal" }
       }
-      return { reasoningEffort: "minimal" }
+      return { store: false }
     }
     if (model.providerID === "google") {
       // gemini-3 uses thinkingLevel, gemini-2.5 uses thinkingBudget
@@ -675,7 +698,34 @@ export namespace ProviderTransform {
     return {}
   }
 
+  const SLUG_OVERRIDES: Record<string, string> = {
+    amazon: "bedrock",
+  }
+
   export function providerOptions(model: Provider.Model, options: { [x: string]: any }) {
+    if (model.api.npm === "@ai-sdk/gateway") {
+      const i = model.api.id.indexOf("/")
+      const rawSlug = i > 0 ? model.api.id.slice(0, i) : undefined
+      const slug = rawSlug ? (SLUG_OVERRIDES[rawSlug] ?? rawSlug) : undefined
+      const gateway = options.gateway
+      const rest = Object.fromEntries(Object.entries(options).filter(([k]) => k !== "gateway"))
+      const has = Object.keys(rest).length > 0
+      const result: Record<string, any> = {}
+
+      if (gateway !== undefined) result.gateway = gateway
+
+      if (has) {
+        if (slug) {
+          result[slug] = rest
+        } else if (gateway && typeof gateway === "object" && !Array.isArray(gateway)) {
+          result.gateway = { ...gateway, ...rest }
+        } else {
+          result.gateway = rest
+        }
+      }
+      return result
+    }
+
     const key = sdkKey(model.api.npm) ?? model.providerID
     return { [key]: options }
   }

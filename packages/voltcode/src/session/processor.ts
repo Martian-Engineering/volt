@@ -778,6 +778,21 @@ export namespace SessionProcessor {
                 input.assistantMessage.cost += usage.cost
                 input.assistantMessage.tokens = usage.tokens
                 await Session.updateMessage(input.assistantMessage)
+                log.info("usage.summary", {
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  providerID: input.model.providerID,
+                  modelID: input.model.id,
+                  cost: usage.cost,
+                  tokens: usage.tokens,
+                })
+              } else {
+                log.warn("usage.missing", {
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  providerID: input.model.providerID,
+                  modelID: input.model.id,
+                })
               }
             }
           } catch (e: any) {

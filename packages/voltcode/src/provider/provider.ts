@@ -994,6 +994,9 @@ export namespace Provider {
         if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
           const body = JSON.parse(opts.body as string)
           const isAzure = model.providerID.includes("azure")
+          if (!isAzure && body.store !== false) {
+            body.store = false
+          }
           const keepIds = isAzure && body.store === true
           if (!keepIds && Array.isArray(body.input)) {
             for (const item of body.input) {
@@ -1001,8 +1004,8 @@ export namespace Provider {
                 delete item.id
               }
             }
-            opts.body = JSON.stringify(body)
           }
+          opts.body = JSON.stringify(body)
         }
 
         const response = await fetchFn(input, {
