@@ -1595,6 +1595,39 @@ export type ProviderConfig = {
   }
 }
 
+/**
+ * Optional per-key LCM summarize/condense prompt overrides. Defaults remain built in when omitted.
+ */
+export type LcmPromptsConfig = {
+  /**
+   * Override template for Dolt d1 summarize prompt
+   */
+  "dolt:summarize:d1"?: string
+  /**
+   * Override template for Dolt d2 condense prompt
+   */
+  "dolt:condense:d2"?: string
+  /**
+   * Override template for Upward d1 summarize prompt
+   */
+  "upward:summarize:d1"?: string
+  /**
+   * Override template for Upward d2 condense prompt
+   */
+  "upward:condense:d2"?: string
+  /**
+   * Override template for Upward d3+ condense prompt
+   */
+  "upward:condense:d3"?: string
+}
+
+/**
+ * LCM-specific runtime customizations
+ */
+export type LcmConfig = {
+  prompts?: LcmPromptsConfig
+}
+
 export type McpLocalConfig = {
   /**
    * Type of MCP server connection
@@ -1800,6 +1833,7 @@ export type Config = {
   provider?: {
     [key: string]: ProviderConfig
   }
+  lcm?: LcmConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */

@@ -9590,6 +9590,43 @@
         },
         "additionalProperties": false
       },
+      "LcmPromptsConfig": {
+        "description": "Optional per-key LCM summarize/condense prompt overrides. Defaults remain built in when omitted.",
+        "type": "object",
+        "properties": {
+          "dolt:summarize:d1": {
+            "description": "Override template for Dolt d1 summarize prompt",
+            "type": "string"
+          },
+          "dolt:condense:d2": {
+            "description": "Override template for Dolt d2 condense prompt",
+            "type": "string"
+          },
+          "upward:summarize:d1": {
+            "description": "Override template for Upward d1 summarize prompt",
+            "type": "string"
+          },
+          "upward:condense:d2": {
+            "description": "Override template for Upward d2 condense prompt",
+            "type": "string"
+          },
+          "upward:condense:d3": {
+            "description": "Override template for Upward d3+ condense prompt",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LcmConfig": {
+        "description": "LCM-specific runtime customizations",
+        "type": "object",
+        "properties": {
+          "prompts": {
+            "$ref": "#/components/schemas/LcmPromptsConfig"
+          }
+        },
+        "additionalProperties": false
+      },
       "McpLocalConfig": {
         "type": "object",
         "properties": {
@@ -9925,6 +9962,9 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/ProviderConfig"
             }
+          },
+          "lcm": {
+            "$ref": "#/components/schemas/LcmConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
