@@ -901,6 +901,32 @@ export namespace Config {
     })
   export type Provider = z.infer<typeof Provider>
 
+  export const LcmPrompts = z
+    .object({
+      "dolt:summarize:d1": z.string().optional().describe("Override template for Dolt d1 summarize prompt"),
+      "dolt:condense:d2": z.string().optional().describe("Override template for Dolt d2 condense prompt"),
+      "upward:summarize:d1": z.string().optional().describe("Override template for Upward d1 summarize prompt"),
+      "upward:condense:d2": z.string().optional().describe("Override template for Upward d2 condense prompt"),
+      "upward:condense:d3": z.string().optional().describe("Override template for Upward d3+ condense prompt"),
+    })
+    .strict()
+    .meta({
+      ref: "LcmPromptsConfig",
+    })
+  export type LcmPrompts = z.infer<typeof LcmPrompts>
+
+  export const Lcm = z
+    .object({
+      prompts: LcmPrompts.optional().describe(
+        "Optional per-key LCM summarize/condense prompt overrides. Defaults remain built in when omitted.",
+      ),
+    })
+    .strict()
+    .meta({
+      ref: "LcmConfig",
+    })
+  export type Lcm = z.infer<typeof Lcm>
+
   export const Info = z
     .object({
       $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -985,6 +1011,7 @@ export namespace Config {
         .record(z.string(), Provider)
         .optional()
         .describe("Custom provider configurations and model overrides"),
+      lcm: Lcm.optional().describe("LCM-specific runtime customizations"),
       mcp: z
         .record(
           z.string(),

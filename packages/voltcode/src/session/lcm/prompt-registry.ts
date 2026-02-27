@@ -1,5 +1,9 @@
-import path from "path"
 import { getLcmPolicyConfig, type LcmMode } from "./config"
+import DOLT_CONDENSE_D2_PROMPT from "./prompts/dolt/condense/d2.txt"
+import DOLT_SUMMARIZE_D1_PROMPT from "./prompts/dolt/summarize/d1.txt"
+import UPWARD_CONDENSE_D2_PROMPT from "./prompts/upward/condense/d2.txt"
+import UPWARD_CONDENSE_D3_PROMPT from "./prompts/upward/condense/d3.txt"
+import UPWARD_SUMMARIZE_D1_PROMPT from "./prompts/upward/summarize/d1.txt"
 
 /**
  * LCM prompt operations keyed in the mode-aware registry.
@@ -18,22 +22,29 @@ export interface ResolveLcmPromptInput {
 /**
  * Registry key format: "<mode>:<operation>:d<order>".
  */
-export type LcmPromptRegistryKey = `${LcmMode}:${LcmPromptOperation}:d${number}`
+export type LcmPromptLookupKey = `${LcmMode}:${LcmPromptOperation}:d${number}`
+export type LcmPromptRegistryKey =
+  | "dolt:summarize:d1"
+  | "dolt:condense:d2"
+  | "upward:summarize:d1"
+  | "upward:condense:d2"
+  | "upward:condense:d3"
 
 /**
- * Registry map to prompt file paths relative to this directory.
+ * Registry map to prompt templates.
  */
 export type LcmPromptRegistry = Record<LcmPromptRegistryKey, string>
 
 const PROMPT_REGISTRY: LcmPromptRegistry = {
-  "dolt:summarize:d1": "prompts/dolt/summarize/d1.txt",
-  "dolt:condense:d2": "prompts/dolt/condense/d2.txt",
-  "upward:summarize:d1": "prompts/upward/summarize/d1.txt",
-  "upward:condense:d2": "prompts/upward/condense/d2.txt",
-  "upward:condense:d3": "prompts/upward/condense/d3.txt",
+  "dolt:summarize:d1": DOLT_SUMMARIZE_D1_PROMPT,
+  "dolt:condense:d2": DOLT_CONDENSE_D2_PROMPT,
+  "upward:summarize:d1": UPWARD_SUMMARIZE_D1_PROMPT,
+  "upward:condense:d2": UPWARD_CONDENSE_D2_PROMPT,
+  "upward:condense:d3": UPWARD_CONDENSE_D3_PROMPT,
 }
 
 let promptRegistryOverride: Partial<LcmPromptRegistry> | null = null
+let promptConfigOverrideForTesting: Partial<LcmPromptRegistry> | null = null
 
 /**
  * Build a canonical prompt registry key from mode, operation, and order.
@@ -42,12 +53,12 @@ export function createLcmPromptRegistryKey(input: {
   mode: LcmMode
   operation: LcmPromptOperation
   condensationOrder: number
-}): LcmPromptRegistryKey {
+}): LcmPromptLookupKey {
   const condensationOrder = Number(input.condensationOrder)
   if (!Number.isFinite(condensationOrder) || !Number.isInteger(condensationOrder) || condensationOrder < 1) {
     throw new Error(`Invalid LCM condensation order: ${input.condensationOrder}. Expected integer >= 1`)
   }
-  return `${input.mode}:${input.operation}:d${condensationOrder}` as LcmPromptRegistryKey
+  return `${input.mode}:${input.operation}:d${condensationOrder}` as LcmPromptLookupKey
 }
 
 /**
@@ -71,10 +82,31 @@ function normalizeCondensationOrderForLookup(input: {
   return condensationOrder
 }
 
+function isLcmPromptRegistryKey(key: LcmPromptLookupKey): key is LcmPromptRegistryKey {
+  return Object.prototype.hasOwnProperty.call(PROMPT_REGISTRY, key)
+}
+
 /**
  * Resolve a prompt template by active mode + operation + condensation order.
- * Fails explicitly when mapping or file is missing.
+ * Fails explicitly when mapping is missing.
  */
+async function resolveConfiguredPromptOverride(key: LcmPromptRegistryKey): Promise<string | null> {
+  const testOverride = promptConfigOverrideForTesting?.[key]
+  if (typeof testOverride === "string") {
+    const trimmed = testOverride.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+
+  const { Config } = await import("@/config/config")
+  const configured = await Config.get().catch(() => null)
+  if (!configured) return null
+  const override = configured.lcm?.prompts?.[key]
+  if (typeof override !== "string") return null
+
+  const trimmed = override.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 export async function resolveLcmPrompt(input: ResolveLcmPromptInput): Promise<string> {
   const mode = input.mode ?? getLcmPolicyConfig().mode
   const condensationOrder = normalizeCondensationOrderForLookup({
@@ -82,26 +114,31 @@ export async function resolveLcmPrompt(input: ResolveLcmPromptInput): Promise<st
     operation: input.operation,
     condensationOrder: input.condensationOrder,
   })
-  const key = createLcmPromptRegistryKey({
+  const lookupKey = createLcmPromptRegistryKey({
     mode,
     operation: input.operation,
     condensationOrder,
   })
+  if (!isLcmPromptRegistryKey(lookupKey)) {
+    throw new Error(`Missing LCM prompt mapping for key: ${lookupKey}`)
+  }
+  const key = lookupKey
   const registry = promptRegistryOverride ?? PROMPT_REGISTRY
-  const relativePath = registry[key]
-  if (!relativePath) {
+  const bakedInPrompt = registry[key]
+  if (!bakedInPrompt) {
     throw new Error(`Missing LCM prompt mapping for key: ${key}`)
   }
 
-  const filePath = path.join(path.dirname(import.meta.path), relativePath)
-  const file = Bun.file(filePath)
-  if (!(await file.exists())) {
-    throw new Error(`Missing LCM prompt file for key ${key}: ${filePath}`)
+  if (promptRegistryOverride === null) {
+    const configuredPrompt = await resolveConfiguredPromptOverride(key)
+    if (configuredPrompt) {
+      return configuredPrompt
+    }
   }
 
-  const prompt = (await file.text()).trim()
+  const prompt = bakedInPrompt.trim()
   if (prompt.length === 0) {
-    throw new Error(`Empty LCM prompt file for key ${key}: ${filePath}`)
+    throw new Error(`Empty LCM prompt for key: ${key}`)
   }
   return prompt
 }
@@ -111,4 +148,11 @@ export async function resolveLcmPrompt(input: ResolveLcmPromptInput): Promise<st
  */
 export function setLcmPromptRegistryForTesting(registry: Partial<LcmPromptRegistry> | null): void {
   promptRegistryOverride = registry
+}
+
+/**
+ * Test-only helper for overriding config prompt values.
+ */
+export function setLcmPromptConfigOverridesForTesting(registry: Partial<LcmPromptRegistry> | null): void {
+  promptConfigOverrideForTesting = registry
 }

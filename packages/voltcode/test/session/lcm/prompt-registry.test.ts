@@ -5,6 +5,7 @@ import { createGhostCueLlmRequest } from "../../../src/session/lcm/ghost-cue"
 import {
   createLcmPromptRegistryKey,
   resolveLcmPrompt,
+  setLcmPromptConfigOverridesForTesting,
   setLcmPromptRegistryForTesting,
 } from "../../../src/session/lcm/prompt-registry"
 import { createSummarizeLlmRequest } from "../../../src/session/lcm/summarize"
@@ -14,6 +15,7 @@ describe("session.lcm.prompt-registry", () => {
 
   afterEach(() => {
     setLcmPolicyConfigForTesting(null)
+    setLcmPromptConfigOverridesForTesting(null)
     setLcmPromptRegistryForTesting(null)
   })
 
@@ -70,9 +72,9 @@ describe("session.lcm.prompt-registry", () => {
     ).rejects.toThrow("Missing LCM prompt mapping")
   })
 
-  test("fails explicitly when prompt file is missing", async () => {
-    setLcmPromptRegistryForTesting({
-      "dolt:summarize:d1": "prompts/dolt/summarize/does-not-exist.txt",
+  test("uses config prompt override when provided", async () => {
+    setLcmPromptConfigOverridesForTesting({
+      "dolt:summarize:d1": "Configured summarize override",
     })
 
     await expect(
@@ -81,7 +83,40 @@ describe("session.lcm.prompt-registry", () => {
         operation: "summarize",
         condensationOrder: 1,
       }),
-    ).rejects.toThrow("Missing LCM prompt file")
+    ).resolves.toContain("Configured summarize override")
+  })
+
+  test("falls back to baked-in prompt when config override is empty", async () => {
+    setLcmPromptConfigOverridesForTesting({
+      "dolt:summarize:d1": "   ",
+    })
+
+    const prompt = await resolveLcmPrompt({
+      mode: "dolt",
+      operation: "summarize",
+      condensationOrder: 1,
+    })
+    expect(prompt).toContain("Dolt d1 Message Summarization Prompt")
+  })
+
+  test("testing registry override takes precedence over config override", async () => {
+    setLcmPromptConfigOverridesForTesting({
+      "dolt:summarize:d1": "Configured summarize override",
+    })
+    setLcmPromptRegistryForTesting({
+      "dolt:summarize:d1": "Testing registry override",
+      "dolt:condense:d2": "unused",
+      "upward:summarize:d1": "unused",
+      "upward:condense:d2": "unused",
+      "upward:condense:d3": "unused",
+    })
+
+    const prompt = await resolveLcmPrompt({
+      mode: "dolt",
+      operation: "summarize",
+      condensationOrder: 1,
+    })
+    expect(prompt).toContain("Testing registry override")
   })
 
   test("rejects non-integer condensation order for prompt keys", () => {

@@ -468,15 +468,36 @@ Registry file:
 
 Mappings:
 
-- `dolt:summarize:d1 -> prompts/dolt/summarize/d1.txt`
-- `dolt:condense:d2 -> prompts/dolt/condense/d2.txt`
-- `upward:summarize:d1 -> prompts/upward/summarize/d1.txt`
-- `upward:condense:d2 -> prompts/upward/condense/d2.txt`
-- `upward:condense:d3 -> prompts/upward/condense/d3.txt`
+- `dolt:summarize:d1`
+- `dolt:condense:d2`
+- `upward:summarize:d1`
+- `upward:condense:d2`
+- `upward:condense:d3`
+
+Default behavior:
+
+- These prompt templates are baked into the runtime as built-in defaults.
+- Compiled binaries do not require external prompt files for these keys.
 
 Finite-depth reuse:
 
 - Upward condense `d3+` normalizes to `d3` prompt template
+
+Optional per-key overrides via `voltcode.json`:
+
+```json
+{
+  "lcm": {
+    "prompts": {
+      "dolt:summarize:d1": "Your custom summarize prompt...",
+      "upward:condense:d3": "Your custom d3+ condense prompt..."
+    }
+  }
+}
+```
+
+- Only the keys you set are overridden.
+- Unset or empty override values fall back to built-in defaults.
 
 ## Retrieval and Tooling
 
@@ -761,7 +782,7 @@ Large-file path:
 
 Prompt path:
 
-- `src/session/lcm/prompt-registry.ts`: prompt key mapping + d3+ normalization
+- `src/session/lcm/prompt-registry.ts`: prompt key mapping + built-in defaults + optional config overrides
 - `src/session/lcm/prompts/dolt/*`: Dolt prompts
 - `src/session/lcm/prompts/upward/*`: Upward prompts
 - `src/session/lcm/prompts/ghost-cue.txt`: ghost cue prompt
