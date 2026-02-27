@@ -1440,7 +1440,9 @@ export namespace LcmContext {
       const condensationResult = await attemptCondensationForOrder({
         input,
         parentSummaries: candidate.parentSummaries,
-        includePriorSummaryContext: true,
+        // lossless-claw parity: only d1->d2 condensed pass carries prior-summary
+        // continuity context. Deeper passes run without prior context.
+        includePriorSummaryContext: candidate.targetOrder === 1,
         skipSizeGuard: true,
       })
       if (!condensationResult.actionTaken) {

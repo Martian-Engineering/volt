@@ -88,7 +88,7 @@ VOLTCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://www.voltropy.com/install 
 XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://www.voltropy.com/install | sh
 ```
 
-### Building from Source
+### Building From Source
 
 Requires [Bun](https://bun.sh) 1.3+.
 
@@ -100,7 +100,7 @@ cd voltcode
 # Install dependencies
 bun install
 
-# Run in development mode
+# Run the Volt TUI in development mode
 bun dev
 
 # Build a standalone executable (current platform only)
@@ -110,9 +110,21 @@ bun dev
 cp dist/voltcode-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/aarch64/arm64/')/bin/volt ~/.voltcode/bin/volt
 ```
 
-### Modes
+### Setup Guide
 
-Volt includes two built-in modes you can switch between with the `Tab` key.
+Volt has two independent "mode" axes. They control different things and are configured separately:
+
+| Axis | Values | What it controls | How to change |
+|------|--------|-------------------|---------------|
+| **Agent UI mode** | `build` / `plan` | Agent permissions in the TUI (read-write vs read-only) | Press `Tab` in the TUI |
+| **LCM runtime mode** | `dolt` / `upward` | How the context engine compresses and retrieves long-session memory | Set `VOLTCODE_LCM_MODE` env var and restart |
+
+**Agent UI mode** is a TUI-level toggle — it has nothing to do with how memory works.
+**LCM runtime mode** controls the compaction and retrieval engine under the hood. Both modes use the same immutable Postgres store; they differ in *how* they compress old messages and whether archived memory is searchable.
+
+### Agent UI Modes
+
+Volt includes two built-in UI modes you can switch between with the `Tab` key. These are independent of the LCM runtime mode — changing the UI mode does not affect how context compaction works.
 
 - **build** — Default mode with full access for development work
 - **plan** — Read-only mode for analysis and code exploration
@@ -121,6 +133,161 @@ Volt includes two built-in modes you can switch between with the `Tab` key.
   - Ideal for exploring unfamiliar codebases or planning changes
 
 Volt also spawns **sub-agents** automatically when needed — for example, the **general** sub-agent handles complex searches and multistep tasks. You can invoke it explicitly with `@general` in messages.
+
+#### 1) Configure Model Access
+
+Volt will not be useful until a provider/model is configured.
+
+Use one of these config files:
+
+- Project-local: `./voltcode.json` or `./voltcode.jsonc`
+- Global: `${XDG_CONFIG_HOME:-~/.config}/voltcode/voltcode.json`
+- Optional extra config directory: `VOLTCODE_CONFIG_DIR` (typically contains another `voltcode.json`)
+
+Config merge precedence (lowest -> highest):
+
+1. Remote well-known config (if configured through auth)
+2. Global config in `${XDG_CONFIG_HOME:-~/.config}/voltcode/`
+3. `VOLTCODE_CONFIG` file path override
+4. Project `voltcode.jsonc` / `voltcode.json` discovered upward from the working directory
+5. `VOLTCODE_CONFIG_CONTENT` inline JSON
+
+For this repository specifically, the default `bun dev` script runs with `--cwd packages/voltcode`, so `packages/voltcode/.env` is the environment file Bun loads first in local development.
+
+Minimal example:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "enabled_providers": ["openai"],
+  "model": "openai/gpt-5",
+  "small_model": "openai/gpt-5-mini"
+}
+```
+
+Add provider credentials in your environment (for example: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.).
+
+#### 2) Configure LCM Runtime Mode
+
+Set the LCM runtime mode before starting Volt. The mode is read once at startup — changing it requires a restart.
+
+**For local development** (using `bun dev`), edit `packages/voltcode/.env`:
+
+```env
+# LCM mode: change this line to switch strategies.
+VOLTCODE_LCM_MODE=dolt
+```
+
+**For installed binary or CI**, export the variable in your shell:
+
+```bash
+export VOLTCODE_LCM_MODE=dolt   # or: upward
+```
+
+Default is `dolt` if unset. See "Dolt vs Upward" below for what each mode does.
+
+#### 3) Pick Database Backend (Embedded vs External)
+
+By default Volt uses embedded Postgres for LCM on `darwin/linux` and `x64/arm64`.
+
+- Embedded defaults: host `127.0.0.1`, port `54329`, database `voltcode_lcm`, user `voltcode`.
+- Embedded data/log paths: `${XDG_DATA_HOME:-~/.local/share}/voltcode/` (including downloaded Postgres binaries and LCM state).
+
+To use external Postgres, set one of:
+
+- `LCM_DATABASE_URL=postgres://...` (highest priority)
+- Or `RDS_ENDPOINT`, `RDS_USERNAME`, `RDS_PASSWORD` (plus optional `RDS_PORT`, `RDS_DATABASE`)
+
+#### 4) Run and Verify
+
+```bash
+# Start the TUI
+bun dev
+
+# Confirm which LCM mode will be used (mode is read from env at startup)
+echo $VOLTCODE_LCM_MODE
+# Expected: "dolt" (or "upward", or empty — empty means dolt by default)
+
+# For local dev, check what packages/voltcode/.env has:
+grep VOLTCODE_LCM_MODE packages/voltcode/.env
+
+# Show the full resolved provider/agent config as JSON
+# (Note: this prints Config.get(), which covers provider and agent-UI
+# settings. LCM runtime mode is not part of this output — it is read
+# separately from the VOLTCODE_LCM_MODE env var at startup.)
+bun dev debug config
+
+# Optional: watch live LCM lane token counts during a session
+bun dev session lcm-watch
+```
+
+If the TUI starts in the wrong LCM mode, verify your env var is set in the right place (see step 2) and restart.
+
+#### 5) Dolt vs Upward: How They Differ
+
+Both modes use the same immutable Postgres store and the same summary DAG structure. They differ in compaction strategy and retrieval capability:
+
+**Dolt** (default) compacts context by evicting the oldest top-level summary nodes (bindles) when the context window fills. Evicted bindles are archived with "ghost cue" pointers, so the agent can search and retrieve them on demand via the off-context retrieval adapter (`lcm_expand_query` candidate resolution, pre-response hook cues). This gives the agent the broadest possible recall at the cost of slightly larger metadata overhead.
+
+**Upward** compacts context by recursively condensing summaries bottom-up at unbounded depth (d1 → d2 → d3 → dN, reusing the d3 prompt for all orders ≥ 3) without ever evicting bindles. This keeps all summaries on-context but the off-context retrieval adapter is disabled — `lcm_expand_query` will skip off-context candidates with an `off_context_unavailable` diagnostic, and pre-response hook cues will not surface evicted bindles (because none are evicted). Note that `lcm_grep` is unaffected by this limitation: it queries raw messages in the database directly and works identically in both modes. Upward is simpler and avoids ghost-cue overhead, but structured off-context recall is unavailable.
+
+| Behavior | `dolt` | `upward` |
+|---|---|---|
+| Compaction approach | Evict oldest bindles when over budget | Recursively condense summaries bottom-up (unbounded depth) |
+| Off-context retrieval adapter (`lcm_expand_query`, pre-response cues) | Available — evicted bindles are searchable | Disabled — returns `off_context_unavailable` diagnostic |
+| `lcm_grep` (raw message search) | Works | Works (not mode-gated) |
+| Ghost cue archival | Enabled — evicted bindles leave lineage pointers | Disabled |
+| Manual `/compact` | Creates one new bindle from oldest leaves | Forces full recursive condensation pass |
+| Bindle eviction | Yes (max 1 per compaction cycle) | Never |
+
+**Which to choose:** Use `dolt` if you want the agent to be able to recall anything from any point in a long session. Use `upward` if you prefer a simpler compaction model and don't need retroactive search over archived context.
+
+#### 6) LCM Tooling: Which Tool for Which ID
+
+Use the right tool for the right ID type:
+
+- `file_xxx`: use `lcm_read` (from an explore sub-agent) for actual content, and `lcm_describe` for metadata.
+- `sum_xxx`: use `lcm_expand_query` for focused deep recall, `lcm_expand` via sub-agent for low-level expansion, and `lcm_describe` to inspect lineage first.
+
+Fast recall helper:
+
+- `lcm_grep` performs regex search over conversation messages (including messages no longer in active context), with optional `summary_id` scoping.
+
+#### 7) Key LCM Environment Variables
+
+Most common controls:
+
+- `VOLTCODE_LCM_MODE` = `dolt|upward`
+- `VOLTCODE_LCM_DEFAULT_CTX_CUTOFF_THRESHOLD`
+- `VOLTCODE_LCM_TARGET_FREE_PERCENTAGE`
+- `VOLTCODE_LCM_SUMMARY_MAX_OUTPUT_TOKENS`
+- `VOLTCODE_LCM_CONDENSE_MAX_OUTPUT_TOKENS`
+- `VOLTCODE_LCM_RETRIEVAL_TOP_K`
+- `VOLTCODE_LCM_RETRIEVAL_MIN_SCORE`
+- `VOLTCODE_LCM_PRE_RESPONSE_HOOK_TOP_K`
+- `VOLTCODE_LCM_PRE_RESPONSE_HOOK_MIN_SCORE`
+
+Mode-specific policy prefixes:
+
+- `VOLTCODE_LCM_DOLT_*`
+- `VOLTCODE_LCM_UPWARD_*`
+
+Upward-specific recursive controls:
+
+- `VOLTCODE_LCM_UPWARD_CONTEXT_THRESHOLD`
+- `VOLTCODE_LCM_UPWARD_FRESH_TAIL_COUNT`
+- `VOLTCODE_LCM_UPWARD_LEAF_CHUNK_TOKENS`
+- `VOLTCODE_LCM_UPWARD_LEAF_MIN_FANOUT`
+- `VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT`
+- `VOLTCODE_LCM_UPWARD_CONDENSED_MIN_FANOUT_HARD`
+- `VOLTCODE_LCM_UPWARD_CONDENSED_TARGET_TOKENS`
+
+#### 8) Troubleshooting
+
+- `VOLTCODE_LCM_MODE must be one of: dolt, upward`: your mode value is invalid.
+- `off_context_unavailable` diagnostics in Upward mode: expected behavior; Upward cannot search off-context archived summaries.
+- `LCM unavailable: embedded postgres unsupported on platform`: use external Postgres via `LCM_DATABASE_URL` (or `RDS_*`).
+- Unsure what provider/agent config loaded: run `bun dev debug config` and inspect the merged output (note: LCM mode is not in this output — check `VOLTCODE_LCM_MODE` in your environment or `.env` file).
 
 ### Task Tree
 
