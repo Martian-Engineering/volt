@@ -89,8 +89,6 @@ export namespace SessionPrompt {
 
   // Timeout for tool execution - 30 minutes for long-running tools
   const TOOL_EXECUTE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
-  // Timeout for blocking hard-limit compaction before we fail-open and proceed.
-  const HARD_LIMIT_COMPACTION_TIMEOUT_MS = 60 * 1000 // 60 seconds
 
   const lcmSyncState = new Map<string, string>()
 
@@ -969,33 +967,16 @@ export namespace SessionPrompt {
         LcmContext.setCompactionState(input.sessionID, conversationId, true)
 
         try {
-          const compactResult = await withTimeout(
-            compactUntilUnderHardLimit({
-              conversationId,
-              sessionID: input.sessionID,
-              user: input.user,
-              model: input.model,
-              abort: input.abort,
-              overhead,
-              reserve,
-              contextWindow,
-              softThresholdOverride,
-            }),
-            HARD_LIMIT_COMPACTION_TIMEOUT_MS,
-          ).catch((error) => {
-            log.error("hard-limit compaction timed out, proceeding anyway", {
-              sessionID: input.sessionID,
-              conversationId,
-              timeoutMs: HARD_LIMIT_COMPACTION_TIMEOUT_MS,
-              error,
-              strategy: strategy.name,
-            })
-            return {
-              success: false,
-              rounds: 0,
-              finalTokens: thresholdCheck.currentTokens,
-              hardLimit: thresholdCheck.hardLimit,
-            }
+          const compactResult = await compactUntilUnderHardLimit({
+            conversationId,
+            sessionID: input.sessionID,
+            user: input.user,
+            model: input.model,
+            abort: input.abort,
+            overhead,
+            reserve,
+            contextWindow,
+            softThresholdOverride,
           })
 
           log.debug("hard-limit compaction returned", {
