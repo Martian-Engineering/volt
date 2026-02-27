@@ -528,12 +528,7 @@ async function validatePostgresInstall(): Promise<InstallValidation> {
   return { valid: true }
 }
 
-async function hasResolvableSharedLibrary(
-  libDir: string,
-  entries: string[],
-  name: string,
-  opts?: { exact?: boolean },
-) {
+async function hasResolvableSharedLibrary(libDir: string, entries: string[], name: string, opts?: { exact?: boolean }) {
   const candidates = opts?.exact
     ? entries.filter((entry) => entry === name)
     : entries.filter((entry) => entry === name || entry.startsWith(`${name}.`))
