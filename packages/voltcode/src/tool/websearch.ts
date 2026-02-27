@@ -37,10 +37,12 @@ interface McpSearchResponse {
   }
 }
 
+const CURRENT_YEAR = new Date().getUTCFullYear().toString()
+
 export const WebSearchTool = Tool.define("websearch", async () => {
   return {
     get description() {
-      return DESCRIPTION.replace("{{date}}", new Date().toISOString().slice(0, 10))
+      return DESCRIPTION.replace("{{date}}", CURRENT_YEAR)
     },
     parameters: z.object({
       query: z.string().describe("Websearch query"),
