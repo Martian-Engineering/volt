@@ -252,7 +252,11 @@ export namespace LLM {
             specificationVersion: "v3" as const,
             async transformParams(args) {
               if (args.type === "stream") {
-                const prompt = ProviderTransform.message(args.params.prompt as any, input.model, options) as ModelMessage[]
+                const prompt = ProviderTransform.message(
+                  args.params.prompt as any,
+                  input.model,
+                  options,
+                ) as ModelMessage[]
                 // @ts-expect-error
                 args.params.prompt = prompt
 
