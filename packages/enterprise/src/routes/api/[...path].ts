@@ -16,9 +16,9 @@ app
     openAPIRouteHandler(app, {
       documentation: {
         info: {
-          title: "Voltcode Enterprise API",
+          title: "Opencode Enterprise API",
           version: "1.0.0",
-          description: "Voltcode Enterprise API endpoints",
+          description: "Opencode Enterprise API endpoints",
         },
         openapi: "3.1.1",
       },

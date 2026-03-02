@@ -2,7 +2,6 @@ import { Hono } from "hono"
 import { stream } from "hono/streaming"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
-import path from "path"
 import { Session } from "../../session"
 import { MessageV2 } from "../../session/message-v2"
 import { SessionPrompt } from "../../session/prompt"
@@ -17,20 +16,18 @@ import { Log } from "../../util/log"
 import { PermissionNext } from "@/permission/next"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
-import { LcmIntegrity } from "../../session/lcm/integrity"
-import { LcmDb } from "../../session/lcm/db"
-import { getActiveLcmRuntimeStrategy } from "../../session/lcm/strategy"
-import { Provider } from "../../provider/provider"
+import { SessionProxyMiddleware } from "../../control-plane/session-proxy-middleware"
 
 const log = Log.create({ service: "server" })
 
 export const SessionRoutes = lazy(() =>
   new Hono()
+    .use(SessionProxyMiddleware)
     .get(
       "/",
       describeRoute({
         summary: "List sessions",
-        description: "Get a list of all VoltCode sessions, sorted by most recently updated.",
+        description: "Get a list of all OpenCode sessions, sorted by most recently updated.",
         operationId: "session.list",
         responses: {
           200: {
@@ -58,15 +55,15 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const query = c.req.valid("query")
-        const term = query.search?.toLowerCase()
         const sessions: Session.Info[] = []
-        for await (const session of Session.list()) {
-          if (query.directory !== undefined && session.directory !== query.directory) continue
-          if (query.roots && session.parentID) continue
-          if (query.start !== undefined && session.time.updated < query.start) continue
-          if (term !== undefined && !session.title.toLowerCase().includes(term)) continue
+        for await (const session of Session.list({
+          directory: query.directory,
+          roots: query.roots,
+          start: query.start,
+          search: query.search,
+          limit: query.limit,
+        })) {
           sessions.push(session)
-          if (query.limit !== undefined && sessions.length >= query.limit) break
         }
         return c.json(sessions)
       },
@@ -98,7 +95,7 @@ export const SessionRoutes = lazy(() =>
       "/:sessionID",
       describeRoute({
         summary: "Get session",
-        description: "Retrieve detailed information about a specific VoltCode session.",
+        description: "Retrieve detailed information about a specific OpenCode session.",
         tags: ["Session"],
         operationId: "session.get",
         responses: {
@@ -191,7 +188,7 @@ export const SessionRoutes = lazy(() =>
       "/",
       describeRoute({
         summary: "Create session",
-        description: "Create a new VoltCode session for interacting with AI assistants and managing conversations.",
+        description: "Create a new OpenCode session for interacting with AI assistants and managing conversations.",
         operationId: "session.create",
         responses: {
           ...errors(400),
@@ -281,14 +278,15 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
 
-        const updatedSession = await Session.update(sessionID, (session) => {
-          if (updates.title !== undefined) {
-            session.title = updates.title
-          }
-          if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
-        })
+        let session = await Session.get(sessionID)
+        if (updates.title !== undefined) {
+          session = await Session.setTitle({ sessionID, title: updates.title })
+        }
+        if (updates.time?.archived !== undefined) {
+          session = await Session.setArchived({ sessionID, time: updates.time.archived })
+        }
 
-        return c.json(updatedSession)
+        return c.json(session)
       },
     )
     .post(
@@ -540,7 +538,7 @@ export const SessionRoutes = lazy(() =>
           },
           auto: body.auto,
         })
-        await SessionPrompt.loop(sessionID)
+        await SessionPrompt.loop({ sessionID })
         return c.json(true)
       },
     )
@@ -620,6 +618,42 @@ export const SessionRoutes = lazy(() =>
           messageID: params.messageID,
         })
         return c.json(message)
+      },
+    )
+    .delete(
+      "/:sessionID/message/:messageID",
+      describeRoute({
+        summary: "Delete message",
+        description:
+          "Permanently delete a specific message (and all of its parts) from a session. This does not revert any file changes that may have been made while processing the message.",
+        operationId: "session.deleteMessage",
+        responses: {
+          200: {
+            description: "Successfully deleted message",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          messageID: z.string().meta({ description: "Message ID" }),
+        }),
+      ),
+      async (c) => {
+        const params = c.req.valid("param")
+        SessionPrompt.assertNotBusy(params.sessionID)
+        await Session.removeMessage({
+          sessionID: params.sessionID,
+          messageID: params.messageID,
+        })
+        return c.json(true)
       },
     )
     .delete(
@@ -935,244 +969,6 @@ export const SessionRoutes = lazy(() =>
           reply: c.req.valid("json").response,
         })
         return c.json(true)
-      },
-    )
-    .post(
-      "/:sessionID/upload",
-      describeRoute({
-        summary: "Upload file",
-        description:
-          "Upload a file to the session's working directory. Supports chunked uploads via Content-Range header for resume support.",
-        operationId: "session.upload",
-        responses: {
-          200: {
-            description: "File uploaded successfully",
-            content: {
-              "application/json": {
-                schema: resolver(
-                  z.object({
-                    filename: z.string(),
-                    path: z.string(),
-                    size: z.number(),
-                  }),
-                ),
-              },
-            },
-          },
-          ...errors(400, 404),
-        },
-      }),
-      validator(
-        "param",
-        z.object({
-          sessionID: z.string().meta({ description: "Session ID" }),
-        }),
-      ),
-      async (c) => {
-        const sessionID = c.req.valid("param").sessionID
-        const session = await Session.get(sessionID)
-        const directory = session.directory
-
-        const contentType = c.req.header("content-type") ?? ""
-
-        // Handle multipart form-data uploads
-        if (contentType.includes("multipart/form-data")) {
-          const formData = await c.req.formData()
-          const file = formData.get("file")
-          if (!file || !(file instanceof File)) {
-            return c.json({ error: "No file provided" }, 400)
-          }
-
-          const filename = file.name
-          const sanitized = path.basename(filename)
-          const destPath = path.join(directory, sanitized)
-
-          const contentRange = c.req.header("content-range")
-          if (contentRange) {
-            // Chunked upload: append to existing file
-            // Content-Range: bytes START-END/TOTAL
-            const match = contentRange.match(/bytes (\d+)-(\d+)\/(\d+)/)
-            if (!match) {
-              return c.json({ error: "Invalid Content-Range header" }, 400)
-            }
-            const start = parseInt(match[1], 10)
-            const buffer = Buffer.from(await file.arrayBuffer())
-
-            const existing = Bun.file(destPath)
-            const existsOnDisk = await existing.exists()
-
-            if (start === 0 || !existsOnDisk) {
-              // First chunk or file doesn't exist yet
-              await Bun.write(destPath, buffer)
-            } else {
-              // Append chunk at offset
-              const existingData = Buffer.from(await existing.arrayBuffer())
-              const merged = Buffer.alloc(Math.max(existingData.length, start + buffer.length))
-              existingData.copy(merged)
-              buffer.copy(merged, start)
-              await Bun.write(destPath, merged)
-            }
-
-            const total = parseInt(match[3], 10)
-            const end = parseInt(match[2], 10)
-            const size = Bun.file(destPath).size
-
-            return c.json({
-              filename: sanitized,
-              path: destPath,
-              size,
-              complete: end + 1 >= total,
-            })
-          }
-
-          // Non-chunked: write the whole file
-          await Bun.write(destPath, file)
-          const size = Bun.file(destPath).size
-
-          return c.json({
-            filename: sanitized,
-            path: destPath,
-            size,
-          })
-        }
-
-        // Handle raw binary uploads with filename in query or header
-        const rawFilename = c.req.query("filename") ?? c.req.header("x-filename") ?? "upload"
-        const sanitized = path.basename(rawFilename)
-        const destPath = path.join(directory, sanitized)
-        const body = await c.req.arrayBuffer()
-
-        const contentRange = c.req.header("content-range")
-        if (contentRange) {
-          const match = contentRange.match(/bytes (\d+)-(\d+)\/(\d+)/)
-          if (!match) {
-            return c.json({ error: "Invalid Content-Range header" }, 400)
-          }
-          const start = parseInt(match[1], 10)
-          const buffer = Buffer.from(body)
-
-          const existing = Bun.file(destPath)
-          const existsOnDisk = await existing.exists()
-
-          if (start === 0 || !existsOnDisk) {
-            await Bun.write(destPath, buffer)
-          } else {
-            const existingData = Buffer.from(await existing.arrayBuffer())
-            const merged = Buffer.alloc(Math.max(existingData.length, start + buffer.length))
-            existingData.copy(merged)
-            buffer.copy(merged, start)
-            await Bun.write(destPath, merged)
-          }
-
-          const total = parseInt(match[3], 10)
-          const end = parseInt(match[2], 10)
-          const size = Bun.file(destPath).size
-
-          return c.json({
-            filename: sanitized,
-            path: destPath,
-            size,
-            complete: end + 1 >= total,
-          })
-        }
-
-        await Bun.write(destPath, body)
-        const size = Bun.file(destPath).size
-
-        return c.json({
-          filename: sanitized,
-          path: destPath,
-          size,
-        })
-      },
-    )
-    .get(
-      "/:sessionID/lcm/check-integrity",
-      validator(
-        "param",
-        z.object({
-          sessionID: z.string(),
-        }),
-      ),
-      async (c) => {
-        const sessionID = c.req.valid("param").sessionID
-        const { SessionPrompt } = await import("../../session/prompt")
-        const conversationId = await SessionPrompt.getLcmConversationId(sessionID)
-        if (conversationId === null) {
-          return c.json({ error: "No LCM conversation found for this session" }, 404)
-        }
-        const report = await LcmIntegrity.check(conversationId)
-        return c.json(report)
-      },
-    )
-    .post(
-      "/:sessionID/lcm/compact",
-      validator(
-        "param",
-        z.object({
-          sessionID: z.string(),
-        }),
-      ),
-      async (c) => {
-        const sessionID = c.req.valid("param").sessionID
-        const { SessionPrompt } = await import("../../session/prompt")
-        const conversationId = await SessionPrompt.getLcmConversationId(sessionID)
-        if (conversationId === null) {
-          return c.json({ error: "No LCM conversation found for this session" }, 404)
-        }
-        const msgs = await Session.messages({ sessionID })
-        const lastUser = [...msgs].reverse().find((m) => m.info.role === "user")
-        if (!lastUser || lastUser.info.role !== "user") {
-          return c.json({ error: "No user message found in session" }, 404)
-        }
-        const user = lastUser.info
-        const model = await Provider.getModel(user.model.providerID, user.model.modelID)
-        const strategy = getActiveLcmRuntimeStrategy()
-        try {
-          // Use TokenBudget if available, otherwise use reasonable defaults
-          const { TokenBudget } = await import("../../session/token-budget")
-          let overhead: number, reserve: number
-          try {
-            const budget = TokenBudget.getSessionBudget(sessionID)
-            overhead = budget.overhead
-            reserve = budget.reserve
-          } catch {
-            // No budget cached — use conservative defaults for manual compaction
-            overhead = 0
-            reserve = TokenBudget.outputReserve(model)
-          }
-          const beforeTokenCount = await LcmDb.getContextTokenCount(conversationId)
-          const compactResult = await strategy.compactManual({
-            conversationId,
-            sessionID,
-            user,
-            model,
-            overhead,
-            reserve,
-            contextWindow: model.limit.context,
-          })
-          const status = compactResult.actionTaken ? "executed" : "no_op"
-          const mode = strategy.name === "upward" ? "forced_recursive" : "short_bindle"
-          return c.json({
-            mode,
-            strategy: strategy.name,
-            status,
-            executed: compactResult.actionTaken,
-            success: true,
-            beforeTokenCount,
-            newTokenCount: compactResult.newTokenCount ?? beforeTokenCount,
-            maxTokens: model.limit.context,
-            actionTaken: compactResult.actionTaken,
-            condensed: compactResult.condensed,
-            messagesSummarized: compactResult.messagesSummarized ?? 0,
-            evictedBindleIds: compactResult.evictedBindleIds ?? [],
-            archiveStubIds: compactResult.archiveStubIds ?? [],
-            noOpReasons: compactResult.noOpReasons ?? [],
-          })
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e)
-          return c.json({ error: message }, 500)
-        }
       },
     ),
 )

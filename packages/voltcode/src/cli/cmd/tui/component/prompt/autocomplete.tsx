@@ -1,4 +1,5 @@
 import type { BoxRenderable, TextareaRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core"
+import { pathToFileURL } from "bun"
 import fuzzysort from "fuzzysort"
 import { firstBy } from "remeda"
 import { createMemo, createResource, createEffect, onMount, onCleanup, Index, Show, createSignal } from "solid-js"
@@ -246,17 +247,18 @@ export function Autocomplete(props: {
         const width = props.anchor().width - 4
         options.push(
           ...sortedFiles.map((item): AutocompleteOption => {
-            let url = `file://${process.cwd()}/${item}`
+            const baseDir = (sync.data.path.directory || process.cwd()).replace(/\/+$/, "")
+            const fullPath = `${baseDir}/${item}`
+            const urlObj = pathToFileURL(fullPath)
             let filename = item
             if (lineRange && !item.endsWith("/")) {
               filename = `${item}#${lineRange.startLine}${lineRange.endLine ? `-${lineRange.endLine}` : ""}`
-              const urlObj = new URL(url)
               urlObj.searchParams.set("start", String(lineRange.startLine))
               if (lineRange.endLine !== undefined) {
                 urlObj.searchParams.set("end", String(lineRange.endLine))
               }
-              url = urlObj.toString()
             }
+            const url = urlObj.href
 
             const isDir = item.endsWith("/")
             return {
@@ -355,11 +357,10 @@ export function Autocomplete(props: {
     const results: AutocompleteOption[] = [...command.slashes()]
 
     for (const serverCommand of sync.data.command) {
+      if (serverCommand.source === "skill") continue
+      const label = serverCommand.source === "mcp" ? ":mcp" : ""
       results.push({
-        display:
-          "/" +
-          serverCommand.name +
-          (serverCommand.source === "mcp" ? " (MCP)" : serverCommand.source === "skill" ? " (Skill)" : ""),
+        display: "/" + serverCommand.name + label,
         description: serverCommand.description,
         onSelect: () => {
           const newText = "/" + serverCommand.name + " "

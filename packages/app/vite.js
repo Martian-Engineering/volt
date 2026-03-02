@@ -7,7 +7,7 @@ import { fileURLToPath } from "url"
  */
 export default [
   {
-    name: "voltcode-desktop:config",
+    name: "opencode-desktop:config",
     config() {
       return {
         resolve: {

@@ -1,7 +1,7 @@
-import { createVoltcodeClient } from "@opencode-ai/sdk/v2/client"
+import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
 import { base64Encode } from "@opencode-ai/util/encode"
 
-export const serverHost = process.env.PLAYWRIGHT_SERVER_HOST ?? "localhost"
+export const serverHost = process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"
 export const serverPort = process.env.PLAYWRIGHT_SERVER_PORT ?? "4096"
 
 export const serverUrl = `http://${serverHost}:${serverPort}`
@@ -10,11 +10,8 @@ export const serverName = `${serverHost}:${serverPort}`
 export const modKey = process.platform === "darwin" ? "Meta" : "Control"
 export const terminalToggleKey = "Control+Backquote"
 
-export const promptSelector = '[data-component="prompt-input"]'
-export const terminalSelector = '[data-component="terminal"]'
-
 export function createSdk(directory?: string) {
-  return createVoltcodeClient({ baseUrl: serverUrl, directory, throwOnError: true })
+  return createOpencodeClient({ baseUrl: serverUrl, directory, throwOnError: true })
 }
 
 export async function getWorktree() {

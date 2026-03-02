@@ -7,6 +7,7 @@ import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
+import { Filesystem } from "../../util/filesystem"
 
 interface UninstallArgs {
   keepConfig: boolean
@@ -23,7 +24,7 @@ interface RemovalTargets {
 
 export const UninstallCommand = {
   command: "uninstall",
-  describe: "uninstall volt and remove all related files",
+  describe: "uninstall opencode and remove all related files",
   builder: (yargs: Argv) =>
     yargs
       .option("keep-config", {
@@ -54,7 +55,7 @@ export const UninstallCommand = {
     UI.empty()
     UI.println(UI.logo("  "))
     UI.empty()
-    prompts.intro("Uninstall VoltCode")
+    prompts.intro("Uninstall OpenCode")
 
     const method = await Installation.method()
     prompts.log.info(`Installation method: ${method}`)
@@ -128,13 +129,13 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
 
   if (method !== "curl" && method !== "unknown") {
     const cmds: Record<string, string> = {
-      npm: "npm uninstall -g voltcode-ai",
-      pnpm: "pnpm uninstall -g voltcode-ai",
-      bun: "bun remove -g voltcode-ai",
-      yarn: "yarn global remove voltcode-ai",
-      brew: "brew uninstall voltcode",
-      choco: "choco uninstall voltcode",
-      scoop: "scoop uninstall voltcode",
+      npm: "npm uninstall -g opencode-ai",
+      pnpm: "pnpm uninstall -g opencode-ai",
+      bun: "bun remove -g opencode-ai",
+      yarn: "yarn global remove opencode-ai",
+      brew: "brew uninstall opencode",
+      choco: "choco uninstall opencode",
+      scoop: "scoop uninstall opencode",
     }
     prompts.log.info(`  ✓ Package: ${cmds[method] || method}`)
   }
@@ -179,13 +180,13 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   if (method !== "curl" && method !== "unknown") {
     const cmds: Record<string, string[]> = {
-      npm: ["npm", "uninstall", "-g", "voltcode-ai"],
-      pnpm: ["pnpm", "uninstall", "-g", "voltcode-ai"],
-      bun: ["bun", "remove", "-g", "voltcode-ai"],
-      yarn: ["yarn", "global", "remove", "voltcode-ai"],
-      brew: ["brew", "uninstall", "voltcode"],
-      choco: ["choco", "uninstall", "voltcode"],
-      scoop: ["scoop", "uninstall", "voltcode"],
+      npm: ["npm", "uninstall", "-g", "opencode-ai"],
+      pnpm: ["pnpm", "uninstall", "-g", "opencode-ai"],
+      bun: ["bun", "remove", "-g", "opencode-ai"],
+      yarn: ["yarn", "global", "remove", "opencode-ai"],
+      brew: ["brew", "uninstall", "opencode"],
+      choco: ["choco", "uninstall", "opencode"],
+      scoop: ["scoop", "uninstall", "opencode"],
     }
 
     const cmd = cmds[method]
@@ -193,7 +194,7 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
       spinner.start(`Running ${cmd.join(" ")}...`)
       const result =
         method === "choco"
-          ? await $`echo Y | choco uninstall voltcode -y -r`.quiet().nothrow()
+          ? await $`echo Y | choco uninstall opencode -y -r`.quiet().nothrow()
           : await $`${cmd}`.quiet().nothrow()
       if (result.exitCode !== 0) {
         spinner.stop(`Package manager uninstall failed: exit code ${result.exitCode}`, 1)
@@ -217,7 +218,7 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     prompts.log.info(`  rm "${targets.binary}"`)
 
     const binDir = path.dirname(targets.binary)
-    if (binDir.includes(".voltcode")) {
+    if (binDir.includes(".opencode")) {
       prompts.log.info(`  rmdir "${binDir}" 2>/dev/null`)
     }
   }
@@ -231,7 +232,7 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
   }
 
   UI.empty()
-  prompts.log.success("Thank you for using VoltCode!")
+  prompts.log.success("Thank you for using OpenCode!")
 }
 
 async function getShellConfigFile(): Promise<string | null> {
@@ -267,10 +268,8 @@ async function getShellConfigFile(): Promise<string | null> {
       .catch(() => false)
     if (!exists) continue
 
-    const content = await Bun.file(file)
-      .text()
-      .catch(() => "")
-    if (content.includes("# voltcode") || content.includes(".voltcode/bin")) {
+    const content = await Filesystem.readText(file).catch(() => "")
+    if (content.includes("# opencode") || content.includes(".opencode/bin")) {
       return file
     }
   }
@@ -279,7 +278,7 @@ async function getShellConfigFile(): Promise<string | null> {
 }
 
 async function cleanShellConfig(file: string) {
-  const content = await Bun.file(file).text()
+  const content = await Filesystem.readText(file)
   const lines = content.split("\n")
 
   const filtered: string[] = []
@@ -288,21 +287,21 @@ async function cleanShellConfig(file: string) {
   for (const line of lines) {
     const trimmed = line.trim()
 
-    if (trimmed === "# voltcode") {
+    if (trimmed === "# opencode") {
       skip = true
       continue
     }
 
     if (skip) {
       skip = false
-      if (trimmed.includes(".voltcode/bin") || trimmed.includes("fish_add_path")) {
+      if (trimmed.includes(".opencode/bin") || trimmed.includes("fish_add_path")) {
         continue
       }
     }
 
     if (
-      (trimmed.startsWith("export PATH=") && trimmed.includes(".voltcode/bin")) ||
-      (trimmed.startsWith("fish_add_path") && trimmed.includes(".voltcode"))
+      (trimmed.startsWith("export PATH=") && trimmed.includes(".opencode/bin")) ||
+      (trimmed.startsWith("fish_add_path") && trimmed.includes(".opencode"))
     ) {
       continue
     }
@@ -315,7 +314,7 @@ async function cleanShellConfig(file: string) {
   }
 
   const output = filtered.join("\n") + "\n"
-  await Bun.write(file, output)
+  await Filesystem.write(file, output)
 }
 
 async function getDirectorySize(dir: string): Promise<number> {

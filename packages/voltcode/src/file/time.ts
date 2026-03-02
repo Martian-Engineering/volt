@@ -1,5 +1,7 @@
 import { Instance } from "../project/instance"
 import { Log } from "../util/log"
+import { Flag } from "../flag/flag"
+import { Filesystem } from "../util/filesystem"
 
 export namespace FileTime {
   const log = Log.create({ service: "file.time" })
@@ -51,41 +53,18 @@ export namespace FileTime {
     }
   }
 
-  async function isDescendant(candidateID: string, ancestorID: string): Promise<boolean> {
-    const { Session } = await import("../session")
-    let current = candidateID
-    const visited = new Set<string>()
-    while (current && !visited.has(current)) {
-      visited.add(current)
-      const session = await Session.get(current).catch(() => undefined)
-      if (!session?.parentID) return false
-      if (session.parentID === ancestorID) return true
-      current = session.parentID
-    }
-    return false
-  }
-
-  async function getFromDescendants(sessionID: string, file: string): Promise<Date | undefined> {
-    const { read } = state()
-    let latest: Date | undefined
-    for (const [sid, files] of Object.entries(read)) {
-      if (sid === sessionID) continue
-      const time = files[file]
-      if (!time) continue
-      if (await isDescendant(sid, sessionID)) {
-        if (!latest || time.getTime() > latest.getTime()) latest = time
-      }
-    }
-    return latest
-  }
-
   export async function assert(sessionID: string, filepath: string) {
-    const time = get(sessionID, filepath) ?? (await getFromDescendants(sessionID, filepath))
-    if (!time) throw new Error(`You must read the file ${filepath} before overwriting it. Use the Read tool first`)
-    const stats = await Bun.file(filepath).stat()
-    if (stats.mtime.getTime() > time.getTime()) {
+    if (Flag.OPENCODE_DISABLE_FILETIME_CHECK === true) {
+      return
+    }
+
+    const time = get(sessionID, filepath)
+    if (!time) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
+    const mtime = Filesystem.stat(filepath)?.mtime
+    // Allow a 50ms tolerance for Windows NTFS timestamp fuzziness / async flushing
+    if (mtime && mtime.getTime() > time.getTime() + 50) {
       throw new Error(
-        `File ${filepath} has been modified since it was last read.\nLast modification: ${stats.mtime.toISOString()}\nLast read: ${time.toISOString()}\n\nPlease read the file again before modifying it.`,
+        `File ${filepath} has been modified since it was last read.\nLast modification: ${mtime.toISOString()}\nLast read: ${time.toISOString()}\n\nPlease read the file again before modifying it.`,
       )
     }
   }

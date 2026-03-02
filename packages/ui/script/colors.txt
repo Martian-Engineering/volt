@@ -170,6 +170,7 @@
 --icon-on-brand-selected: var(--smoke-light-alpha-12);
 --icon-on-interactive-base: var(--smoke-light-1);
 --icon-agent-plan-base: var(--purple-light-9);
+--icon-agent-docs-base: var(--amber-light-9);
 --icon-agent-ask-base: var(--cyan-light-9);
 --icon-agent-build-base: var(--cobalt-light-9);
 --icon-on-success-base: var(--apple-light-alpha-9);

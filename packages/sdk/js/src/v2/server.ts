@@ -90,6 +90,10 @@ export async function createVoltcodeServer(options?: ServerOptions) {
   }
 }
 
+export async function createOpencodeServer(options?: ServerOptions) {
+  return createVoltcodeServer(options)
+}
+
 export function createVoltcodeTui(options?: TuiOptions) {
   const args = []
 
@@ -120,4 +124,8 @@ export function createVoltcodeTui(options?: TuiOptions) {
       proc.kill()
     },
   }
+}
+
+export function createOpencodeTui(options?: TuiOptions) {
+  return createVoltcodeTui(options)
 }

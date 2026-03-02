@@ -10,9 +10,9 @@ import { Global } from "@/global"
 import { Filesystem } from "@/util/filesystem"
 import { Flag } from "@/flag/flag"
 import { Bus } from "@/bus"
-import { TuiEvent } from "@/cli/cmd/tui/event"
 import { Session } from "@/session"
 import { Discovery } from "./discovery"
+import { Glob } from "../util/glob"
 
 export namespace Skill {
   const log = Log.create({ service: "skill" })
@@ -45,10 +45,9 @@ export namespace Skill {
   // External skill directories to search for (project-level and global)
   // These follow the directory layout used by Claude Code and other agents.
   const EXTERNAL_DIRS = [".claude", ".agents"]
-  const EXTERNAL_SKILL_GLOB = new Bun.Glob("skills/**/SKILL.md")
-
-  const VOLTCODE_SKILL_GLOB = new Bun.Glob("{skill,skills}/**/SKILL.md")
-  const SKILL_GLOB = new Bun.Glob("**/SKILL.md")
+  const EXTERNAL_SKILL_PATTERN = "skills/**/SKILL.md"
+  const OPENCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
+  const SKILL_PATTERN = "**/SKILL.md"
 
   export const state = Instance.state(async () => {
     const skills: Record<string, Info> = {}
@@ -89,15 +88,13 @@ export namespace Skill {
     }
 
     const scanExternal = async (root: string, scope: "global" | "project") => {
-      return Array.fromAsync(
-        EXTERNAL_SKILL_GLOB.scan({
-          cwd: root,
-          absolute: true,
-          onlyFiles: true,
-          followSymlinks: true,
-          dot: true,
-        }),
-      )
+      return Glob.scan(EXTERNAL_SKILL_PATTERN, {
+        cwd: root,
+        absolute: true,
+        include: "file",
+        dot: true,
+        symlink: true,
+      })
         .then((matches) => Promise.all(matches.map(addSkill)))
         .catch((error) => {
           log.error(`failed to scan ${scope} skills`, { dir: root, error })
@@ -106,7 +103,7 @@ export namespace Skill {
 
     // Scan external skill directories (.claude/skills/, .agents/skills/, etc.)
     // Load global (home) first, then project-level (so project-level overwrites)
-    if (!Flag.VOLTCODE_DISABLE_CLAUDE_CODE_SKILLS) {
+    if (!Flag.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
       for (const dir of EXTERNAL_DIRS) {
         const root = path.join(Global.Path.home, dir)
         if (!(await Filesystem.isDir(root))) continue
@@ -122,14 +119,15 @@ export namespace Skill {
       }
     }
 
-    // Scan .voltcode/skill/ directories
+    // Scan .opencode/skill/ directories
     for (const dir of await Config.directories()) {
-      for await (const match of VOLTCODE_SKILL_GLOB.scan({
+      const matches = await Glob.scan(OPENCODE_SKILL_PATTERN, {
         cwd: dir,
         absolute: true,
-        onlyFiles: true,
-        followSymlinks: true,
-      })) {
+        include: "file",
+        symlink: true,
+      })
+      for (const match of matches) {
         await addSkill(match)
       }
     }
@@ -143,12 +141,13 @@ export namespace Skill {
         log.warn("skill path not found", { path: resolved })
         continue
       }
-      for await (const match of SKILL_GLOB.scan({
+      const matches = await Glob.scan(SKILL_PATTERN, {
         cwd: resolved,
         absolute: true,
-        onlyFiles: true,
-        followSymlinks: true,
-      })) {
+        include: "file",
+        symlink: true,
+      })
+      for (const match of matches) {
         await addSkill(match)
       }
     }
@@ -158,12 +157,13 @@ export namespace Skill {
       const list = await Discovery.pull(url)
       for (const dir of list) {
         dirs.add(dir)
-        for await (const match of SKILL_GLOB.scan({
+        const matches = await Glob.scan(SKILL_PATTERN, {
           cwd: dir,
           absolute: true,
-          onlyFiles: true,
-          followSymlinks: true,
-        })) {
+          include: "file",
+          symlink: true,
+        })
+        for (const match of matches) {
           await addSkill(match)
         }
       }

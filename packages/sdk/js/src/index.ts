@@ -19,3 +19,7 @@ export async function createVoltcode(options?: ServerOptions) {
     server,
   }
 }
+
+export async function createOpencode(options?: ServerOptions) {
+  return createVoltcode(options)
+}

@@ -1,3 +1,4 @@
+import { PlanExitTool } from "./plan"
 import { QuestionTool } from "./question"
 import { BashTool } from "./bash"
 import { EditTool } from "./edit"
@@ -6,8 +7,6 @@ import { GrepTool } from "./grep"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
-import { TasksTool } from "./tasks"
-import { TaskOutputTool } from "./task-output"
 import { TodoWriteTool, TodoReadTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
@@ -18,43 +17,35 @@ import { Tool } from "./tool"
 import { Instance } from "../project/instance"
 import { Config } from "../config/config"
 import path from "path"
-import { type ToolDefinition } from "@opencode-ai/plugin"
+import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
 import { WebSearchTool } from "./websearch"
 import { CodeSearchTool } from "./codesearch"
 import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
-import { withTimeout } from "@/util/timeout"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
-import { PlanExitTool, PlanEnterTool } from "./plan"
+
 import { ApplyPatchTool } from "./apply_patch"
-import { LcmGrepTool } from "./lcm-grep"
-import { LcmExpandTool } from "./lcm-expand"
-import { LcmDescribeTool } from "./lcm-describe"
-import { LcmReadTool } from "./lcm-read"
-import { LcmExpandQueryTool } from "./lcm-expand-query"
-import { AgenticMapTool } from "./agentic-map"
-import { LlmMapTool } from "./llm-map"
+import { Glob } from "../util/glob"
+import { pathToFileURL } from "url"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
-  // Timeout for tool init - 60 seconds
-  const TOOL_INIT_TIMEOUT_MS = 60_000
-
   export const state = Instance.state(async () => {
     const custom = [] as Tool.Info[]
-    const glob = new Bun.Glob("{tool,tools}/*.{js,ts}")
 
     const matches = await Config.directories().then((dirs) =>
-      dirs.flatMap((dir) => [...glob.scanSync({ cwd: dir, absolute: true, followSymlinks: true, dot: true })]),
+      dirs.flatMap((dir) =>
+        Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
+      ),
     )
     if (matches.length) await Config.waitForDependencies()
     for (const match of matches) {
       const namespace = path.basename(match, path.extname(match))
-      const mod = await import(match)
+      const mod = await import(pathToFileURL(match).href)
       for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
         custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
       }
@@ -77,24 +68,13 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          const result = await def.execute(args as any, ctx)
+          const pluginCtx = {
+            ...ctx,
+            directory: Instance.directory,
+            worktree: Instance.worktree,
+          } as unknown as PluginToolContext
+          const result = await def.execute(args as any, pluginCtx)
           const out = await Truncate.output(result, {}, initCtx?.agent)
-
-          try {
-            const { Volt01 } = await import("@/volt01/backend")
-            const configured = await Volt01.isConfigured()
-            if (!configured) {
-              Volt01.sendToolResult({
-                repo_id: Instance.project.id,
-                session_id: ctx.sessionID as string,
-                tool_call_id: ctx.callID!,
-                stdout: out.truncated ? out.content : result,
-                stderr: "",
-                exit_code: 0,
-              }).catch(() => {})
-            }
-          } catch (error) {}
-
           return {
             title: "",
             output: out.truncated ? out.content : result,
@@ -118,10 +98,11 @@ export namespace ToolRegistry {
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
     const config = await Config.get()
+    const question = ["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) || Flag.OPENCODE_ENABLE_QUESTION_TOOL
 
     return [
       InvalidTool,
-      ...(["app", "cli", "desktop"].includes(Flag.VOLTCODE_CLIENT) ? [QuestionTool] : []),
+      ...(question ? [QuestionTool] : []),
       BashTool,
       ReadTool,
       GlobTool,
@@ -129,25 +110,16 @@ export namespace ToolRegistry {
       EditTool,
       WriteTool,
       TaskTool,
-      TasksTool,
-      TaskOutputTool,
       WebFetchTool,
       TodoWriteTool,
-      TodoReadTool,
+      // TodoReadTool,
       WebSearchTool,
       CodeSearchTool,
       SkillTool,
       ApplyPatchTool,
-      ...(Flag.VOLTCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
+      ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
-      ...(Flag.VOLTCODE_EXPERIMENTAL_PLAN_MODE && Flag.VOLTCODE_CLIENT === "cli" ? [PlanExitTool, PlanEnterTool] : []),
-      LcmGrepTool,
-      LcmExpandTool,
-      LcmDescribeTool,
-      LcmReadTool,
-      LcmExpandQueryTool,
-      AgenticMapTool,
-      LlmMapTool,
+      ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool] : []),
       ...custom,
     ]
   }
@@ -163,44 +135,39 @@ export namespace ToolRegistry {
     },
     agent?: Agent.Info,
   ) {
-    const allTools = await all()
-    const filteredTools = allTools.filter((t) => {
-      // Enable websearch/codesearch for zen users OR via enable flag
-      if (t.id === "codesearch" || t.id === "websearch") {
-        return model.providerID === "opencode" || Flag.VOLTCODE_ENABLE_EXA
-      }
+    const tools = await all()
+    const result = await Promise.all(
+      tools
+        .filter((t) => {
+          // Enable websearch/codesearch for zen users OR via enable flag
+          if (t.id === "codesearch" || t.id === "websearch") {
+            return model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
+          }
 
-      // use apply tool in same format as codex
-      const usePatch =
-        model.modelID.includes("gpt-") && !model.modelID.includes("oss") && !model.modelID.includes("gpt-4")
-      if (t.id === "apply_patch") return usePatch
-      if (t.id === "edit" || t.id === "write") return !usePatch
+          // use apply tool in same format as codex
+          const usePatch =
+            model.modelID.includes("gpt-") && !model.modelID.includes("oss") && !model.modelID.includes("gpt-4")
+          if (t.id === "apply_patch") return usePatch
+          if (t.id === "edit" || t.id === "write") return !usePatch
 
-      // omit todo tools for openai models
-      if (t.id === "todoread" || t.id === "todowrite") {
-        if (model.modelID.includes("gpt-")) return false
-      }
-
-      return true
-    })
-
-    const results = await Promise.all(
-      filteredTools.map(async (t) => {
-        using _ = log.time(t.id)
-        try {
-          const initResult = await withTimeout(t.init({ agent }), TOOL_INIT_TIMEOUT_MS)
+          return true
+        })
+        .map(async (t) => {
+          using _ = log.time(t.id)
+          const tool = await t.init({ agent })
+          const output = {
+            description: tool.description,
+            parameters: tool.parameters,
+          }
+          await Plugin.trigger("tool.definition", { toolID: t.id }, output)
           return {
             id: t.id,
-            ...initResult,
+            ...tool,
+            description: output.description,
+            parameters: output.parameters,
           }
-        } catch (e) {
-          log.error("tool init failed or timed out", { tool: t.id, error: e instanceof Error ? e.message : String(e) })
-          // Return null for failed tools - they'll be filtered out
-          return null
-        }
-      }),
+        }),
     )
-    // Filter out failed tools (null entries)
-    return results.filter((t): t is NonNullable<typeof t> => t !== null)
+    return result
   }
 }

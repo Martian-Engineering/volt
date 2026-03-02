@@ -1,8 +1,8 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
 import path from "path"
 import { createEffect, createMemo, onMount } from "solid-js"
-import { useSync } from "@tui/context/sync"
 import { createSimpleContext } from "./helper"
+import { Glob } from "../../../../util/glob"
 import aura from "./theme/aura.json" with { type: "json" }
 import ayu from "./theme/ayu.json" with { type: "json" }
 import catppuccin from "./theme/catppuccin.json" with { type: "json" }
@@ -24,7 +24,7 @@ import nightowl from "./theme/nightowl.json" with { type: "json" }
 import nord from "./theme/nord.json" with { type: "json" }
 import osakaJade from "./theme/osaka-jade.json" with { type: "json" }
 import onedark from "./theme/one-dark.json" with { type: "json" }
-import voltcode from "./theme/voltcode.json" with { type: "json" }
+import opencode from "./theme/opencode.json" with { type: "json" }
 import orng from "./theme/orng.json" with { type: "json" }
 import lucentOrng from "./theme/lucent-orng.json" with { type: "json" }
 import palenight from "./theme/palenight.json" with { type: "json" }
@@ -41,7 +41,7 @@ import { useRenderer } from "@opentui/solid"
 import { createStore, produce } from "solid-js/store"
 import { Global } from "@/global"
 import { Filesystem } from "@/util/filesystem"
-import { useSDK } from "./sdk"
+import { useTuiConfig } from "./tui-config"
 
 type ThemeColors = {
   primary: RGBA
@@ -160,7 +160,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   nord,
   ["one-dark"]: onedark,
   ["osaka-jade"]: osakaJade,
-  voltcode,
+  opencode,
   orng,
   ["lucent-orng"]: lucentOrng,
   palenight,
@@ -280,17 +280,17 @@ function ansiToRgba(code: number): RGBA {
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
   init: (props: { mode: "dark" | "light" }) => {
-    const sync = useSync()
+    const config = useTuiConfig()
     const kv = useKV()
     const [store, setStore] = createStore({
       themes: DEFAULT_THEMES,
       mode: kv.get("theme_mode", props.mode),
-      active: (sync.data.config.theme ?? kv.get("theme", "voltcode")) as string,
+      active: (config.theme ?? kv.get("theme", "opencode")) as string,
       ready: false,
     })
 
     createEffect(() => {
-      const theme = sync.data.config.theme
+      const theme = config.theme
       if (theme) setStore("active", theme)
     })
 
@@ -305,7 +305,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
           )
         })
         .catch(() => {
-          setStore("active", "voltcode")
+          setStore("active", "opencode")
         })
         .finally(() => {
           if (store.active !== "system") {
@@ -317,16 +317,18 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     onMount(init)
 
     function resolveSystemTheme() {
+      console.log("resolveSystemTheme")
       renderer
         .getPalette({
           size: 16,
         })
         .then((colors) => {
+          console.log(colors.palette)
           if (!colors.palette[0]) {
             if (store.active === "system") {
               setStore(
                 produce((draft) => {
-                  draft.active = "voltcode"
+                  draft.active = "opencode"
                   draft.ready = true
                 }),
               )
@@ -351,7 +353,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     })
 
     const values = createMemo(() => {
-      return resolveTheme(store.themes[store.active] ?? store.themes.voltcode, store.mode)
+      return resolveTheme(store.themes[store.active] ?? store.themes.opencode, store.mode)
     })
 
     const syntax = createMemo(() => generateSyntax(values()))
@@ -390,13 +392,12 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   },
 })
 
-const CUSTOM_THEME_GLOB = new Bun.Glob("themes/*.json")
 async function getCustomThemes() {
   const directories = [
     Global.Path.config,
     ...(await Array.fromAsync(
       Filesystem.up({
-        targets: [".voltcode"],
+        targets: [".opencode"],
         start: process.cwd(),
       }),
     )),
@@ -404,14 +405,14 @@ async function getCustomThemes() {
 
   const result: Record<string, ThemeJson> = {}
   for (const dir of directories) {
-    for await (const item of CUSTOM_THEME_GLOB.scan({
-      absolute: true,
-      followSymlinks: true,
-      dot: true,
+    for (const item of await Glob.scan("themes/*.json", {
       cwd: dir,
+      absolute: true,
+      dot: true,
+      symlink: true,
     })) {
       const name = path.basename(item, ".json")
-      result[name] = await Bun.file(item).json()
+      result[name] = await Filesystem.readJson(item)
     }
   }
   return result
@@ -427,6 +428,7 @@ export function tint(base: RGBA, overlay: RGBA, alpha: number): RGBA {
 function generateSystem(colors: TerminalColors, mode: "dark" | "light"): ThemeJson {
   const bg = RGBA.fromHex(colors.defaultBackground ?? colors.palette[0]!)
   const fg = RGBA.fromHex(colors.defaultForeground ?? colors.palette[7]!)
+  const transparent = RGBA.fromInts(0, 0, 0, 0)
   const isDark = mode == "dark"
 
   const col = (i: number) => {
@@ -477,8 +479,8 @@ function generateSystem(colors: TerminalColors, mode: "dark" | "light"): ThemeJs
       textMuted,
       selectedListItemText: bg,
 
-      // Background colors
-      background: bg,
+      // Background colors - use transparent to respect terminal transparency
+      background: transparent,
       backgroundPanel: grays[2],
       backgroundElement: grays[3],
       backgroundMenu: grays[3],

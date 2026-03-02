@@ -179,6 +179,7 @@
   --color-icon-on-brand-selected: var(--icon-on-brand-selected);
   --color-icon-on-interactive-base: var(--icon-on-interactive-base);
   --color-icon-agent-plan-base: var(--icon-agent-plan-base);
+  --color-icon-agent-docs-base: var(--icon-agent-docs-base);
   --color-icon-agent-ask-base: var(--icon-agent-ask-base);
   --color-icon-agent-build-base: var(--icon-agent-build-base);
   --color-icon-on-success-base: var(--icon-on-success-base);

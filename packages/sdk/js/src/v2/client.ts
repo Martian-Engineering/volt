@@ -4,6 +4,7 @@ import { createClient } from "./gen/client/client.gen.js"
 import { type Config } from "./gen/client/types.gen.js"
 import { VoltcodeClient } from "./gen/sdk.gen.js"
 export { type Config as VoltcodeClientConfig, VoltcodeClient }
+export { type Config as OpencodeClientConfig, VoltcodeClient as OpencodeClient }
 
 export function createVoltcodeClient(config?: Config & { directory?: string }) {
   if (!config?.fetch) {
@@ -29,4 +30,8 @@ export function createVoltcodeClient(config?: Config & { directory?: string }) {
 
   const client = createClient(config)
   return new VoltcodeClient({ client })
+}
+
+export function createOpencodeClient(config?: Config & { directory?: string }) {
+  return createVoltcodeClient(config)
 }

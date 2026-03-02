@@ -55,7 +55,6 @@ export const WebFetchTool = Tool.define("webfetch", {
         acceptHeader =
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
     }
-
     const headers = {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
@@ -68,7 +67,7 @@ export const WebFetchTool = Tool.define("webfetch", {
     // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
     const response =
       initial.status === 403 && initial.headers.get("cf-mitigated") === "challenge"
-        ? await fetch(params.url, { signal, headers: { ...headers, "User-Agent": "voltcode" } })
+        ? await fetch(params.url, { signal, headers: { ...headers, "User-Agent": "opencode" } })
         : initial
 
     clearTimeout()
@@ -88,10 +87,30 @@ export const WebFetchTool = Tool.define("webfetch", {
       throw new Error("Response too large (exceeds 5MB limit)")
     }
 
-    const content = new TextDecoder().decode(arrayBuffer)
     const contentType = response.headers.get("content-type") || ""
-
+    const mime = contentType.split(";")[0]?.trim().toLowerCase() || ""
     const title = `${params.url} (${contentType})`
+
+    // Check if response is an image
+    const isImage = mime.startsWith("image/") && mime !== "image/svg+xml" && mime !== "image/vnd.fastbidsheet"
+
+    if (isImage) {
+      const base64Content = Buffer.from(arrayBuffer).toString("base64")
+      return {
+        title,
+        output: "Image fetched successfully",
+        metadata: {},
+        attachments: [
+          {
+            type: "file",
+            mime,
+            url: `data:${mime};base64,${base64Content}`,
+          },
+        ],
+      }
+    }
+
+    const content = new TextDecoder().decode(arrayBuffer)
 
     // Handle content based on requested format and actual content type
     switch (params.format) {

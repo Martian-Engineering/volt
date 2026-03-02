@@ -1,20 +1,19 @@
 import path from "path"
 import fs from "fs/promises"
+import { createWriteStream } from "fs"
 import { Global } from "../global"
 import z from "zod"
+import { Glob } from "./glob"
 
 export namespace Log {
-  export const Level = z
-    .enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"])
-    .meta({ ref: "LogLevel", description: "Log level" })
+  export const Level = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).meta({ ref: "LogLevel", description: "Log level" })
   export type Level = z.infer<typeof Level>
 
   const levelPriority: Record<Level, number> = {
-    TRACE: 0,
-    DEBUG: 1,
-    INFO: 2,
-    WARN: 3,
-    ERROR: 4,
+    DEBUG: 0,
+    INFO: 1,
+    WARN: 2,
+    ERROR: 3,
   }
 
   let level: Level = "INFO"
@@ -24,7 +23,6 @@ export namespace Log {
   }
 
   export type Logger = {
-    trace(message?: any, extra?: Record<string, any>): void
     debug(message?: any, extra?: Record<string, any>): void
     info(message?: any, extra?: Record<string, any>): void
     error(message?: any, extra?: Record<string, any>): void
@@ -48,8 +46,6 @@ export namespace Log {
     print: boolean
     dev?: boolean
     level?: Level
-    /** Override the log file path (absolute) */
-    logFile?: string
   }
 
   let logpath = ""
@@ -65,30 +61,28 @@ export namespace Log {
     if (options.level) level = options.level
     cleanup(Global.Path.log)
     if (options.print) return
-    logpath = options.logFile
-      ? options.logFile
-      : path.join(
-          Global.Path.log,
-          options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
-        )
-    const logfile = Bun.file(logpath)
+    logpath = path.join(
+      Global.Path.log,
+      options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
+    )
     await fs.truncate(logpath).catch(() => {})
-    const writer = logfile.writer()
+    const stream = createWriteStream(logpath, { flags: "a" })
     write = async (msg: any) => {
-      const num = writer.write(msg)
-      writer.flush()
-      return num
+      return new Promise((resolve, reject) => {
+        stream.write(msg, (err) => {
+          if (err) reject(err)
+          else resolve(msg.length)
+        })
+      })
     }
   }
 
   async function cleanup(dir: string) {
-    const glob = new Bun.Glob("????-??-??T??????.log")
-    const files = await Array.fromAsync(
-      glob.scan({
-        cwd: dir,
-        absolute: true,
-      }),
-    )
+    const files = await Glob.scan("????-??-??T??????.log", {
+      cwd: dir,
+      absolute: true,
+      include: "file",
+    })
     if (files.length <= 5) return
 
     const filesToDelete = files.slice(0, -10)
@@ -100,23 +94,6 @@ export namespace Log {
     return error.cause instanceof Error && depth < 10
       ? result + " Caused by: " + formatError(error.cause, depth + 1)
       : result
-  }
-
-  function asSingleLine(value: string): string {
-    return value.replace(/\r?\n/g, "\\n")
-  }
-
-  function formatValue(value: unknown): string {
-    if (value instanceof Error) return asSingleLine(formatError(value))
-    if (typeof value === "string") return asSingleLine(value)
-    if (typeof value === "object") {
-      try {
-        return JSON.stringify(value)
-      } catch {
-        return asSingleLine(String(value))
-      }
-    }
-    return asSingleLine(String(value))
   }
 
   let last = Date.now()
@@ -139,23 +116,17 @@ export namespace Log {
         .filter(([_, value]) => value !== undefined && value !== null)
         .map(([key, value]) => {
           const prefix = `${key}=`
-          return prefix + formatValue(value)
+          if (value instanceof Error) return prefix + formatError(value)
+          if (typeof value === "object") return prefix + JSON.stringify(value)
+          return prefix + value
         })
         .join(" ")
-      const renderedMessage = message === undefined || message === null ? "" : formatValue(message)
       const next = new Date()
       const diff = next.getTime() - last
       last = next.getTime()
-      return (
-        [next.toISOString().split(".")[0], "+" + diff + "ms", prefix, renderedMessage].filter(Boolean).join(" ") + "\n"
-      )
+      return [next.toISOString().split(".")[0], "+" + diff + "ms", prefix, message].filter(Boolean).join(" ") + "\n"
     }
     const result: Logger = {
-      trace(message?: any, extra?: Record<string, any>) {
-        if (shouldLog("TRACE")) {
-          write("TRACE " + build(message, extra))
-        }
-      },
       debug(message?: any, extra?: Record<string, any>) {
         if (shouldLog("DEBUG")) {
           write("DEBUG " + build(message, extra))

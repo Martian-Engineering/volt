@@ -31,7 +31,7 @@ import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { lazy } from "../util/lazy"
 import { InstanceBootstrap } from "../project/bootstrap"
-import { Storage } from "../storage/storage"
+import { NotFoundError } from "../storage/db"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { websocket } from "hono/bun"
 import { HTTPException } from "hono/http-exception"
@@ -40,7 +40,6 @@ import { QuestionRoutes } from "./routes/question"
 import { PermissionRoutes } from "./routes/permission"
 import { GlobalRoutes } from "./routes/global"
 import { MDNS } from "./mdns"
-import { userContextMiddleware } from "./middleware/auth"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -55,11 +54,6 @@ export namespace Server {
     return _url ?? new URL("http://localhost:4096")
   }
 
-  export const Event = {
-    Connected: BusEvent.define("server.connected", z.object({})),
-    Disposed: BusEvent.define("global.disposed", z.object({})),
-  }
-
   const app = new Hono()
   export const App: () => Hono = lazy(
     () =>
@@ -71,7 +65,7 @@ export namespace Server {
           })
           if (err instanceof NamedError) {
             let status: ContentfulStatusCode
-            if (err instanceof Storage.NotFoundError) status = 404
+            if (err instanceof NotFoundError) status = 404
             else if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name.startsWith("Worktree")) status = 400
             else status = 500
@@ -84,9 +78,12 @@ export namespace Server {
           })
         })
         .use((c, next) => {
-          const password = Flag.VOLTCODE_SERVER_PASSWORD
+          // Allow CORS preflight requests to succeed without auth.
+          // Browser clients sending Authorization headers will preflight with OPTIONS.
+          if (c.req.method === "OPTIONS") return next()
+          const password = Flag.OPENCODE_SERVER_PASSWORD
           if (!password) return next()
-          const username = Flag.VOLTCODE_SERVER_USERNAME ?? "voltcode"
+          const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
           return basicAuth({ username, password })(c, next)
         })
         .use(async (c, next) => {
@@ -113,14 +110,15 @@ export namespace Server {
 
               if (input.startsWith("http://localhost:")) return input
               if (input.startsWith("http://127.0.0.1:")) return input
-              if (input === "tauri://localhost" || input === "http://tauri.localhost") return input
+              if (
+                input === "tauri://localhost" ||
+                input === "http://tauri.localhost" ||
+                input === "https://tauri.localhost"
+              )
+                return input
 
               // *.opencode.ai (https only, adjust if needed)
-              if (/^https:\/\/([a-z0-9-]+\.)*voltcode\.ai$/.test(input)) {
-                return input
-              }
-              // *.voltropy.com (for chat.voltropy.com)
-              if (/^https:\/\/([a-z0-9-]+\.)*voltropy\.com$/.test(input)) {
+              if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) {
                 return input
               }
               if (_corsWhitelist.includes(input)) {
@@ -131,16 +129,79 @@ export namespace Server {
             },
           }),
         )
-        // User context middleware - extracts user ID from JWT for multi-tenant isolation
-        .use(userContextMiddleware())
         .route("/global", GlobalRoutes())
+        .put(
+          "/auth/:providerID",
+          describeRoute({
+            summary: "Set auth credentials",
+            description: "Set authentication credentials",
+            operationId: "auth.set",
+            responses: {
+              200: {
+                description: "Successfully set authentication credentials",
+                content: {
+                  "application/json": {
+                    schema: resolver(z.boolean()),
+                  },
+                },
+              },
+              ...errors(400),
+            },
+          }),
+          validator(
+            "param",
+            z.object({
+              providerID: z.string(),
+            }),
+          ),
+          validator("json", Auth.Info),
+          async (c) => {
+            const providerID = c.req.valid("param").providerID
+            const info = c.req.valid("json")
+            await Auth.set(providerID, info)
+            return c.json(true)
+          },
+        )
+        .delete(
+          "/auth/:providerID",
+          describeRoute({
+            summary: "Remove auth credentials",
+            description: "Remove authentication credentials",
+            operationId: "auth.remove",
+            responses: {
+              200: {
+                description: "Successfully removed authentication credentials",
+                content: {
+                  "application/json": {
+                    schema: resolver(z.boolean()),
+                  },
+                },
+              },
+              ...errors(400),
+            },
+          }),
+          validator(
+            "param",
+            z.object({
+              providerID: z.string(),
+            }),
+          ),
+          async (c) => {
+            const providerID = c.req.valid("param").providerID
+            await Auth.remove(providerID)
+            return c.json(true)
+          },
+        )
         .use(async (c, next) => {
-          let directory = c.req.query("directory") || c.req.header("x-voltcode-directory") || process.cwd()
-          try {
-            directory = decodeURIComponent(directory)
-          } catch {
-            // fallback to original value
-          }
+          if (c.req.path === "/log") return next()
+          const raw = c.req.query("directory") || c.req.header("x-opencode-directory") || process.cwd()
+          const directory = (() => {
+            try {
+              return decodeURIComponent(raw)
+            } catch {
+              return raw
+            }
+          })()
           return Instance.provide({
             directory,
             init: InstanceBootstrap,
@@ -154,9 +215,9 @@ export namespace Server {
           openAPIRouteHandler(app, {
             documentation: {
               info: {
-                title: "voltcode",
+                title: "opencode",
                 version: "0.0.3",
-                description: "voltcode api",
+                description: "opencode api",
               },
               openapi: "3.1.1",
             },
@@ -178,7 +239,7 @@ export namespace Server {
           "/instance/dispose",
           describeRoute({
             summary: "Dispose instance",
-            description: "Clean up and dispose the current VoltCode instance, releasing all resources.",
+            description: "Clean up and dispose the current OpenCode instance, releasing all resources.",
             operationId: "instance.dispose",
             responses: {
               200: {
@@ -201,7 +262,7 @@ export namespace Server {
           describeRoute({
             summary: "Get paths",
             description:
-              "Retrieve the current working directory and related path information for the VoltCode instance.",
+              "Retrieve the current working directory and related path information for the OpenCode instance.",
             operationId: "path.get",
             responses: {
               200: {
@@ -265,7 +326,7 @@ export namespace Server {
           "/command",
           describeRoute({
             summary: "List commands",
-            description: "Get a list of all available commands in the VoltCode system.",
+            description: "Get a list of all available commands in the OpenCode system.",
             operationId: "command.list",
             responses: {
               200: {
@@ -305,7 +366,7 @@ export namespace Server {
             "json",
             z.object({
               service: z.string().meta({ description: "Service name for the log entry" }),
-              level: z.enum(["trace", "debug", "info", "error", "warn"]).meta({ description: "Log level" }),
+              level: z.enum(["debug", "info", "error", "warn"]).meta({ description: "Log level" }),
               message: z.string().meta({ description: "Log message" }),
               extra: z
                 .record(z.string(), z.any())
@@ -318,9 +379,6 @@ export namespace Server {
             const logger = Log.create({ service })
 
             switch (level) {
-              case "trace":
-                logger.trace(message, extra)
-                break
               case "debug":
                 logger.debug(message, extra)
                 break
@@ -342,7 +400,7 @@ export namespace Server {
           "/agent",
           describeRoute({
             summary: "List agents",
-            description: "Get a list of all available AI agents in the VoltCode system.",
+            description: "Get a list of all available AI agents in the OpenCode system.",
             operationId: "app.agents",
             responses: {
               200: {
@@ -364,7 +422,7 @@ export namespace Server {
           "/skill",
           describeRoute({
             summary: "List skills",
-            description: "Get a list of all available skills in the VoltCode system.",
+            description: "Get a list of all available skills in the OpenCode system.",
             operationId: "app.skills",
             responses: {
               200: {
@@ -424,38 +482,6 @@ export namespace Server {
             return c.json(await Format.status())
           },
         )
-        .put(
-          "/auth/:providerID",
-          describeRoute({
-            summary: "Set auth credentials",
-            description: "Set authentication credentials",
-            operationId: "auth.set",
-            responses: {
-              200: {
-                description: "Successfully set authentication credentials",
-                content: {
-                  "application/json": {
-                    schema: resolver(z.boolean()),
-                  },
-                },
-              },
-              ...errors(400),
-            },
-          }),
-          validator(
-            "param",
-            z.object({
-              providerID: z.string(),
-            }),
-          ),
-          validator("json", Auth.Info),
-          async (c) => {
-            const providerID = c.req.valid("param").providerID
-            const info = c.req.valid("json")
-            await Auth.set(providerID, info)
-            return c.json(true)
-          },
-        )
         .get(
           "/event",
           describeRoute({
@@ -475,6 +501,8 @@ export namespace Server {
           }),
           async (c) => {
             log.info("event connected")
+            c.header("X-Accel-Buffering", "no")
+            c.header("X-Content-Type-Options", "nosniff")
             return streamSSE(c, async (stream) => {
               stream.writeSSE({
                 data: JSON.stringify({
@@ -491,8 +519,7 @@ export namespace Server {
                 }
               })
 
-              // Send heartbeat every 8s to keep connection alive through reverse proxies
-              // (Fly.io edge proxy drops idle SSE connections after ~10s)
+              // Send heartbeat every 10s to prevent stalled proxy streams.
               const heartbeat = setInterval(() => {
                 stream.writeSSE({
                   data: JSON.stringify({
@@ -500,7 +527,7 @@ export namespace Server {
                     properties: {},
                   }),
                 })
-              }, 8000)
+              }, 10_000)
 
               await new Promise<void>((resolve) => {
                 stream.onAbort(() => {
@@ -515,26 +542,7 @@ export namespace Server {
         )
         .all("/*", async (c) => {
           const path = c.req.path
-          const csp =
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'"
-          const appDir = process.env.VOLTCODE_APP_DIR
-          if (appDir) {
-            const filePath = path === "/" ? "/index.html" : path
-            const file = Bun.file(`${appDir}${filePath}`)
-            if (await file.exists()) {
-              const response = new Response(file)
-              response.headers.set("Content-Security-Policy", csp)
-              return response
-            }
-            const index = Bun.file(`${appDir}/index.html`)
-            if (await index.exists()) {
-              const response = new Response(index, {
-                headers: { "Content-Type": "text/html" },
-              })
-              response.headers.set("Content-Security-Policy", csp)
-              return response
-            }
-          }
+
           const response = await proxy(`https://app.opencode.ai${path}`, {
             ...c.req,
             headers: {
@@ -542,7 +550,10 @@ export namespace Server {
               host: "app.opencode.ai",
             },
           })
-          response.headers.set("Content-Security-Policy", csp)
+          response.headers.set(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:",
+          )
           return response
         }) as unknown as Hono,
   )
@@ -552,9 +563,9 @@ export namespace Server {
     const result = await generateSpecs(App() as Hono, {
       documentation: {
         info: {
-          title: "voltcode",
+          title: "opencode",
           version: "1.0.0",
-          description: "voltcode api",
+          description: "opencode api",
         },
         openapi: "3.1.1",
       },
@@ -562,7 +573,13 @@ export namespace Server {
     return result
   }
 
-  export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
+  export function listen(opts: {
+    port: number
+    hostname: string
+    mdns?: boolean
+    mdnsDomain?: string
+    cors?: string[]
+  }) {
     _corsWhitelist = opts.cors ?? []
 
     const args = {
@@ -590,7 +607,7 @@ export namespace Server {
       opts.hostname !== "localhost" &&
       opts.hostname !== "::1"
     if (shouldPublishMDNS) {
-      MDNS.publish(server.port!)
+      MDNS.publish(server.port!, opts.mdnsDomain)
     } else if (opts.mdns) {
       log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
     }

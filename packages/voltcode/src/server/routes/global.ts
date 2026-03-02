@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { describeRoute, resolver } from "hono-openapi"
+import { describeRoute, resolver, validator } from "hono-openapi"
 import { streamSSE } from "hono/streaming"
 import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
@@ -8,6 +8,8 @@ import { Instance } from "../../project/instance"
 import { Installation } from "@/installation"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
+import { Config } from "../../config/config"
+import { errors } from "../error"
 
 const log = Log.create({ service: "server" })
 
@@ -19,7 +21,7 @@ export const GlobalRoutes = lazy(() =>
       "/health",
       describeRoute({
         summary: "Get health",
-        description: "Get health information about the VoltCode server.",
+        description: "Get health information about the OpenCode server.",
         operationId: "global.health",
         responses: {
           200: {
@@ -40,7 +42,7 @@ export const GlobalRoutes = lazy(() =>
       "/event",
       describeRoute({
         summary: "Get global events",
-        description: "Subscribe to global events from the VoltCode system using server-sent events.",
+        description: "Subscribe to global events from the OpenCode system using server-sent events.",
         operationId: "global.event",
         responses: {
           200: {
@@ -64,6 +66,8 @@ export const GlobalRoutes = lazy(() =>
       }),
       async (c) => {
         log.info("global event connected")
+        c.header("X-Accel-Buffering", "no")
+        c.header("X-Content-Type-Options", "nosniff")
         return streamSSE(c, async (stream) => {
           stream.writeSSE({
             data: JSON.stringify({
@@ -80,8 +84,7 @@ export const GlobalRoutes = lazy(() =>
           }
           GlobalBus.on("event", handler)
 
-          // Send heartbeat every 8s to keep connection alive through reverse proxies
-          // (Fly.io edge proxy drops idle SSE connections after ~10s)
+          // Send heartbeat every 10s to prevent stalled proxy streams.
           const heartbeat = setInterval(() => {
             stream.writeSSE({
               data: JSON.stringify({
@@ -91,7 +94,7 @@ export const GlobalRoutes = lazy(() =>
                 },
               }),
             })
-          }, 8000)
+          }, 10_000)
 
           await new Promise<void>((resolve) => {
             stream.onAbort(() => {
@@ -104,11 +107,57 @@ export const GlobalRoutes = lazy(() =>
         })
       },
     )
+    .get(
+      "/config",
+      describeRoute({
+        summary: "Get global configuration",
+        description: "Retrieve the current global OpenCode configuration settings and preferences.",
+        operationId: "global.config.get",
+        responses: {
+          200: {
+            description: "Get global config info",
+            content: {
+              "application/json": {
+                schema: resolver(Config.Info),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await Config.getGlobal())
+      },
+    )
+    .patch(
+      "/config",
+      describeRoute({
+        summary: "Update global configuration",
+        description: "Update global OpenCode configuration settings and preferences.",
+        operationId: "global.config.update",
+        responses: {
+          200: {
+            description: "Successfully updated global config",
+            content: {
+              "application/json": {
+                schema: resolver(Config.Info),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", Config.Info),
+      async (c) => {
+        const config = c.req.valid("json")
+        const next = await Config.updateGlobal(config)
+        return c.json(next)
+      },
+    )
     .post(
       "/dispose",
       describeRoute({
         summary: "Dispose instance",
-        description: "Clean up and dispose all VoltCode instances, releasing all resources.",
+        description: "Clean up and dispose all OpenCode instances, releasing all resources.",
         operationId: "global.dispose",
         responses: {
           200: {
