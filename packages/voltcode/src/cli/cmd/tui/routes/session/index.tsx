@@ -1242,7 +1242,17 @@ export function Session() {
       >
         <Switch>
           <Match when={taskTreeVisible() && !session()?.parentID}>
-            <TaskTreePane sessionID={route.sessionID} showDevInfo={args.dev ?? false} />
+            <box flexDirection="column" flexGrow={1}>
+              <TaskTreePane sessionID={route.sessionID} showDevInfo={args.dev ?? false} />
+              <box flexShrink={0}>
+                <Show when={permissions().length > 0}>
+                  <PermissionPrompt request={permissions()[0]} />
+                </Show>
+                <Show when={permissions().length === 0 && questions().length > 0}>
+                  <QuestionPrompt request={questions()[0]} />
+                </Show>
+              </box>
+            </box>
           </Match>
           <Match when={true}>
             <box flexDirection="row">
