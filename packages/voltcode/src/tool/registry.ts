@@ -30,6 +30,12 @@ import { Truncate } from "./truncation"
 import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
+import { isLcmReady } from "@/session/lcm/runtime"
+import { LcmGrepTool } from "./lcm-grep"
+import { LcmExpandTool } from "./lcm-expand"
+import { LcmExpandQueryTool } from "./lcm-expand-query"
+import { LcmReadTool } from "./lcm-read"
+import { LcmDescribeTool } from "./lcm-describe"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -99,6 +105,7 @@ export namespace ToolRegistry {
     const custom = await state().then((x) => x.custom)
     const config = await Config.get()
     const question = ["app", "cli", "desktop"].includes(Flag.VOLTCODE_CLIENT) || Flag.VOLTCODE_ENABLE_QUESTION_TOOL
+    const lcmReady = isLcmReady()
 
     return [
       InvalidTool,
@@ -117,6 +124,7 @@ export namespace ToolRegistry {
       CodeSearchTool,
       SkillTool,
       ApplyPatchTool,
+      ...(lcmReady ? [LcmDescribeTool, LcmExpandTool, LcmExpandQueryTool, LcmGrepTool, LcmReadTool] : []),
       ...(Flag.VOLTCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
       ...(Flag.VOLTCODE_EXPERIMENTAL_PLAN_MODE && Flag.VOLTCODE_CLIENT === "cli" ? [PlanExitTool] : []),

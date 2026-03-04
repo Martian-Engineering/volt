@@ -25,7 +25,7 @@ export namespace ConfigPaths {
       ...(!Flag.VOLTCODE_DISABLE_PROJECT_CONFIG
         ? await Array.fromAsync(
             Filesystem.up({
-              targets: [".opencode"],
+              targets: [".voltcode"],
               start: directory,
               stop: worktree,
             }),
@@ -33,7 +33,7 @@ export namespace ConfigPaths {
         : []),
       ...(await Array.fromAsync(
         Filesystem.up({
-          targets: [".opencode"],
+          targets: [".voltcode"],
           start: Global.Path.home,
           stop: Global.Path.home,
         }),

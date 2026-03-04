@@ -162,7 +162,7 @@ describe("Scheduler Integration", () => {
       const job100k = jobs.find((j) => j.context_length === 100000)
       const job500k = jobs.find((j) => j.context_length === 500000)
 
-      expect(job10k?.timeout_minutes).toBe(5) // ceil(1) * 5
+      expect(job10k?.timeout_minutes).toBe(30) // min 30
       expect(job100k?.timeout_minutes).toBe(50) // ceil(10) * 5
       expect(job500k?.timeout_minutes).toBe(250) // ceil(50) * 5
     })

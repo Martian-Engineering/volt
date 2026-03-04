@@ -103,7 +103,7 @@ export namespace Agent {
             },
             edit: {
               "*": "deny",
-              [path.join(".opencode", "plans", "*.md")]: "allow",
+              [path.join(".voltcode", "plans", "*.md")]: "allow",
               [path.relative(Instance.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
             },
           }),
@@ -115,14 +115,7 @@ export namespace Agent {
       general: {
         name: "general",
         description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            todoread: "deny",
-            todowrite: "deny",
-          }),
-          user,
-        ),
+        permission: PermissionNext.merge(defaults, user),
         options: {},
         mode: "subagent",
         native: true,
@@ -231,19 +224,24 @@ export namespace Agent {
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
     }
 
-    // Ensure Truncate.GLOB is allowed unless explicitly configured
+    // Ensure truncation output path access is always allowed unless explicitly denied.
     for (const name in result) {
       const agent = result[name]
       const explicit = agent.permission.some((r) => {
         if (r.permission !== "external_directory") return false
         if (r.action !== "deny") return false
-        return r.pattern === Truncate.GLOB
+        return r.pattern === Truncate.DIR || r.pattern === Truncate.GLOB
       })
       if (explicit) continue
 
       result[name].permission = PermissionNext.merge(
         result[name].permission,
-        PermissionNext.fromConfig({ external_directory: { [Truncate.GLOB]: "allow" } }),
+        PermissionNext.fromConfig({
+          external_directory: {
+            [Truncate.DIR]: "allow",
+            [Truncate.GLOB]: "allow",
+          },
+        }),
       )
     }
 

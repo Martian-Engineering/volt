@@ -155,7 +155,7 @@ export namespace LargeFile {
     const lines: string[] = []
     lines.push(`[Large File ID: ${file.fileId}]`)
     lines.push(`[Storage: ${file.storageKind}]`)
-    if (file.storageKind === "path" && file.originalPath) {
+    if (file.originalPath) {
       lines.push(`[Path: ${file.originalPath}]`)
     }
     lines.push(`[Type: ${file.mimeType}]`)

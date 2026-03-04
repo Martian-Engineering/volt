@@ -46,9 +46,8 @@ test("provider loaded from env variable", async () => {
     fn: async () => {
       const providers = await Provider.list()
       expect(providers["anthropic"]).toBeDefined()
-      // Note: source becomes "custom" because CUSTOM_LOADERS run after env loading
-      // and anthropic has a custom loader that merges additional options
-      expect(providers["anthropic"].source).toBe("custom")
+      // Source remains env even when custom loaders add provider options.
+      expect(providers["anthropic"].source).toBe("env")
     },
   })
 })
@@ -2152,7 +2151,7 @@ test("Google Vertex: retains baseURL for custom proxy", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
-        path.join(dir, "opencode.json"),
+        path.join(dir, "voltcode.json"),
         JSON.stringify({
           $schema: "https://opencode.ai/config.json",
           provider: {
@@ -2196,7 +2195,7 @@ test("Google Vertex: supports OpenAI compatible models", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
-        path.join(dir, "opencode.json"),
+        path.join(dir, "voltcode.json"),
         JSON.stringify({
           $schema: "https://opencode.ai/config.json",
           provider: {

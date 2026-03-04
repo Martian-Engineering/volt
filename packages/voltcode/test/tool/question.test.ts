@@ -1,5 +1,4 @@
 import { describe, expect, test, spyOn, beforeEach, afterEach } from "bun:test"
-import { z } from "zod"
 import { QuestionTool } from "../../src/tool/question"
 import * as QuestionModule from "../../src/question"
 
@@ -63,7 +62,7 @@ describe("tool.question", () => {
     expect(result.output).toContain(`"What is your favorite animal?"="Dog"`)
   })
 
-  test("should throw an Error for header exceeding 30 characters", async () => {
+  test("should execute with header exceeding 30 characters", async () => {
     const tool = await QuestionTool.init()
     const questions = [
       {
@@ -72,17 +71,12 @@ describe("tool.question", () => {
         options: [{ label: "Dog", description: "Man's best friend" }],
       },
     ]
-    try {
-      await tool.execute({ questions }, ctx)
-      // If it reaches here, the test should fail
-      expect(true).toBe(false)
-    } catch (e: any) {
-      expect(e).toBeInstanceOf(Error)
-      expect(e.cause).toBeInstanceOf(z.ZodError)
-    }
+    askSpy.mockResolvedValueOnce([["Dog"]])
+    const result = await tool.execute({ questions }, ctx)
+    expect(result.output).toContain(`"What is your favorite animal?"="Dog"`)
   })
 
-  test("should throw an Error for label exceeding 30 characters", async () => {
+  test("should execute with label exceeding 30 characters", async () => {
     const tool = await QuestionTool.init()
     const questions = [
       {
@@ -93,13 +87,8 @@ describe("tool.question", () => {
         ],
       },
     ]
-    try {
-      await tool.execute({ questions }, ctx)
-      // If it reaches here, the test should fail
-      expect(true).toBe(false)
-    } catch (e: any) {
-      expect(e).toBeInstanceOf(Error)
-      expect(e.cause).toBeInstanceOf(z.ZodError)
-    }
+    askSpy.mockResolvedValueOnce([["This is a very, very, very long label that will exceed the limit"]])
+    const result = await tool.execute({ questions }, ctx)
+    expect(result.title).toBe("Asked 1 question")
   })
 })

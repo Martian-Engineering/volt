@@ -174,6 +174,7 @@ export const BashTool = Tool.define("bash", async () => {
         cwd,
         env: {
           ...process.env,
+          VOLTCODE_PARENT_SESSION: ctx.sessionID,
           ...shellEnv.env,
         },
         stdio: ["ignore", "pipe", "pipe"],

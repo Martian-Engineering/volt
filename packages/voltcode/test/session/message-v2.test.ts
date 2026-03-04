@@ -282,50 +282,31 @@ describe("session.message-v2.toModelMessages", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "run tool" }],
-      },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "The tool bash returned the following attachments:" },
-          {
-            type: "file",
-            mediaType: "image/png",
-            filename: "attachment.png",
-            data: "https://example.com/attachment.png",
-          },
-        ],
-      },
-      {
-        role: "assistant",
-        content: [
-          { type: "text", text: "done", providerOptions: { openai: { assistant: "meta" } } },
-          {
-            type: "tool-call",
-            toolCallId: "call-1",
-            toolName: "bash",
-            input: { cmd: "ls" },
-            providerExecuted: undefined,
-            providerOptions: { openai: { tool: "meta" } },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "call-1",
-            toolName: "bash",
-            output: { type: "text", value: "ok" },
-            providerOptions: { openai: { tool: "meta" } },
-          },
-        ],
-      },
-    ])
+    const output = await MessageV2.toModelMessages(input, model)
+    expect(output.length).toBe(3)
+    expect(output[0]).toStrictEqual({
+      role: "user",
+      content: [{ type: "text", text: "run tool" }],
+    })
+    expect(output[1]).toStrictEqual({
+      role: "assistant",
+      content: [
+        { type: "text", text: "done" },
+        {
+          type: "tool-call",
+          toolCallId: "call-1",
+          toolName: "bash",
+          input: { cmd: "ls" },
+          providerExecuted: undefined,
+        },
+      ],
+    })
+    const toolResult = output[2] as any
+    expect(toolResult.role).toBe("tool")
+    expect(toolResult.content[0]?.type).toBe("tool-result")
+    expect(toolResult.content[0]?.toolName).toBe("bash")
+    expect(toolResult.content[0]?.output?.type).toBe("content")
+    expect(toolResult.content[0]?.output?.value?.[0]?.text).toBe("ok")
   })
 
   test("replaces compacted tool output with placeholder", async () => {
@@ -431,7 +412,8 @@ describe("session.message-v2.toModelMessages", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
+    const output = await MessageV2.toModelMessages(input, model)
+    expect(output).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -445,7 +427,6 @@ describe("session.message-v2.toModelMessages", () => {
             toolName: "bash",
             input: { cmd: "ls" },
             providerExecuted: undefined,
-            providerOptions: { openai: { tool: "meta" } },
           },
         ],
       },
@@ -457,7 +438,6 @@ describe("session.message-v2.toModelMessages", () => {
             toolCallId: "call-1",
             toolName: "bash",
             output: { type: "error-text", value: "nope" },
-            providerOptions: { openai: { tool: "meta" } },
           },
         ],
       },

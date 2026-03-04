@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Project } from "../../src/project/project"
 import { Log } from "../../src/util/log"
-import { Storage } from "../../src/storage/storage"
 import { $ } from "bun"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
@@ -99,11 +98,12 @@ describe("Project.discover", () => {
 
     await Project.discover(project)
 
-    const updated = await Storage.read<Project.Info>(["project", project.id])
-    expect(updated.icon).toBeDefined()
-    expect(updated.icon?.url).toStartWith("data:")
-    expect(updated.icon?.url).toContain("base64")
-    expect(updated.icon?.color).toBeUndefined()
+    const updated = Project.get(project.id)
+    expect(updated).toBeDefined()
+    expect(updated?.icon).toBeDefined()
+    expect(updated?.icon?.url).toStartWith("data:")
+    expect(updated?.icon?.url).toContain("base64")
+    expect(updated?.icon?.color).toBeUndefined()
   })
 
   test("should not discover non-image files", async () => {
@@ -114,7 +114,8 @@ describe("Project.discover", () => {
 
     await Project.discover(project)
 
-    const updated = await Storage.read<Project.Info>(["project", project.id])
-    expect(updated.icon).toBeUndefined()
+    const updated = Project.get(project.id)
+    expect(updated).toBeDefined()
+    expect(updated?.icon).toBeUndefined()
   })
 })

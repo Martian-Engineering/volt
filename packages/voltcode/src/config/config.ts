@@ -46,11 +46,11 @@ export namespace Config {
   function systemManagedConfigDir(): string {
     switch (process.platform) {
       case "darwin":
-        return "/Library/Application Support/opencode"
+        return "/Library/Application Support/voltcode"
       case "win32":
-        return path.join(process.env.ProgramData || "C:\\ProgramData", "opencode")
+        return path.join(process.env.ProgramData || "C:\\ProgramData", "voltcode")
       default:
-        return "/etc/opencode"
+        return "/etc/voltcode"
     }
   }
 
@@ -76,19 +76,19 @@ export function managedConfigDir() {
     const auth = await Auth.all()
 
     // Config loading order (low -> high precedence): https://opencode.ai/docs/config#precedence-order
-    // 1) Remote .well-known/opencode (org defaults)
-    // 2) Global config (~/.config/opencode/opencode.json{,c})
+    // 1) Remote .well-known/voltcode (org defaults)
+    // 2) Global config (~/.config/voltcode/voltcode.json{,c})
     // 3) Custom config (VOLTCODE_CONFIG)
-    // 4) Project config (opencode.json{,c})
-    // 5) .opencode directories (.opencode/agents/, .opencode/commands/, .opencode/plugins/, .opencode/opencode.json{,c})
+    // 4) Project config (voltcode.json{,c})
+    // 5) .voltcode directories (.voltcode/agents/, .voltcode/commands/, .voltcode/plugins/, .voltcode/voltcode.json{,c})
     // 6) Inline config (VOLTCODE_CONFIG_CONTENT)
     // Managed config directory is enterprise-only and always overrides everything above.
     let result: Info = {}
     for (const [key, value] of Object.entries(auth)) {
       if (value.type === "wellknown") {
         process.env[value.key] = value.token
-        log.debug("fetching remote config", { url: `${key}/.well-known/opencode` })
-        const response = await fetch(`${key}/.well-known/opencode`)
+        log.debug("fetching remote config", { url: `${key}/.well-known/voltcode` })
+        const response = await fetch(`${key}/.well-known/voltcode`)
         if (!response.ok) {
           throw new Error(`failed to fetch remote config from ${key}: ${response.status}`)
         }
@@ -99,8 +99,8 @@ export function managedConfigDir() {
         result = mergeConfigConcatArrays(
           result,
           await load(JSON.stringify(remoteConfig), {
-            dir: path.dirname(`${key}/.well-known/opencode`),
-            source: `${key}/.well-known/opencode`,
+            dir: path.dirname(`${key}/.well-known/voltcode`),
+            source: `${key}/.well-known/voltcode`,
           }),
         )
         log.debug("loaded remote config from well-known", { url: key })
@@ -122,7 +122,7 @@ export function managedConfigDir() {
 
     // Project config overrides global and remote config.
     if (!Flag.VOLTCODE_DISABLE_PROJECT_CONFIG) {
-      for (const file of await ConfigPaths.projectFiles("opencode", Instance.directory, Instance.worktree)) {
+      for (const file of await ConfigPaths.projectFiles("voltcode", Instance.directory, Instance.worktree)) {
         result = mergeConfigConcatArrays(result, await loadFile(file))
       }
     }
@@ -133,7 +133,7 @@ export function managedConfigDir() {
 
     const directories = await ConfigPaths.directories(Instance.directory, Instance.worktree)
 
-    // .opencode directory config overrides (project and global) config sources.
+    // .voltcode directory config overrides (project and global) config sources.
     if (Flag.VOLTCODE_CONFIG_DIR) {
       log.debug("loading config from VOLTCODE_CONFIG_DIR", { path: Flag.VOLTCODE_CONFIG_DIR })
     }
@@ -141,8 +141,8 @@ export function managedConfigDir() {
     const deps = []
 
     for (const dir of unique(directories)) {
-      if (dir.endsWith(".opencode") || dir === Flag.VOLTCODE_CONFIG_DIR) {
-        for (const file of ["opencode.jsonc", "opencode.json"]) {
+      if (dir.endsWith(".voltcode") || dir === Flag.VOLTCODE_CONFIG_DIR) {
+        for (const file of ["voltcode.jsonc", "voltcode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
@@ -182,7 +182,7 @@ export function managedConfigDir() {
     // which would fail on system directories requiring elevated permissions
     // This way it only loads config file and not skills/plugins/commands
     if (existsSync(managedDir)) {
-      for (const file of ["opencode.jsonc", "opencode.json"]) {
+      for (const file of ["voltcode.jsonc", "voltcode.json"]) {
         result = mergeConfigConcatArrays(result, await loadFile(path.join(managedDir, file)))
       }
     }
@@ -353,7 +353,7 @@ export function managedConfigDir() {
       })
       if (!md) continue
 
-      const patterns = ["/.opencode/command/", "/.opencode/commands/", "/command/", "/commands/"]
+      const patterns = ["/.voltcode/command/", "/.voltcode/commands/", "/command/", "/commands/"]
       const file = rel(item, patterns) ?? path.basename(item)
       const name = trim(file)
 
@@ -392,7 +392,7 @@ export function managedConfigDir() {
       })
       if (!md) continue
 
-      const patterns = ["/.opencode/agent/", "/.opencode/agents/", "/agent/", "/agents/"]
+      const patterns = ["/.voltcode/agent/", "/.voltcode/agents/", "/agent/", "/agents/"]
       const file = rel(item, patterns) ?? path.basename(item)
       const agentName = trim(file)
 
@@ -1181,6 +1181,8 @@ export function managedConfigDir() {
       mergeDeep(await loadFile(path.join(Global.Path.config, "config.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.jsonc"))),
+      mergeDeep(await loadFile(path.join(Global.Path.config, "voltcode.json"))),
+      mergeDeep(await loadFile(path.join(Global.Path.config, "voltcode.jsonc"))),
     )
 
     const legacy = path.join(Global.Path.config, "config")
@@ -1230,7 +1232,7 @@ export function managedConfigDir() {
       delete copy.theme
       delete copy.keybinds
       delete copy.tui
-      log.warn("tui keys in opencode config are deprecated; move them to tui.json", { path: source })
+      log.warn("tui keys in voltcode config are deprecated; move them to tui.json", { path: source })
       return copy
     })()
 
@@ -1294,7 +1296,8 @@ export function managedConfigDir() {
   }
 
   function globalConfigFile() {
-    const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
+    const candidates = ["voltcode.jsonc", "voltcode.json", "config.json", "opencode.jsonc", "opencode.json"].map(
+      (file) =>
       path.join(Global.Path.config, file),
     )
     for (const file of candidates) {

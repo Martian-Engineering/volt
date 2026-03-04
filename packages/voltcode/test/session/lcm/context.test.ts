@@ -537,6 +537,7 @@ describe("session.lcm.context", () => {
     test("evicts oldest active bindles on overflow with archive-stub lineage across repeated rounds", async () => {
       setLcmPolicyConfigForTesting(
         parseLcmPolicyConfig({
+          VOLTCODE_LCM_MODE: "dolt",
           VOLTCODE_LCM_DOLT_BINDLES_SOFT: "20",
           VOLTCODE_LCM_DOLT_BINDLES_DELTA: "1",
           VOLTCODE_LCM_DOLT_BINDLES_TARGET: "15",

@@ -2,6 +2,8 @@ import { Instance } from "../project/instance"
 import { Log } from "../util/log"
 import { Flag } from "../flag/flag"
 import { Filesystem } from "../util/filesystem"
+import { Database, eq } from "../storage/db"
+import { SessionTable } from "../session/session.sql"
 
 export namespace FileTime {
   const log = Log.create({ service: "file.time" })
@@ -33,6 +35,40 @@ export namespace FileTime {
     return state().read[sessionID]?.[file]
   }
 
+  async function getTreeReadTime(sessionID: string, file: string): Promise<Date | undefined> {
+    const reads = state().read
+    let latest = reads[sessionID]?.[file]
+
+    const rows = Database.use((db) => db.select().from(SessionTable).all())
+    const childrenByParent = new Map<string, string[]>()
+    for (const row of rows) {
+      if (!row.parent_id) continue
+      const list = childrenByParent.get(row.parent_id)
+      if (list) list.push(row.id)
+      else childrenByParent.set(row.parent_id, [row.id])
+    }
+
+    const queue: string[] = [sessionID]
+    const seen = new Set<string>(queue)
+    while (queue.length > 0) {
+      const current = queue.shift()
+      if (!current) continue
+      const children = childrenByParent.get(current) ?? []
+      for (const childID of children) {
+        if (seen.has(childID)) continue
+        seen.add(childID)
+        queue.push(childID)
+        const readTime = reads[childID]?.[file]
+        if (!readTime) continue
+        if (!latest || readTime.getTime() > latest.getTime()) {
+          latest = readTime
+        }
+      }
+    }
+
+    return latest
+  }
+
   export async function withLock<T>(filepath: string, fn: () => Promise<T>): Promise<T> {
     const current = state()
     const currentLock = current.locks.get(filepath) ?? Promise.resolve()
@@ -58,8 +94,8 @@ export namespace FileTime {
       return
     }
 
-    const time = get(sessionID, filepath)
-    if (!time) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
+    const time = await getTreeReadTime(sessionID, filepath)
+    if (!time) throw new Error(`You must read the file ${filepath} before overwriting it. Use the Read tool first`)
     const mtime = Filesystem.stat(filepath)?.mtime
     // Allow a 50ms tolerance for Windows NTFS timestamp fuzziness / async flushing
     if (mtime && mtime.getTime() > time.getTime() + 50) {

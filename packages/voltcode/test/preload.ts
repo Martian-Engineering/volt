@@ -219,6 +219,12 @@ if (response.ok) {
 // Disable models.dev refresh to avoid race conditions during tests
 process.env["VOLTCODE_DISABLE_MODELS_FETCH"] = "true"
 
+// Clear local config overrides from repo .env so tests stay fixture-driven.
+delete process.env["VOLTCODE_CONFIG"]
+delete process.env["VOLTCODE_CONFIG_DIR"]
+delete process.env["VOLTCODE_CONFIG_CONTENT"]
+delete process.env["VOLTCODE_PERMISSION"]
+
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]
 delete process.env["OPENAI_API_KEY"]
