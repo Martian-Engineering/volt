@@ -315,7 +315,7 @@ export namespace Session {
       )
     })
     const cfg = await Config.get()
-    if (!result.parentID && (Flag.OPENCODE_AUTO_SHARE || cfg.share === "auto"))
+    if (!result.parentID && (Flag.VOLTCODE_AUTO_SHARE || cfg.share === "auto"))
       share(result.id).catch(() => {
         // Silently ignore sharing errors during session creation
       })
@@ -376,6 +376,30 @@ export namespace Session {
         const row = db
           .update(SessionTable)
           .set({ title: input.title })
+          .where(eq(SessionTable.id, input.sessionID))
+          .returning()
+          .get()
+        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
+        const info = fromRow(row)
+        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        return info
+      })
+    },
+  )
+
+  export const setParent = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      parentID: Identifier.schema("session").optional(),
+    }),
+    async (input) => {
+      return Database.use((db) => {
+        const row = db
+          .update(SessionTable)
+          .set({
+            parent_id: input.parentID ?? null,
+            time_updated: Date.now(),
+          })
           .where(eq(SessionTable.id, input.sessionID))
           .returning()
           .get()

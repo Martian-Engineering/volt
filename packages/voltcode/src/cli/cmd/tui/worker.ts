@@ -23,7 +23,6 @@ function parseLogLevelArg(argv: string[]): Log.Level | undefined {
 await Log.init({
   print: process.argv.includes("--print-logs"),
   dev: Installation.isLocal(),
-  logFile: process.env.VOLTCODE_LOG_FILE,
   level: (() => {
     const argLevel = parseLogLevelArg(process.argv)
     if (argLevel) return argLevel

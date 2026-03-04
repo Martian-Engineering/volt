@@ -89,7 +89,7 @@ export namespace LLM {
       )
 
       const header = system[0]
-      const original = clone(system)
+      const original = [...system]
       await Plugin.trigger(
         "experimental.chat.system.transform",
         { sessionID: input.sessionID, model: input.model },
@@ -144,14 +144,7 @@ export namespace LLM {
       },
     )
 
-    const maxOutputTokens = isCodex
-      ? undefined
-      : ProviderTransform.maxOutputTokens(
-          input.model.api.npm,
-          params.options,
-          input.model.limit.output,
-          OUTPUT_TOKEN_MAX,
-        )
+    const maxOutputTokens = isCodex ? undefined : ProviderTransform.maxOutputTokens(input.model)
 
     const tools = await resolveTools(input)
 
@@ -253,7 +246,6 @@ export namespace LLM {
         model: language as any,
         middleware: [
           {
-            specificationVersion: "v3" as const,
             async transformParams(args) {
               if (args.type === "stream") {
                 const prompt = ProviderTransform.message(

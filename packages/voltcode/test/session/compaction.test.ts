@@ -11,21 +11,13 @@ import type { LanguageModelUsage } from "ai"
 
 Log.init({ print: false })
 
-// Helper to create usage objects with required fields
 function createUsage(usage: Partial<LanguageModelUsage>): LanguageModelUsage {
   return {
     inputTokens: 0,
     outputTokens: 0,
     totalTokens: 0,
-    inputTokenDetails: {
-      noCacheTokens: undefined,
-      cacheReadTokens: undefined,
-      cacheWriteTokens: undefined,
-    },
-    outputTokenDetails: {
-      textTokens: undefined,
-      reasoningTokens: undefined,
-    },
+    cachedInputTokens: 0,
+    reasoningTokens: 0,
     ...usage,
   }
 }

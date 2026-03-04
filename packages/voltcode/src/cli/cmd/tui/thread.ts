@@ -12,6 +12,8 @@ import type { EventSource } from "./context/sdk"
 import { needsPostgresDownload, downloadPostgresWithProgress } from "@/session/lcm/embedded-postgres"
 import * as prompts from "@clack/prompts"
 import { getTerminalColorWarning } from "@/util/terminal-color"
+import { Instance } from "@/project/instance"
+import { TuiConfig } from "@/config/tui"
 
 declare global {
   const VOLTCODE_WORKER_PATH: string
@@ -222,6 +224,10 @@ export const TuiThreadCommand = cmd({
       url,
       fetch: customFetch,
       events,
+      config: await Instance.provide({
+        directory: cwd,
+        fn: () => TuiConfig.get(),
+      }),
       args: {
         continue: args.continue,
         sessionID: args.session,

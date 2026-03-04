@@ -92,15 +92,6 @@ export function Footer(props: { contextOverride?: () => { tokens: number; maxTok
     return `Model: init ${pct}%`
   })
 
-  // LCM context threshold readout (dev mode, only when --context-threshold is set)
-  const lcmMetrics = createMemo(() => {
-    if (!args.dev) return null
-    if (route.data.type !== "session") return null
-    const session = sync.session.get(route.data.sessionID)
-    if (!session?.lcm || !session.lcm.threshold) return null
-    return session.lcm
-  })
-
   // Compaction indicator (in-memory state via events, keyed by sessionID)
   const sdk = useSDK()
   const [compactionStates, setCompactionStates] = createSignal<
@@ -220,11 +211,6 @@ export function Footer(props: { contextOverride?: () => { tokens: number; maxTok
                   </Match>
                 </Switch>
                 {mcp()} MCP
-              </text>
-            </Show>
-            <Show when={lcmMetrics()}>
-              <text fg={lcmMetrics()!.inputTokens > lcmMetrics()!.threshold ? theme.warning : theme.textMuted}>
-                ctx {lcmMetrics()!.inputTokens.toLocaleString()}/{lcmMetrics()!.threshold.toLocaleString()}
               </text>
             </Show>
             <Show when={context()}>

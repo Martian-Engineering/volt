@@ -201,10 +201,8 @@ describe("symbolic recursion", () => {
 
         // Fork and set parentID (this is what run.ts does)
         const childSession = await Session.fork({ sessionID: parentSession.id })
-        await Session.update(childSession.id, (draft) => {
-          draft.parentID = parentSession.id
-          draft.title = "Child Session"
-        })
+        await Session.setParent({ sessionID: childSession.id, parentID: parentSession.id })
+        await Session.setTitle({ sessionID: childSession.id, title: "Child Session" })
 
         // Verify the relationship
         const updatedChild = await Session.get(childSession.id)

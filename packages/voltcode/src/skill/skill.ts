@@ -103,7 +103,7 @@ export namespace Skill {
 
     // Scan external skill directories (.claude/skills/, .agents/skills/, etc.)
     // Load global (home) first, then project-level (so project-level overwrites)
-    if (!Flag.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
+    if (!Flag.VOLTCODE_DISABLE_EXTERNAL_SKILLS) {
       for (const dir of EXTERNAL_DIRS) {
         const root = path.join(Global.Path.home, dir)
         if (!(await Filesystem.isDir(root))) continue

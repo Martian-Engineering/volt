@@ -3,6 +3,8 @@ import { cmd } from "../cmd"
 import { tui } from "./app"
 import { UI } from "@/cli/ui"
 import { getTerminalColorWarning } from "@/util/terminal-color"
+import { Instance } from "@/project/instance"
+import { TuiConfig } from "@/config/tui"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
@@ -35,11 +37,17 @@ export const AttachCommand = cmd({
       UI.println(UI.Style.TEXT_DIM + colorWarning + UI.Style.TEXT_NORMAL)
       UI.empty()
     }
+    const directory = dir ?? process.cwd()
+    const config = await Instance.provide({
+      directory,
+      fn: () => TuiConfig.get(),
+    })
 
     await tui({
       url: args.url,
+      config,
       args: { sessionID: args.session },
-      directory: dir,
+      directory,
     })
   },
 })

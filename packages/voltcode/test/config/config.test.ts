@@ -97,7 +97,7 @@ test("merges multiple config files with correct precedence", async () => {
 
 test("handles environment variable substitution", async () => {
   const originalEnv = process.env["TEST_VAR"]
-  process.env["TEST_VAR"] = "test_theme"
+  process.env["TEST_VAR"] = "test_user"
 
   try {
     await using tmp = await tmpdir({
@@ -106,7 +106,7 @@ test("handles environment variable substitution", async () => {
           path.join(dir, "voltcode.json"),
           JSON.stringify({
             $schema: "https://opencode.ai/config.json",
-            theme: "{env:TEST_VAR}",
+            username: "{env:TEST_VAR}",
           }),
         )
       },
@@ -115,7 +115,7 @@ test("handles environment variable substitution", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        expect(config.theme).toBe("test_theme")
+        expect(config.username).toBe("test_user")
       },
     })
   } finally {
@@ -138,7 +138,7 @@ test("preserves env variables when adding $schema to config", async () => {
         await Bun.write(
           path.join(dir, "voltcode.json"),
           JSON.stringify({
-            theme: "{env:PRESERVE_VAR}",
+            username: "{env:PRESERVE_VAR}",
           }),
         )
       },
@@ -147,7 +147,7 @@ test("preserves env variables when adding $schema to config", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        expect(config.theme).toBe("secret_value")
+        expect(config.username).toBe("secret_value")
 
         // Read the file to verify the env variable was preserved
         const content = await Bun.file(path.join(tmp.path, "voltcode.json")).text()
@@ -168,12 +168,12 @@ test("preserves env variables when adding $schema to config", async () => {
 test("handles file inclusion substitution", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      await Bun.write(path.join(dir, "included.txt"), "test_theme")
+      await Bun.write(path.join(dir, "included.txt"), "test_user")
       await Bun.write(
         path.join(dir, "voltcode.json"),
         JSON.stringify({
           $schema: "https://opencode.ai/config.json",
-          theme: "{file:included.txt}",
+          username: "{file:included.txt}",
         }),
       )
     },
@@ -182,7 +182,7 @@ test("handles file inclusion substitution", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.theme).toBe("test_theme")
+      expect(config.username).toBe("test_user")
     },
   })
 })

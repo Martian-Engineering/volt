@@ -177,12 +177,7 @@ export const LlmMapTool = Tool.define("llm_map", {
     const jsonModeOpts = buildJsonModeProviderOptions(resolved.model)
     const providerOptions = jsonModeOpts
 
-    const maxOutputTokens = ProviderTransform.maxOutputTokens(
-      resolved.model.api.npm,
-      providerOptions,
-      resolved.model.limit.output,
-      32_000,
-    )
+    const maxOutputTokens = ProviderTransform.maxOutputTokens(resolved.model)
 
     log.info("resolved model", {
       model: params.model ?? "small",

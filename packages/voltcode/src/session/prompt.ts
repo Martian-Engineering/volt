@@ -940,16 +940,7 @@ export namespace SessionPrompt {
         strategy: strategy.name,
       })
 
-      // Publish LCM metrics so the TUI footer can display them.
-      // Show input tokens (LCM + overhead) vs the raw --context-threshold flag value
-      // so the user sees numbers that match what they specified on the command line.
       const flagThreshold = softThresholdOverride ?? 0
-      await Session.update(input.sessionID, (draft) => {
-        draft.lcm = {
-          inputTokens: thresholdCheck.currentTokens + overhead,
-          threshold: flagThreshold,
-        }
-      })
 
       if (thresholdCheck.overHard) {
         // Tier 2 (hard limit): MUST compact before proceeding
@@ -1102,14 +1093,6 @@ export namespace SessionPrompt {
                 })
 
                 await Session.updatePart(event)
-
-                // Update session.lcm so TUI displays the new context size immediately
-                await Session.update(input.sessionID, (draft) => {
-                  draft.lcm = {
-                    inputTokens: afterTokens + overhead,
-                    threshold: flagThreshold,
-                  }
-                })
 
                 await writeLcmContextSnapshotBestEffort({
                   conversationId,
@@ -1686,8 +1669,9 @@ export namespace SessionPrompt {
     }
     if (permissions.length > 0) {
       session.permission = permissions
-      await Session.update(session.id, (draft) => {
-        draft.permission = permissions
+      await Session.setPermission({
+        sessionID: session.id,
+        permission: permissions,
       })
     }
 
@@ -3719,24 +3703,23 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const firstRealUser = contextMessages[firstRealUserIdx]
 
     // For subtask-only messages (from command invocations), extract the prompt directly
-    // since toModelMessage converts subtask parts to generic "The following tool was executed by the user"
+    // since toModelMessages converts subtask parts to generic "The following tool was executed by the user"
     const subtaskParts = firstRealUser.parts.filter((p) => p.type === "subtask") as MessageV2.SubtaskPart[]
     const hasOnlySubtaskParts = subtaskParts.length > 0 && firstRealUser.parts.every((p) => p.type === "subtask")
 
     const agent = await Agent.get("title")
     if (!agent) return
+    const titleModel = await iife(async () => {
+      if (agent.model) return await Provider.getModel(agent.model.providerID, agent.model.modelID)
+      return (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
+    })
     const result = await LLM.stream({
       agent,
       user: firstRealUser.info as MessageV2.User,
       system: [],
       small: true,
       tools: {},
-      model: await iife(async () => {
-        if (agent.model) return await Provider.getModel(agent.model.providerID, agent.model.modelID)
-        return (
-          (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
-        )
-      }),
+      model: titleModel,
       abort: new AbortController().signal,
       sessionID: input.session.id,
       retries: 2,
@@ -3747,23 +3730,24 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         },
         ...(hasOnlySubtaskParts
           ? [{ role: "user" as const, content: subtaskParts.map((p) => p.prompt).join("\n") }]
-          : await MessageV2.toModelMessage(contextMessages)),
+          : MessageV2.toModelMessages(contextMessages, titleModel)),
       ],
     })
     const text = await Promise.resolve(result.text).catch((err: unknown) =>
       log.error("failed to generate title", { error: err }),
     )
-    if (text)
-      return Session.update(input.session.id, (draft) => {
-        const cleaned = text
-          .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
-          .split("\n")
-          .map((line) => line.trim())
-          .find((line) => line.length > 0)
-        if (!cleaned) return
-
-        const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
-        draft.title = title
+    if (text) {
+      const cleaned = text
+        .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.length > 0)
+      if (!cleaned) return
+      const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
+      return Session.setTitle({
+        sessionID: input.session.id,
+        title,
       })
+    }
   }
 }

@@ -399,7 +399,7 @@ export namespace SessionProcessor {
                     const part = reasoningMap[value.id]
                     part.text += value.text
                     if (value.providerMetadata) part.metadata = value.providerMetadata
-                    if (part.text) await Session.updatePart({ part, delta: value.text })
+                    if (part.text) await Session.updatePart(part)
                   }
                   break
 
@@ -717,11 +717,7 @@ export namespace SessionProcessor {
                   if (currentText) {
                     currentText.text += value.text
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                    if (currentText.text)
-                      await Session.updatePart({
-                        part: currentText,
-                        delta: value.text,
-                      })
+                    if (currentText.text) await Session.updatePart(currentText)
                   }
                   break
 

@@ -54,9 +54,9 @@ export namespace Config {
     }
   }
 
-  export function managedConfigDir() {
-    return process.env.OPENCODE_TEST_MANAGED_CONFIG_DIR || systemManagedConfigDir()
-  }
+export function managedConfigDir() {
+  return process.env.VOLTCODE_TEST_MANAGED_CONFIG_DIR || systemManagedConfigDir()
+}
 
   const managedDir = managedConfigDir()
 
@@ -78,10 +78,10 @@ export namespace Config {
     // Config loading order (low -> high precedence): https://opencode.ai/docs/config#precedence-order
     // 1) Remote .well-known/opencode (org defaults)
     // 2) Global config (~/.config/opencode/opencode.json{,c})
-    // 3) Custom config (OPENCODE_CONFIG)
+    // 3) Custom config (VOLTCODE_CONFIG)
     // 4) Project config (opencode.json{,c})
     // 5) .opencode directories (.opencode/agents/, .opencode/commands/, .opencode/plugins/, .opencode/opencode.json{,c})
-    // 6) Inline config (OPENCODE_CONFIG_CONTENT)
+    // 6) Inline config (VOLTCODE_CONFIG_CONTENT)
     // Managed config directory is enterprise-only and always overrides everything above.
     let result: Info = {}
     for (const [key, value] of Object.entries(auth)) {
@@ -115,13 +115,13 @@ export namespace Config {
     result = mergeConfigConcatArrays(result, await global())
 
     // Custom config path overrides global config.
-    if (Flag.OPENCODE_CONFIG) {
-      result = mergeConfigConcatArrays(result, await loadFile(Flag.OPENCODE_CONFIG))
-      log.debug("loaded custom config", { path: Flag.OPENCODE_CONFIG })
+    if (Flag.VOLTCODE_CONFIG) {
+      result = mergeConfigConcatArrays(result, await loadFile(Flag.VOLTCODE_CONFIG))
+      log.debug("loaded custom config", { path: Flag.VOLTCODE_CONFIG })
     }
 
     // Project config overrides global and remote config.
-    if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
+    if (!Flag.VOLTCODE_DISABLE_PROJECT_CONFIG) {
       for (const file of await ConfigPaths.projectFiles("opencode", Instance.directory, Instance.worktree)) {
         result = mergeConfigConcatArrays(result, await loadFile(file))
       }
@@ -134,14 +134,14 @@ export namespace Config {
     const directories = await ConfigPaths.directories(Instance.directory, Instance.worktree)
 
     // .opencode directory config overrides (project and global) config sources.
-    if (Flag.OPENCODE_CONFIG_DIR) {
-      log.debug("loading config from OPENCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
+    if (Flag.VOLTCODE_CONFIG_DIR) {
+      log.debug("loading config from VOLTCODE_CONFIG_DIR", { path: Flag.VOLTCODE_CONFIG_DIR })
     }
 
     const deps = []
 
     for (const dir of unique(directories)) {
-      if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
+      if (dir.endsWith(".opencode") || dir === Flag.VOLTCODE_CONFIG_DIR) {
         for (const file of ["opencode.jsonc", "opencode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
@@ -166,15 +166,15 @@ export namespace Config {
     }
 
     // Inline config content overrides all non-managed config sources.
-    if (process.env.OPENCODE_CONFIG_CONTENT) {
+    if (Flag.VOLTCODE_CONFIG_CONTENT) {
       result = mergeConfigConcatArrays(
         result,
-        await load(process.env.OPENCODE_CONFIG_CONTENT, {
+        await load(Flag.VOLTCODE_CONFIG_CONTENT, {
           dir: Instance.directory,
-          source: "OPENCODE_CONFIG_CONTENT",
+          source: "VOLTCODE_CONFIG_CONTENT",
         }),
       )
-      log.debug("loaded custom config from OPENCODE_CONFIG_CONTENT")
+      log.debug("loaded custom config from VOLTCODE_CONFIG_CONTENT")
     }
 
     // Load managed config files last (highest priority) - enterprise admin-controlled
@@ -197,8 +197,8 @@ export namespace Config {
       })
     }
 
-    if (Flag.OPENCODE_PERMISSION) {
-      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.OPENCODE_PERMISSION))
+    if (Flag.VOLTCODE_PERMISSION) {
+      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.VOLTCODE_PERMISSION))
     }
 
     // Backwards compatibility: legacy top-level `tools` config
@@ -223,10 +223,10 @@ export namespace Config {
     }
 
     // Apply flag overrides for compaction settings
-    if (Flag.OPENCODE_DISABLE_AUTOCOMPACT) {
+    if (Flag.VOLTCODE_DISABLE_AUTOCOMPACT) {
       result.compaction = { ...result.compaction, auto: false }
     }
-    if (Flag.OPENCODE_DISABLE_PRUNE) {
+    if (Flag.VOLTCODE_DISABLE_PRUNE) {
       result.compaction = { ...result.compaction, prune: false }
     }
 

@@ -577,35 +577,6 @@ export type EventPermissionReplied = {
   }
 }
 
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      type: "busy"
-    }
-
-export type EventSessionStatus = {
-  type: "session.status"
-  properties: {
-    sessionID: string
-    status: SessionStatus
-  }
-}
-
-export type EventSessionIdle = {
-  type: "session.idle"
-  properties: {
-    sessionID: string
-  }
-}
-
 export type QuestionOption = {
   /**
    * Display text (1-5 words, concise)
@@ -677,18 +648,51 @@ export type EventQuestionRejected = {
   }
 }
 
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
-  }
-}
-
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
     file: string
     event: "add" | "change" | "unlink"
+  }
+}
+
+export type BackgroundTask = {
+  id: string
+  sessionID: string
+  taskSessionID: string
+  toolPartID: string
+  assistantMessageID: string
+  description: string
+  status: "running" | "backgrounded" | "completed" | "error" | "cancelled"
+  startedAt: number
+  completedAt?: number
+  result?: {
+    output?: string
+    error?: string
+    metadata?: {
+      [key: string]: unknown
+    }
+  }
+}
+
+export type EventBackgroundTaskCreated = {
+  type: "background_task.created"
+  properties: {
+    task: BackgroundTask
+  }
+}
+
+export type EventBackgroundTaskUpdated = {
+  type: "background_task.updated"
+  properties: {
+    task: BackgroundTask
+  }
+}
+
+export type EventBackgroundTaskCompleted = {
+  type: "background_task.completed"
+  properties: {
+    task: BackgroundTask
   }
 }
 
@@ -791,6 +795,62 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
+  }
+}
+
+export type SessionStatus =
+  | {
+      type: "idle"
+    }
+  | {
+      type: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      type: "busy"
+    }
+
+export type EventSessionStatus = {
+  type: "session.status"
+  properties: {
+    sessionID: string
+    status: SessionStatus
+  }
+}
+
+export type EventSessionIdle = {
+  type: "session.idle"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventLcmCompactionStarted = {
+  type: "lcm.compaction.started"
+  properties: {
+    sessionID: string
+    conversationId: number
+    blocking: boolean
+  }
+}
+
+export type EventLcmCompactionEnded = {
+  type: "lcm.compaction.ended"
+  properties: {
+    sessionID: string
+    conversationId: number
+  }
+}
+
+export type EventLcmGhostCueSkipped = {
+  type: "lcm.ghost-cue.skipped"
+  properties: {
+    conversationId: number
+    mode: "dolt" | "upward"
+    reason: string
+    evictedBindleIds: Array<string>
   }
 }
 
@@ -972,13 +1032,13 @@ export type Event =
   | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
-  | EventSessionStatus
-  | EventSessionIdle
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
-  | EventSessionCompacted
   | EventFileWatcherUpdated
+  | EventBackgroundTaskCreated
+  | EventBackgroundTaskUpdated
+  | EventBackgroundTaskCompleted
   | EventTodoUpdated
   | EventTuiPromptAppend
   | EventTuiCommandExecute
@@ -987,6 +1047,11 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
+  | EventSessionStatus
+  | EventSessionIdle
+  | EventLcmCompactionStarted
+  | EventLcmCompactionEnded
+  | EventLcmGhostCueSkipped
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -3226,7 +3291,6 @@ export type SessionPromptData = {
     tools?: {
       [key: string]: boolean
     }
-    format?: OutputFormat
     system?: string
     variant?: string
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
@@ -3454,7 +3518,6 @@ export type SessionPromptAsyncData = {
     tools?: {
       [key: string]: boolean
     }
-    format?: OutputFormat
     system?: string
     variant?: string
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>

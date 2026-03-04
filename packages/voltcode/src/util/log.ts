@@ -23,6 +23,7 @@ export namespace Log {
   }
 
   export type Logger = {
+    trace(message?: any, extra?: Record<string, any>): void
     debug(message?: any, extra?: Record<string, any>): void
     info(message?: any, extra?: Record<string, any>): void
     error(message?: any, extra?: Record<string, any>): void
@@ -127,6 +128,11 @@ export namespace Log {
       return [next.toISOString().split(".")[0], "+" + diff + "ms", prefix, message].filter(Boolean).join(" ") + "\n"
     }
     const result: Logger = {
+      trace(message?: any, extra?: Record<string, any>) {
+        if (shouldLog("DEBUG")) {
+          write("TRACE " + build(message, extra))
+        }
+      },
       debug(message?: any, extra?: Record<string, any>) {
         if (shouldLog("DEBUG")) {
           write("DEBUG " + build(message, extra))

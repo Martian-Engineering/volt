@@ -96,15 +96,7 @@ async function resolveConfiguredPromptOverride(key: LcmPromptRegistryKey): Promi
     const trimmed = testOverride.trim()
     if (trimmed.length > 0) return trimmed
   }
-
-  const { Config } = await import("@/config/config")
-  const configured = await Config.get().catch(() => null)
-  if (!configured) return null
-  const override = configured.lcm?.prompts?.[key]
-  if (typeof override !== "string") return null
-
-  const trimmed = override.trim()
-  return trimmed.length > 0 ? trimmed : null
+  return null
 }
 
 export async function resolveLcmPrompt(input: ResolveLcmPromptInput): Promise<string> {

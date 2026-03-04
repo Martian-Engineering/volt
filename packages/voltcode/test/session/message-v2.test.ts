@@ -47,7 +47,30 @@ function basePart(messageID: string, id: string) {
   }
 }
 
-describe("session.message-v2.toModelMessage", () => {
+const model = {
+  id: "openai/gpt-4o-mini",
+  providerID: "openai",
+  api: {
+    id: "gpt-4o-mini",
+    npm: "@ai-sdk/openai",
+    url: "https://api.openai.com/v1",
+  },
+  capabilities: {
+    temperature: true,
+    reasoning: false,
+    attachment: true,
+    toolcall: true,
+    input: { text: true, audio: true, image: true, video: true, pdf: true },
+    output: { text: true, audio: false, image: false, video: false, pdf: false },
+    interleaved: false,
+  },
+  limit: {
+    context: 128000,
+    output: 16384,
+  },
+} as any
+
+describe("session.message-v2.toModelMessages", () => {
   test("filters out messages with no parts", async () => {
     const input: MessageV2.WithParts[] = [
       {
@@ -66,7 +89,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "hello" }],
@@ -91,7 +114,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([])
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([])
   })
 
   test("includes synthetic text parts", async () => {
@@ -122,7 +145,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "hello" }],
@@ -189,7 +212,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "user",
         content: [
@@ -259,7 +282,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -341,7 +364,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -408,7 +431,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -461,7 +484,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([])
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([])
   })
 
   test("includes aborted assistant messages only when they have non-step-start/reasoning content", async () => {
@@ -504,7 +527,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "assistant",
         content: [
@@ -540,7 +563,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "assistant",
         content: [{ type: "text", text: "first" }],
@@ -567,7 +590,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessage(input)).toStrictEqual([])
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([])
   })
 
   test("converts pending/running tool calls to error results to prevent dangling tool_use", async () => {
@@ -614,7 +637,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    const result = await MessageV2.toModelMessage(input)
+    const result = await MessageV2.toModelMessages(input, model)
 
     expect(result).toStrictEqual([
       {

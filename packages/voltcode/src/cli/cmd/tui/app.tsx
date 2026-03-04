@@ -109,7 +109,6 @@ export function tui(input: {
   config: TuiConfig.Info
   directory?: string
   fetch?: typeof fetch
-  headers?: RequestInit["headers"]
   events?: EventSource
   onExit?: () => Promise<void>
 }) {
@@ -146,7 +145,6 @@ export function tui(input: {
                           url={input.url}
                           directory={input.directory}
                           fetch={input.fetch}
-                          headers={input.headers}
                           events={input.events}
                         >
                           <SyncProvider>
@@ -217,7 +215,7 @@ function App() {
   const promptRef = usePromptRef()
 
   useKeyboard((evt) => {
-    if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
+    if (!Flag.VOLTCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
     if (!renderer.getSelection()) return
 
     // Windows Terminal-like behavior:
@@ -263,7 +261,7 @@ function App() {
 
   // Update terminal window title based on current route and session
   createEffect(() => {
-    if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
+    if (!terminalTitleEnabled() || Flag.VOLTCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
       renderer.setTerminalTitle("OpenCode")
@@ -297,8 +295,7 @@ function App() {
           })
         local.model.set({ providerID, modelID }, { recent: true })
       }
-      // Handle --session without --fork immediately (fork is handled in createEffect below)
-      if (args.sessionID && !args.fork) {
+      if (args.sessionID) {
         route.navigate({
           type: "session",
           sessionID: args.sessionID,
@@ -316,34 +313,8 @@ function App() {
       .find((x) => x.parentID === undefined)?.id
     if (match) {
       continued = true
-      if (args.fork) {
-        sdk.client.session.fork({ sessionID: match }).then((result) => {
-          if (result.data?.id) {
-            route.navigate({ type: "session", sessionID: result.data.id })
-          } else {
-            toast.show({ message: "Failed to fork session", variant: "error" })
-          }
-        })
-      } else {
-        route.navigate({ type: "session", sessionID: match })
-      }
+      route.navigate({ type: "session", sessionID: match })
     }
-  })
-
-  // Handle --session with --fork: wait for sync to be fully complete before forking
-  // (session list loads in non-blocking phase for --session, so we must wait for "complete"
-  // to avoid a race where reconcile overwrites the newly forked session)
-  let forked = false
-  createEffect(() => {
-    if (forked || sync.status !== "complete" || !args.sessionID || !args.fork) return
-    forked = true
-    sdk.client.session.fork({ sessionID: args.sessionID }).then((result) => {
-      if (result.data?.id) {
-        route.navigate({ type: "session", sessionID: result.data.id })
-      } else {
-        toast.show({ message: "Failed to fork session", variant: "error" })
-      }
-    })
   })
 
   createEffect(
@@ -740,14 +711,14 @@ function App() {
       height={dimensions().height}
       backgroundColor={theme.background}
       onMouseDown={(evt) => {
-        if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
+        if (!Flag.VOLTCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
         if (evt.button !== MouseButton.RIGHT) return
 
         if (!Selection.copy(renderer, toast)) return
         evt.preventDefault()
         evt.stopPropagation()
       }}
-      onMouseUp={Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? undefined : () => Selection.copy(renderer, toast)}
+      onMouseUp={Flag.VOLTCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? undefined : () => Selection.copy(renderer, toast)}
     >
       <Switch>
         <Match when={route.data.type === "home"}>

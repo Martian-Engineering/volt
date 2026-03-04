@@ -233,26 +233,6 @@ export function Session() {
   // Allow exit when in child session (prompt is hidden)
   const exit = useExit()
 
-  createEffect(() => {
-    const title = Locale.truncate(session()?.title ?? "", 50)
-    const pad = (text: string) => text.padEnd(10, " ")
-    const weak = (text: string) => UI.Style.TEXT_DIM + pad(text) + UI.Style.TEXT_NORMAL
-    const logo = UI.logo("  ").split(/\r?\n/)
-    return exit.message.set(
-      [
-        ``,
-        `${logo[0] ?? ""}`,
-        `${logo[1] ?? ""}`,
-        `${logo[2] ?? ""}`,
-        `${logo[3] ?? ""}`,
-        ``,
-        `  ${weak("Session")}${UI.Style.TEXT_NORMAL_BOLD}${title}${UI.Style.TEXT_NORMAL}`,
-        `  ${weak("Continue")}${UI.Style.TEXT_NORMAL_BOLD}opencode -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
-        ``,
-      ].join("\n"),
-    )
-  })
-
   useKeyboard((evt) => {
     if (!session()?.parentID) return
     if (keybind.match("app_exit", evt)) {
@@ -1430,7 +1410,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
     <Show when={props.part.text.trim()}>
       <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
         <Switch>
-          <Match when={Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
+          <Match when={Flag.VOLTCODE_EXPERIMENTAL_MARKDOWN}>
             <markdown
               syntaxStyle={syntax()}
               streaming={true}
@@ -1438,7 +1418,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
               conceal={ctx.conceal()}
             />
           </Match>
-          <Match when={!Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
+          <Match when={!Flag.VOLTCODE_EXPERIMENTAL_MARKDOWN}>
             <code
               filetype="markdown"
               drawUnstyledText={false}
@@ -1835,29 +1815,10 @@ function Glob(props: ToolProps<typeof GlobTool>) {
 }
 
 function Read(props: ToolProps<typeof ReadTool>) {
-  const { theme } = useTheme()
-  const loaded = createMemo(() => {
-    if (props.part.state.status !== "completed") return []
-    if (props.part.state.time.compacted) return []
-    const value = props.metadata.loaded
-    if (!value || !Array.isArray(value)) return []
-    return value.filter((p): p is string => typeof p === "string")
-  })
   return (
-    <>
-      <InlineTool icon="→" pending="Reading file..." complete={props.input.filePath} part={props.part}>
-        Read {normalizePath(props.input.filePath!)} {input(props.input, ["filePath"])}
-      </InlineTool>
-      <For each={loaded()}>
-        {(filepath) => (
-          <box paddingLeft={3}>
-            <text paddingLeft={3} fg={theme.textMuted}>
-              ↳ Loaded {normalizePath(filepath)}
-            </text>
-          </box>
-        )}
-      </For>
-    </>
+    <InlineTool icon="→" pending="Reading file..." complete={props.input.filePath} part={props.part}>
+      Read {normalizePath(props.input.filePath!)} {input(props.input, ["filePath"])}
+    </InlineTool>
   )
 }
 
@@ -1920,10 +1881,15 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const { navigate } = useRoute()
   const local = useLocal()
   const sync = useSync()
+  const taskSessionID = createMemo(() => {
+    const value = (props.metadata as Record<string, unknown>)["sessionId"]
+    return typeof value === "string" ? value : undefined
+  })
 
   const tools = createMemo(() => {
-    const sessionID = props.metadata.sessionId
-    const msgs = sync.data.message[sessionID ?? ""] ?? []
+    const sessionID = taskSessionID()
+    if (!sessionID) return [] as Array<{ tool: string; state: ToolPart["state"] }>
+    const msgs = sync.data.message[sessionID] ?? []
     return msgs.flatMap((msg) =>
       (sync.data.part[msg.id] ?? [])
         .filter((part): part is ToolPart => part.type === "tool")
@@ -1941,9 +1907,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
         <BlockTool
           title={"# " + Locale.titlecase(props.input.subagent_type ?? "unknown") + " Task"}
           onClick={
-            props.metadata.sessionId
-              ? () => navigate({ type: "session", sessionID: props.metadata.sessionId! })
-              : undefined
+            taskSessionID() ? () => navigate({ type: "session", sessionID: taskSessionID()! }) : undefined
           }
           part={props.part}
           spinner={isRunning()}
@@ -1963,7 +1927,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
               }}
             </Show>
           </box>
-          <Show when={props.metadata.sessionId}>
+          <Show when={taskSessionID()}>
             <text fg={theme.text}>
               {keybind.print("session_child_first")}
               <span style={{ fg: theme.textMuted }}> view subagents</span>

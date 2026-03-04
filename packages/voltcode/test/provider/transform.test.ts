@@ -104,96 +104,40 @@ describe("ProviderTransform.options - setCacheKey", () => {
 })
 
 describe("ProviderTransform.maxOutputTokens", () => {
-  test("returns 32k when modelLimit > 32k", () => {
-    const modelLimit = 100000
-    const result = ProviderTransform.maxOutputTokens("@ai-sdk/openai", {}, modelLimit, OUTPUT_TOKEN_MAX)
+  function makeModel(limit: number, npm = "@ai-sdk/openai") {
+    return {
+      id: "provider/model",
+      providerID: "provider",
+      api: { id: "provider-model", npm, url: "https://example.com" },
+      capabilities: {
+        temperature: true,
+        reasoning: false,
+        attachment: true,
+        toolcall: true,
+        input: { text: true, audio: false, image: false, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      limit: { context: 200000, output: limit },
+    } as any
+  }
+
+  test("caps output tokens at 32k", () => {
+    const result = ProviderTransform.maxOutputTokens(makeModel(100000))
     expect(result).toBe(OUTPUT_TOKEN_MAX)
   })
 
-  test("returns modelLimit when modelLimit < 32k", () => {
-    const modelLimit = 16000
-    const result = ProviderTransform.maxOutputTokens("@ai-sdk/openai", {}, modelLimit, OUTPUT_TOKEN_MAX)
+  test("uses model output limit when below cap", () => {
+    const result = ProviderTransform.maxOutputTokens(makeModel(16000))
     expect(result).toBe(16000)
   })
 
-  describe("azure", () => {
-    test("returns 32k when modelLimit > 32k", () => {
-      const modelLimit = 100000
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/azure", {}, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(OUTPUT_TOKEN_MAX)
-    })
-
-    test("returns modelLimit when modelLimit < 32k", () => {
-      const modelLimit = 16000
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/azure", {}, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(16000)
-    })
-  })
-
-  describe("bedrock", () => {
-    test("returns 32k when modelLimit > 32k", () => {
-      const modelLimit = 100000
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/amazon-bedrock", {}, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(OUTPUT_TOKEN_MAX)
-    })
-
-    test("returns modelLimit when modelLimit < 32k", () => {
-      const modelLimit = 16000
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/amazon-bedrock", {}, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(16000)
-    })
-  })
-
-  describe("anthropic without thinking options", () => {
-    test("returns 32k when modelLimit > 32k", () => {
-      const modelLimit = 100000
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", {}, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(OUTPUT_TOKEN_MAX)
-    })
-
-    test("returns modelLimit when modelLimit < 32k", () => {
-      const modelLimit = 16000
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", {}, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(16000)
-    })
-  })
-
-  describe("anthropic with thinking options", () => {
-    test("returns 32k when budgetTokens + 32k <= modelLimit", () => {
-      const modelLimit = 100000
-      const options = {
-        thinking: {
-          type: "enabled",
-          budgetTokens: 10000,
-        },
-      }
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", options, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(OUTPUT_TOKEN_MAX)
-    })
-
-    test("returns modelLimit - budgetTokens when budgetTokens + 32k > modelLimit", () => {
-      const modelLimit = 50000
-      const options = {
-        thinking: {
-          type: "enabled",
-          budgetTokens: 30000,
-        },
-      }
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", options, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(20000)
-    })
-
-    test("returns 32k when thinking type is not enabled", () => {
-      const modelLimit = 100000
-      const options = {
-        thinking: {
-          type: "disabled",
-          budgetTokens: 10000,
-        },
-      }
-      const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", options, modelLimit, OUTPUT_TOKEN_MAX)
-      expect(result).toBe(OUTPUT_TOKEN_MAX)
-    })
+  test("applies the same cap behavior across provider SDKs", () => {
+    const providers = ["@ai-sdk/openai", "@ai-sdk/azure", "@ai-sdk/amazon-bedrock", "@ai-sdk/anthropic"]
+    for (const npm of providers) {
+      expect(ProviderTransform.maxOutputTokens(makeModel(100000, npm))).toBe(OUTPUT_TOKEN_MAX)
+      expect(ProviderTransform.maxOutputTokens(makeModel(12000, npm))).toBe(12000)
+    }
   })
 })
 

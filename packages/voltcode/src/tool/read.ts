@@ -8,7 +8,6 @@ import DESCRIPTION from "./read.txt"
 import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
 import { Log } from "../util/log"
-import { Bus } from "../bus"
 import { Session } from "../session"
 
 const log = Log.create({ service: "tool.read" })
@@ -516,16 +515,6 @@ async function storeLargeFileInLcm(filepath: string, mimeType: string, ctx: Tool
 
   const stat = await Bun.file(filepath).stat()
   const durationMs = Date.now() - startTime
-
-  // Emit the LCM file loaded event
-  Bus.publish(Session.Event.LcmFileLoaded, {
-    sessionID: ctx.sessionID,
-    filePath: filepath,
-    fileId,
-    sizeBytes: stat.size,
-    tokenCount: Number(tokenCount),
-    durationMs,
-  })
 
   const outputLines = [
     `**Large file automatically stored in LCM for efficient interaction.**`,

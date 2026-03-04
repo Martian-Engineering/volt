@@ -966,7 +966,7 @@ export function Prompt(props: PromptProps) {
               <Show when={store.mode === "shell" || local.agent.current().name === "plan"}>
                 <text fg={highlight()}>{store.mode === "shell" ? "Shell" : "Plan Mode"} </text>
               </Show>
-              <Show when={store.mode === "normal" && sync.data.config.tui?.show_model_indicator}>
+              <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
                   <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
                     {local.model.parsed().model}

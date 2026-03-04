@@ -427,11 +427,11 @@ export const RunCommand = cmd({
           if (parentSession) {
             // Fork the parent session to clone all its messages
             const forkedSession = await Session.fork({ sessionID: Flag.VOLTCODE_PARENT_SESSION })
-            // Update the forked session to link it to the parent and set title
-            await Session.update(forkedSession.id, (draft) => {
-              draft.parentID = Flag.VOLTCODE_PARENT_SESSION
-              if (title) draft.title = title
-            })
+            // Link the forked session to the parent and apply title when provided.
+            await Session.setParent({ sessionID: forkedSession.id, parentID: Flag.VOLTCODE_PARENT_SESSION })
+            if (title) {
+              await Session.setTitle({ sessionID: forkedSession.id, title })
+            }
             return forkedSession.id
           }
         }

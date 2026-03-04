@@ -49,7 +49,7 @@ export namespace Plugin {
 
     let plugins = config.plugin ?? []
     if (plugins.length) await Config.waitForDependencies()
-    if (!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
+    if (!Flag.VOLTCODE_DISABLE_DEFAULT_PLUGINS) {
       plugins = [...BUILTIN, ...plugins]
     }
 
