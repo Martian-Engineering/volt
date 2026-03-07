@@ -36,6 +36,12 @@ interface ToolCallInfo {
   metadata?: Record<string, unknown>
 }
 
+interface ThinkingInfo {
+  text: string
+  isStreaming: boolean
+  startTime?: number
+}
+
 // Flatten jobs into a list for display
 function flattenJobs(jobs: JobTree[]): FlattenResult {
   if (jobs.length === 0) return { items: [], maxDepth: 0 }
@@ -429,12 +435,13 @@ function ToolCallDetailView(props: { call: ToolCallInfo; tick: number; width: nu
 
 function SelectedTaskDetails(props: {
   item: FlattenedItem | null
-  sessionData: { prompt: string; toolCalls: ToolCallInfo[] }
+  sessionData: { prompt: string; toolCalls: ToolCallInfo[]; thinking: ThinkingInfo | null }
   recentToolCalls: ToolCallInfo[]
   focusSection: "tree" | "toolcalls"
   selectedToolIndex: number
   paneWidth: number
   isJobRoot: boolean
+  thinking: ThinkingInfo | null
   onToolCallClick?: (index: number) => void
 }) {
   const { theme } = useTheme()
@@ -530,7 +537,76 @@ function SelectedTaskDetails(props: {
             )
           }}
         </For>
+        <Show when={props.thinking}>
+          {(thinking) => {
+            const thinkingIndex = () => props.recentToolCalls.length
+            const isSelected = () => props.focusSection === "toolcalls" && thinkingIndex() === props.selectedToolIndex
+            const bgColor = () => (isSelected() ? RGBA.fromInts(40, 40, 40, 255) : RGBA.fromInts(0, 0, 0, 0))
+            const label = () => {
+              const preview = thinking().text.replace(/\n/g, " ").slice(0, Math.max(20, props.paneWidth - 30))
+              return preview ? `${preview}${thinking().text.length > props.paneWidth - 30 ? "..." : ""}` : ""
+            }
+            return (
+              <box
+                flexDirection="row"
+                gap={1}
+                backgroundColor={bgColor()}
+                onMouseUp={() => props.onToolCallClick?.(thinkingIndex())}
+              >
+                <text fg={thinking().isStreaming ? theme.warning : theme.textMuted}>
+                  {thinking().isStreaming ? "◐" : "●"}
+                </text>
+                <text fg={theme.accent}>
+                  <i>{"thinking".padEnd(12)}</i>
+                </text>
+                <text fg={theme.textMuted}>{label()}</text>
+              </box>
+            )
+          }}
+        </Show>
       </scrollbox>
+    </box>
+  )
+}
+
+// Thinking/reasoning detail view — shows tail of CoT, streams in live
+function ThinkingDetailView(props: { thinking: ThinkingInfo; tick: number; width: number; height: number }) {
+  const { theme } = useTheme()
+
+  const lines = createMemo(() => {
+    // Force reactivity on tick so we re-render while streaming
+    void props.tick
+    const text = props.thinking.text
+    if (!text) return props.thinking.isStreaming ? ["(thinking...)"] : ["(no reasoning content)"]
+
+    const lineWidth = Math.max(40, props.width - 2)
+    // Wrap all text into lines
+    const allLines = wrapText(text, lineWidth, 10000)
+    // Show only what fits in the available height, biased toward the end
+    const maxLines = Math.max(1, props.height - 3)
+    if (allLines.length <= maxLines) return allLines
+    return allLines.slice(-maxLines)
+  })
+
+  const duration = () => {
+    if (!props.thinking.startTime) return ""
+    return formatLiveDuration(props.thinking.startTime, props.thinking.isStreaming ? undefined : Date.now(), props.tick)
+  }
+
+  return (
+    <box flexDirection="column">
+      <box flexDirection="row" gap={2}>
+        <text fg={theme.accent}>
+          <b>Thinking</b>
+          {props.thinking.isStreaming ? " (streaming)" : ""}
+        </text>
+        <Show when={duration()}>
+          <text fg={theme.textMuted}>{duration()}</text>
+        </Show>
+      </box>
+      <box flexDirection="column" paddingTop={1}>
+        <For each={lines()}>{(line) => <text fg={theme.textMuted}>{line}</text>}</For>
+      </box>
     </box>
   )
 }
@@ -593,7 +669,7 @@ export function TaskTreePane(props: TaskTreePaneProps) {
     // For job-root, show only the root tool call
     if (!item || item.type === "job-root") {
       const job = item?.job
-      if (!job) return { prompt: "", toolCalls: [] as ToolCallInfo[] }
+      if (!job) return { prompt: "", toolCalls: [] as ToolCallInfo[], thinking: null as ThinkingInfo | null }
 
       // For job root, return just the job's tool call info
       const toolCall: ToolCallInfo = {
@@ -606,7 +682,7 @@ export function TaskTreePane(props: TaskTreePaneProps) {
         output: job.toolOutput,
         metadata: {},
       }
-      return { prompt: job.toolTitle, toolCalls: [toolCall] }
+      return { prompt: job.toolTitle, toolCalls: [toolCall], thinking: null as ThinkingInfo | null }
     }
 
     // For job-child, show the child session's tool calls
@@ -629,8 +705,9 @@ export function TaskTreePane(props: TaskTreePaneProps) {
       }
     }
 
-    // Collect all tool calls from all assistant messages
+    // Collect all tool calls and find reasoning parts from all assistant messages
     const toolCalls: ToolCallInfo[] = []
+    let thinking: ThinkingInfo | null = null
     for (const msg of messages) {
       if (msg.role === "assistant") {
         const parts = sync.data.part[msg.id] ?? []
@@ -649,11 +726,19 @@ export function TaskTreePane(props: TaskTreePaneProps) {
               metadata: toolPart.state.metadata,
             })
           }
+          if (part.type === "reasoning") {
+            const rp = part as ReasoningPart
+            thinking = {
+              text: rp.text,
+              isStreaming: !rp.time?.end,
+              startTime: rp.time?.start,
+            }
+          }
         }
       }
     }
 
-    return { prompt, toolCalls }
+    return { prompt, toolCalls, thinking }
   })
 
   // Get last 10 tool calls, newest at bottom
@@ -707,14 +792,27 @@ export function TaskTreePane(props: TaskTreePaneProps) {
     }
   }
 
+  // Total selectable items in the tool call section (tool calls + optional thinking)
+  const toolSectionCount = createMemo(() => {
+    const count = recentToolCalls().length
+    const thinking = selectedSessionData().thinking
+    return thinking ? count + 1 : count
+  })
+
+  // Whether the selected tool index points to the thinking entry
+  const isThinkingSelected = createMemo(() => {
+    const thinking = selectedSessionData().thinking
+    return thinking && selectedToolIndex() === recentToolCalls().length
+  })
+
   // Tool call list navigation
   function moveToolCall(direction: number) {
-    const calls = recentToolCalls()
-    if (calls.length === 0) return
+    const total = toolSectionCount()
+    if (total === 0) return
 
     let next = selectedToolIndex() + direction
     if (next < 0) next = 0
-    if (next >= calls.length) next = calls.length - 1
+    if (next >= total) next = total - 1
 
     setSelectedToolIndex(next)
   }
@@ -742,8 +840,8 @@ export function TaskTreePane(props: TaskTreePaneProps) {
     if (evt.name === "tab") {
       evt.preventDefault()
       if (focusSection() === "tree") {
-        const calls = recentToolCalls()
-        if (calls.length > 0) {
+        const total = toolSectionCount()
+        if (total > 0) {
           setFocusSection("toolcalls")
           if (selectedToolIndex() < 0) setSelectedToolIndex(0)
         }
@@ -796,8 +894,8 @@ export function TaskTreePane(props: TaskTreePaneProps) {
         const items = flattened().items
         if (items.length > 0) setSelectedIndex(items.length - 1)
       } else {
-        const calls = recentToolCalls()
-        if (calls.length > 0) setSelectedToolIndex(calls.length - 1)
+        const total = toolSectionCount()
+        if (total > 0) setSelectedToolIndex(total - 1)
       }
     }
   })
@@ -873,6 +971,7 @@ export function TaskTreePane(props: TaskTreePaneProps) {
             selectedToolIndex={selectedToolIndex()}
             paneWidth={paneWidth()}
             isJobRoot={isJobRootSelected()}
+            thinking={selectedSessionData().thinking}
             onToolCallClick={selectToolCall}
           />
         </box>
@@ -883,10 +982,22 @@ export function TaskTreePane(props: TaskTreePaneProps) {
         </box>
         <scrollbox height={sectionHeights().detailHeight}>
           <Show
-            when={selectedToolCall()}
-            fallback={<text fg={theme.textMuted}>Select a job or tool call to view details</text>}
+            when={isThinkingSelected() && selectedSessionData().thinking}
+            fallback={
+              <Show
+                when={selectedToolCall()}
+                fallback={<text fg={theme.textMuted}>Select a job or tool call to view details</text>}
+              >
+                <ToolCallDetailView call={selectedToolCall()!} tick={tick()} width={paneWidth()} />
+              </Show>
+            }
           >
-            <ToolCallDetailView call={selectedToolCall()!} tick={tick()} width={paneWidth()} />
+            <ThinkingDetailView
+              thinking={selectedSessionData().thinking!}
+              tick={tick()}
+              width={paneWidth()}
+              height={sectionHeights().detailHeight}
+            />
           </Show>
         </scrollbox>
       </box>
@@ -919,4 +1030,10 @@ interface ToolPart {
     metadata?: Record<string, unknown>
     time?: { start: number; end?: number }
   }
+}
+
+interface ReasoningPart {
+  type: "reasoning"
+  text: string
+  time?: { start: number; end?: number }
 }
