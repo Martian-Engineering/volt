@@ -20,6 +20,7 @@ import { Flag } from "@/flag/flag"
 import { handleLargeToolOutput, LARGE_TOOL_OUTPUT_THRESHOLD } from "./large-tool-output"
 import type { LcmToolMetadata } from "./lcm/types"
 import { Token } from "@/util/token"
+import { LLMProfiler } from "./llm-profiler"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -336,11 +337,32 @@ export namespace SessionProcessor {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const llmStreamStart = performance.now()
-            stream = await LLM.stream(streamInput)
+            const callID = LLMProfiler.start({
+              sessionID: input.sessionID,
+              source: "session.processor",
+              modelID: input.model.id,
+              providerID: input.model.providerID,
+              small: streamInput.small ?? false,
+              messageID: input.assistantMessage.id,
+              agent: input.assistantMessage.agent,
+              context: LLMProfiler.buildPromptMetrics({
+                system: streamInput.system,
+                messages: streamInput.messages,
+                tools: streamInput.tools,
+                small: streamInput.small ?? false,
+              }),
+            })
+            streamInput.traceID = callID
+            const streamInputWithTrace = {
+              ...streamInput,
+              traceID: callID,
+            }
+            stream = await LLM.stream(streamInputWithTrace)
             log.trace("process.timing.llmStreamCreated", {
               sessionID: input.sessionID,
               ms: Math.round(performance.now() - llmStreamStart),
             })
+            LLMProfiler.streamCreated(callID, Math.round(performance.now() - llmStreamStart))
 
             // Use dedicated chunk timeout from Flag, separate from fetch timeout
             // Set to 0 to disable chunk timeout entirely
@@ -364,6 +386,7 @@ export namespace SessionProcessor {
                   sessionID: input.sessionID,
                   ms: Math.round(performance.now() - llmStreamStart),
                 })
+                LLMProfiler.firstChunk(callID, Math.round(performance.now() - llmStreamStart))
                 firstChunk = false
               }
               input.abort.throwIfAborted()
@@ -778,6 +801,17 @@ export namespace SessionProcessor {
                 input.assistantMessage.cost += usage.cost
                 input.assistantMessage.tokens = usage.tokens
                 await Session.updateMessage(input.assistantMessage)
+                LLMProfiler.complete(callID, {
+                  usage: {
+                    inputTokens: usage.tokens.input,
+                    outputTokens: usage.tokens.output,
+                    reasoningTokens: usage.tokens.reasoning,
+                    cacheReadTokens: usage.tokens.cache.read,
+                    cacheWriteTokens: usage.tokens.cache.write,
+                    cost: usage.cost,
+                  },
+                  finishReason: input.assistantMessage.finish,
+                })
                 log.info("usage.summary", {
                   sessionID: input.sessionID,
                   messageID: input.assistantMessage.id,
@@ -793,9 +827,14 @@ export namespace SessionProcessor {
                   providerID: input.model.providerID,
                   modelID: input.model.id,
                 })
+                LLMProfiler.fail(callID, "usage missing")
               }
             }
           } catch (e: any) {
+            const callID = streamInput.traceID
+            if (callID) {
+              LLMProfiler.fail(callID, e)
+            }
             log.error("process", {
               error: e,
               stack: JSON.stringify(e.stack),

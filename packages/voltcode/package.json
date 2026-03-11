@@ -14,6 +14,7 @@
     "control-plane": "bun run src/control-plane/main.ts",
     "scheduler": "bun run src/control-plane/scheduler.ts",
     "check-status": "bun run script/check_status.ts",
+    "profile-llm-calls": "bun run scripts/profile-llm-calls.ts --cases short --depth 1 --breadth 1",
     "random": "echo 'Random script updated at $(date)' && echo 'Change queued successfully' && echo 'Another change made' && echo 'Yet another change' && echo 'One more change' && echo 'Final change' && echo 'Another final change' && echo 'Yet another final change'",
     "clean": "echo 'Cleaning up...' && rm -rf node_modules dist",
     "lint": "echo 'Running lint checks...' && bun test --coverage",
