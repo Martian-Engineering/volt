@@ -23,6 +23,7 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
+import { LLMProfiler } from "./llm-profiler"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -38,6 +39,7 @@ export namespace LLM {
     abort: AbortSignal
     messages: ModelMessage[]
     small?: boolean
+    traceID?: string
     tools: Record<string, Tool>
     retries?: number
     /** Pre-assembled system prompt (already transformed by plugin). Skips inline assembly when provided. */
@@ -171,6 +173,41 @@ export namespace LLM {
       })
     }
 
+    const messages = [
+      ...(isCodex
+        ? [
+            {
+              role: "user",
+              content: system.join("\n\n"),
+            } as ModelMessage,
+          ]
+        : system.map(
+            (x): ModelMessage => ({
+              role: "system",
+              content: x,
+            }),
+          )),
+      ...input.messages,
+    ]
+
+    if (!input.traceID) {
+      input.traceID = LLMProfiler.start({
+        sessionID: input.sessionID,
+        source: "other",
+        modelID: input.model.id,
+        providerID: input.model.providerID,
+        small: input.small ?? false,
+        messageID: input.user.id,
+        agent: input.agent.name,
+        context: LLMProfiler.buildPromptMetrics({
+          system,
+          messages,
+          tools: input.tools,
+          small: input.small ?? false,
+        }),
+      })
+    }
+
     return streamText({
       onError(error) {
         l.error("stream error", {
@@ -229,22 +266,7 @@ export namespace LLM {
         ...input.model.headers,
       },
       maxRetries: input.retries ?? 0,
-      messages: [
-        ...(isCodex
-          ? [
-              {
-                role: "user",
-                content: system.join("\n\n"),
-              } as ModelMessage,
-            ]
-          : system.map(
-              (x): ModelMessage => ({
-                role: "system",
-                content: x,
-              }),
-            )),
-        ...input.messages,
-      ],
+      messages,
       model: wrapLanguageModel({
         model: language as any,
         middleware: [

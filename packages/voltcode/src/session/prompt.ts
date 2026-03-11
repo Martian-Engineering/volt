@@ -1980,6 +1980,7 @@ export namespace SessionPrompt {
             })
           },
         }
+        const subtaskStart = performance.now()
         const result = await taskTool.execute(taskArgs, taskCtx).catch((error) => {
           executionError = error
           log.error("subtask execution failed", { error, agent: task.agent, description: task.description })
@@ -1994,6 +1995,14 @@ export namespace SessionPrompt {
           },
           result,
         )
+        log.trace("loop.timing.subtaskExecution", {
+          sessionID,
+          messageID: assistantMessage.id,
+          task: task.agent,
+          ms: Math.round(performance.now() - subtaskStart),
+          success: !executionError,
+          childSessionID: result?.metadata?.sessionId,
+        })
         assistantMessage.finish = "tool-calls"
         assistantMessage.time.completed = Date.now()
         await Session.updateMessage(assistantMessage)
